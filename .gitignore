@@ -1,0 +1,11 @@
+.venv
+.vscode
+.env
+.idea
+**/__pycache__/
+*.pyc
+**/mlruns
+**/runs
+**/saves
+venv
+logs

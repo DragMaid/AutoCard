@@ -1,0 +1,41 @@
+[
+  {
+    "name": "Mystical Space Typhoon",
+    "description": "Destroy 1  trap card your opponent controls.",
+    "ctype": "spell",
+    "ability": "destroy_trap",
+    "texture": "/images/spell/typhoon.png"
+  },
+  {
+    "name": "Call of the Brave",
+    "description": "Summon 1 monster from your hand directly to the field.",
+    "ctype": "spell",
+    "ability": "summon_monster_from_hand",
+    "texture": "/images/spell/call_of_brave.png"
+  },
+  {
+    "name": "Maniac War",
+    "description": "Increase a monster's ATK by 500 points.",
+    "ctype": "spell",
+    "ability": "buff_attack",
+    "texture": "/images/spell/buff_damage.png",
+    "value": 500,
+    "duration": 5
+  },
+  {
+    "name": "Aura Shield",
+    "description": "Increase a monster's DEF by 500 points.",
+    "ctype": "spell",
+    "ability": "buff_defense",
+    "texture": "/images/spell/buff_defend.png",
+    "value": 500,
+    "duration": 5
+  },
+  {
+    "name": "Reinforcement",
+    "description": "Draw 2 cards.",
+    "ctype": "spell",
+    "ability": "draw_two_cards",
+    "texture": "/images/spell/reinforcement.png"
+  }
+]

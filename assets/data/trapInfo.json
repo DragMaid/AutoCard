@@ -1,0 +1,45 @@
+[
+  {
+    "name": "Crippling Curse",
+    "description": "When an opponent's monster attacks, reduce its ATK by 500 points.",
+    "ctype": "trap",
+    "ability": "debuff_enemy_atk",
+    "texture": "/images/trap/debuff_atk.png",
+    "value": 500,
+    "duration": 5
+
+  },
+  {
+    "name": "Shattered Guard",
+    "description": "When an opponent's monster attacks, reduce its DEF by 300 points.",
+    "ctype": "trap",
+    "ability": "debuff_enemy_def",
+    "texture": "/images/trap/debuff_def.png",
+    "value": 500,
+    "duration": 5
+  },
+  {
+    "name": "Phantom Dodge",
+    "description": "Negate the first attack on your monsters this turn.",
+    "ctype": "trap",
+    "ability": "dodge_attack",
+    "texture": "/images/trap/dodge.png"  
+  },
+  {
+    "name": "Mirror Strike",
+    "description": "Reflect an enemy's attacking monster: the attacker is destroyed instead.",
+    "ctype": "trap",
+    "ability": "reflect_attack",
+    "texture": "/images/trap/reflect_atk.png" 
+   },
+  {
+    "name": "Weaken Summon",
+    "description": "When an opponent summons a monster, it loses 500 ATK and DEF.",
+    "ctype": "trap",
+    "ability": "debuff_summon",
+    "texture": "/images/trap/debuff_summon.png",
+    "value": 500,
+    "duration": 5
+  }
+]
+
