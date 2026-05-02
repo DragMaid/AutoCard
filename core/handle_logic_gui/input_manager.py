@@ -170,12 +170,14 @@ class InputManager:
     def handle_click_card(self, pos):
         for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
             if card_ui.rect.collidepoint(pos):
-                self.matrix.areas["preview_card_table"].set_card(card_ui)
+                self.matrix.areas["preview_card_table"].set_card(
+                    card_ui, self.game_engine.game_state)
                 return  # stop after first match
 
         for card_ui in self.render_engine.sprite_manager.sprites["hand"].values():
             if card_ui.rect.collidepoint(pos):
-                self.matrix.areas["preview_card_table"].set_card(card_ui)
+                self.matrix.areas["preview_card_table"].set_card(
+                    card_ui, self.game_engine.game_state)
                 return
 
     def draw(self, screen):

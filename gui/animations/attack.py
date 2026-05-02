@@ -6,7 +6,7 @@ from .animation import Animation
 
 
 class AttackAnimation(Animation):
-    def __init__(self, card1, card2, duration):
+    def __init__(self, card1, card2, game_state, duration):
         super().__init__({card1, card2}, duration)
         self.card1 = card1
         self.card2 = card2
@@ -16,13 +16,15 @@ class AttackAnimation(Animation):
         self.impact_done = False
 
         # Final facing directions
+        owner1 = game_state.players_lookup[card1.logic_card.owner_id]
         direction1 = pygame.Vector2(
-            0, 1) if card1.logic_card.owner.is_opponent else pygame.Vector2(0, -1)
+            0, 1) if owner1.is_opponent else pygame.Vector2(0, -1)
         self.final_angle1 = self._signed_angle(
             self.start_pos2 - self.start_pos1, direction1)
 
+        owner2 = game_state.players_lookup[card2.logic_card.owner_id]
         direction2 = pygame.Vector2(
-            0, 1) if card2.logic_card.owner.is_opponent else pygame.Vector2(0, -1)
+            0, 1) if owner2.is_opponent else pygame.Vector2(0, -1)
         self.final_angle2 = self._signed_angle(
             self.start_pos1 - self.start_pos2, direction2)
 

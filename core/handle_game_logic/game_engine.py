@@ -1,8 +1,5 @@
 from typing import Tuple, List, Any
 from core.factory.draw_system import DrawSystem
-from core.cards.monster_card import MonsterCard
-from core.cards.spell_card import SpellCard
-from core.cards.trap_card import TrapCard
 from core.player import Player
 from core.factory.monster_factory import MonsterFactory
 from core.factory.spell_factory import SpellFactory
@@ -12,45 +9,16 @@ from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager
 from core.game_info.effect_tracker import EffectTracker, EffectType
 from core.game_info.events import EventLogger, AttackEvent, TrapTriggerEvent, ToggleEvent, SpellActiveEvent, MergeEvent
+from core.utils import disable_print, setup_silent_logger
 
 import logging
 from datetime import datetime
-import builtins
-
-
-# TODO: why not move these to a logging module
-def disable_print():
-    builtins.print = lambda *a, **k: None
-
-
-def setup_silent_logger(log_path: str = "logs/game_engine.log", level=logging.DEBUG):
-    """Redirect all print() calls to a file-based logger instead of stdout."""
-    import os
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-
-    logger = logging.getLogger("GameEngine")
-    logger.setLevel(level)
-
-    # Avoid adding multiple handlers (happens when reloading engine)
-    if not logger.handlers:
-        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-        formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.propagate = False
-
-    # Redirect built-in print() to logger.info()
-    builtins.print = lambda *a, **k: logger.info(" ".join(str(x) for x in a))
-
-    return logger
 
 
 class GameEngine:
     def __init__(self,
                  players: List[Player],
-                 verbose=True,
+                 verbose: bool = True,
                  log_to_file: bool = False):
         self.game_state = GameState(players)
         self.effect_tracker = EffectTracker()

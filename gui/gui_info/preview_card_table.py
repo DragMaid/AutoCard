@@ -1,4 +1,5 @@
 import pygame
+from gui.cards_gui.card_gui import CardGUI
 from gui.cache import load_image
 
 
@@ -12,11 +13,11 @@ class CardPreview:
         self.border_width = border_width
         self.card_gui = None  # Will hold a resized CardGUI
 
-    def set_card(self, card_ui):
+    def set_card(self, card_ui, game_state):
         """Create a fresh CardGUI scaled to the preview size"""
-        from gui.cards_gui.card_gui import CardGUI
-        # TODO: handle the is_opponent thing somehow
-        if card_ui.logic_card.owner.is_opponent and \
+
+        owner = game_state.players_lookup[card_ui.logic_card.owner_id]
+        if owner.is_opponent and \
                 (card_ui.logic_card.is_face_down
                  or card_ui.is_face_down):
             return

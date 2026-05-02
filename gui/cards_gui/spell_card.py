@@ -14,7 +14,8 @@ class SpellCardGUI(CardGUI):
         success = False
 
         if cell:
-            card_info = matrix.game_state.field_matrix[cell[0]][cell[1]]
+            card_id = matrix.game_state.field_matrix[cell[0]][cell[1]]
+            card_info = matrix.game_state.entity_lookup.get(card_id)
             if self.logic_card.can_target(card_info):
                 success = self.on_activate(game_engine, card_info)
 

@@ -33,7 +33,7 @@ game_engine.start_game()
 # ai_manager = HumanVsAIManager(game_engine, env, ai, human_player_idx=0)
 
 field_matrix = Matrix(screen, game_engine.game_state)
-render_engine = RenderEngine(field_matrix, screen)
+render_engine = RenderEngine(field_matrix, screen, game_engine.game_state)
 
 input_manager = InputManager(field_matrix, game_engine, render_engine)
 

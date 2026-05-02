@@ -47,9 +47,8 @@ class MonsterCard(Card):
                 Mode: {self.mode} \
                 Type: {self.type}"
 
-    # TODO: move to game engine
-    # def switch_position(self):
-        # """Change the card mode to either attack or defense."""
-        # self.mode = 'defense' if self.mode == 'attack' else 'attack'
-        # print(f"{self.name} switched to {self.mode} position.")
-        # return self.mode
+    def switch_position(self):
+        """Change the card mode to either attack or defense."""
+        self.mode = 'defense' if self.mode == 'attack' else 'attack'
+        print(f"{self.name} switched to {self.mode} position.")
+        return self.mode

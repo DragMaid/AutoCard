@@ -2,9 +2,10 @@ from gui.cache import get_font
 
 
 class CardStatOverlay:
-    def __init__(self, card_gui, font_size=20):
+    def __init__(self, card_gui, font_size=20, position="bottom"):
         self._card = card_gui
         self.font = get_font(font_size)
+        self.position = position
 
     def __getattr__(self, name):
         """
@@ -32,17 +33,16 @@ class CardStatOverlay:
             atk}/{defe}/{star}*" if not self._card.is_face_down else ""
         text_surf = self.font.render(stat_text, True, (255, 255, 255))
 
-        # TODO: move this logic elsewhere
-        # if self._card.logic_card.owner.is_opponent:
-            # x = self._card.rect.centerx - text_surf.get_width() // 2
-            # y = self._card.rect.top - 2
-        # else:
-            # x = self._card.rect.centerx - text_surf.get_width() // 2
-            # y = self._card.rect.bottom + 2
+        if self.position == "bottom":
+            x = self._card.rect.centerx - text_surf.get_width() // 2
+            y = self._card.rect.top - 2
+        else:
+            x = self._card.rect.centerx - text_surf.get_width() // 2
+            y = self._card.rect.bottom + 2
 
         # Outline
-        # outline = self.font.render(stat_text, True, (0, 0, 0))
-        # for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            # surface.blit(outline, (x + dx, y + dy))
+        outline = self.font.render(stat_text, True, (0, 0, 0))
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            surface.blit(outline, (x + dx, y + dy))
 
-        # surface.blit(text_surf, (x, y))
+        surface.blit(text_surf, (x, y))
