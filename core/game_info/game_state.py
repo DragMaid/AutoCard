@@ -13,8 +13,8 @@ class GameState:
     def __init__(self, players: List[Player], rows: int = 4, cols: int = 5):
         self.players: List[Player] = players
         self.players_lookup: dict[str, Player] = {p.id: p for p in players}
-        self.game_over: bool = False
         self.max_cards: int = 10
+        self.game_over: bool = False
         self.entity_lookup: dict = {}
 
         self.logger = logging.getLogger("GameEngine")
@@ -25,9 +25,6 @@ class GameState:
         self.logger.info(f"GameState initialized: {rows}x{
                          cols} field, {len(players)} players")
 
-    # -------------------------
-    # Game state utilities
-    # -------------------------
     def reset(self):
         # Initialize player-related info
         self.player_info = {
@@ -277,3 +274,57 @@ class GameState:
                         f"  - Type: {mtype}, Lv{level}: {len(cards)} cards ({card_names})")
 
         return groups
+
+    def serialize(self):
+        content = {}
+
+        content["players"] = [vars(p) for p in self.players]
+        content["player_info"] = self.player_info
+        content["game_over"] = self.game_over
+        content["entity_lookup"] = {k: vars(v)
+                                    for k, v in self.entity_lookup.items()}
+        content["field_matrix"] = self.field_matrix
+        content["field_matrix_ownership"] = self.field_matrix_ownership
+        content["player_cards"] = self._player_cards
+
+        content["max_cards"] = self.max_cards
+        content["rows"] = self.rows
+        content["cols"] = self.cols
+
+        return content
+
+    def deserialize(self, content):
+        from core.player import Player
+
+        self.players = [Player(**p) for p in content["players"]]
+        self.players_lookup = {p.id: p for p in self.players}
+
+        self.player_info = content["player_info"]
+        self.game_over = content["game_over"]
+
+        self.max_cards = content["max_cards"]
+        self.rows = content["rows"]
+        self.cols = content["cols"]
+
+        # TODO: also need to worry about the type mismatch during deserialization process
+        self.entity_lookup = {k: self._deserialize_card(
+            v) for k, v in content["entity_lookup"].items()}
+
+        self.field_matrix = content["field_matrix"]
+        self.field_matrix_ownership = content["field_matrix_ownership"]
+        self._player_cards = content["player_cards"]
+
+    @staticmethod
+    def _deserialize_card(card_dict):
+        from core.cards.monster_card import MonsterCard
+        from core.cards.spell_card import SpellCard
+        from core.cards.trap_card import TrapCard
+
+        card_map = {
+            "monster": MonsterCard,
+            "spell": SpellCard,
+            "trap": TrapCard
+        }
+
+        card = card_map[card_dict["ctype"]](**card_dict)
+        return card

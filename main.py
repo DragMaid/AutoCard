@@ -32,6 +32,7 @@ game_engine.start_game()
                 # agent_id=1, device=config.DEVICE)
 # ai_manager = HumanVsAIManager(game_engine, env, ai, human_player_idx=0)
 
+# GUI handler - separated from logic
 field_matrix = Matrix(screen, game_engine.game_state)
 render_engine = RenderEngine(field_matrix, screen, game_engine.game_state)
 
@@ -45,6 +46,7 @@ ai_state = {"running": False}
 ai_thread = None
 
 while running:
+    print(game_engine.serialize())
     current_player = game_engine.turn_manager.get_current_player()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:

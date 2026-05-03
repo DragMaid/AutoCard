@@ -2,9 +2,6 @@ from dataclasses import dataclass, asdict
 from typing import Union, Any, Type
 
 
-# -------------------------------------------------
-# EVENT DEFINITIONS (ID-ONLY)
-# -------------------------------------------------
 @dataclass
 class AttackEvent:
     card_id: str
@@ -46,9 +43,6 @@ GameEvent = Union[
 ]
 
 
-# -------------------------------------------------
-# EVENT LOGGER
-# -------------------------------------------------
 class EventLogger:
     """Lightweight event logger storing only ID references."""
 
@@ -65,9 +59,6 @@ class EventLogger:
     def clear_events(self):
         self._events.clear()
 
-    # -------------------------------------------------
-    # FACTORY HELPERS
-    # -------------------------------------------------
     @staticmethod
     def _get_id(obj: Any) -> str | None:
         """Extract ID from Card or Player object, else return None."""
@@ -105,24 +96,22 @@ class EventLogger:
             result_card_id=cls._get_id(result) or str(result)
         )
 
-    # -------------------------------------------------
-    # SERIALIZATION
-    # -------------------------------------------------
-    @staticmethod
-    def _serialize_events(event_logger: "EventLogger") -> dict:
+    # TODO: the question is this is only for running the animation
+    # One very troublesome thing is that the logic is depleted first but then the UI
+    # is updated after instead of immediately removing the sprite
+    # Below are built-in functions for network process
+    # Then we just have to send an update for every action that happens afterwards
+    # The thing is to ask for it to finish running the animation before updating the event list
+    def serialize(self):
         """Convert EventLogger contents into a serializable dict."""
         return {
             "events": [
                 {"type": e.__class__.__name__, "data": asdict(e)}
-                for e in event_logger._events
+                for e in self._events
             ]
         }
 
-    # -------------------------------------------------
-    # DESERIALIZATION
-    # -------------------------------------------------
-    @staticmethod
-    def _deserialize_events(serialized: dict) -> "EventLogger":
+    def deserialize(self, serialized):
         """Rebuild EventLogger from serialized dict (ID-only)."""
         event_map: dict[str, Type[GameEvent]] = {
             "AttackEvent": AttackEvent,
@@ -132,8 +121,7 @@ class EventLogger:
             "MergeEvent": MergeEvent,
         }
 
-        logger = EventLogger()
-
+        events = []
         for ev in serialized.get("events", []):
             ev_type = ev.get("type")
             ev_data = ev.get("data", {})
@@ -142,9 +130,9 @@ class EventLogger:
                 continue
             try:
                 event = cls(**ev_data)
-                logger.add_event(event)
+                events.append(event)
             except TypeError:
                 # Skip malformed entries
                 continue
 
-        return logger
+        self._events = events

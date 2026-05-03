@@ -53,6 +53,22 @@ class GameEngine:
         # Action counter for tracking
         self.action_counter = 0
 
+    def serialize(self):
+        return {
+            "effect_tracker": self.effect_tracker.serialize(),
+            "event_logger": self.event_logger.serialize(),
+            "game_state": self.game_state.serialize(),
+            "action_counter": self.action_counter,
+            "start_hand_count": self.start_hand_count
+        }
+
+    def deserialize(self, content):
+        self.effect_tracker.deserialize(content["effect_tracker"])
+        self.event_logger.deserialize(content["event_logger"])
+        self.game_state.deserialize(content["game_state"])
+        self.action_counter = content["action_counter"]
+        self.start_hand_count = content["start_hand_count"]
+
     def reset(self):
         self.effect_tracker.clear_all_effects(self.game_state)
         self.event_logger.clear_events()
@@ -115,18 +131,18 @@ class GameEngine:
                 self.draw_card(player.id, check=False)
 
     # DEBUG FUNCTION
-    def draw_specific_card(self, player_id: str, name: str, ctype: str):
-        if ctype == "monster":
-            card = self.monster_factory.load(player_id, name)
-        elif ctype == "trap":
-            card = self.trap_factory.load(player_id, name)
-        elif ctype == "spell":
-            card = self.spell_factory.load(player_id, name)
-        else:
-            return
-        self.game_state.entity_lookup[card.id] = card
-        self.game_state.player_info[player_id]["held_cards"].add(card.id)
-        print(f"[DEBUG] {player_id} received specific card: {name}")
+    # def draw_specific_card(self, player_id: str, name: str, ctype: str):
+        # if ctype == "monster":
+            # card = self.monster_factory.load(player_id, name)
+        # elif ctype == "trap":
+            # card = self.trap_factory.load(player_id, name)
+        # elif ctype == "spell":
+            # card = self.spell_factory.load(player_id, name)
+        # else:
+            # return
+        # self.game_state.entity_lookup[card.id] = card
+        # self.game_state.player_info[player_id]["held_cards"].add(card.id)
+        # print(f"[DEBUG] {player_id} received specific card: {name}")
 
     def draw_card(self, player_id: str, check=True):
         """Player draws a card if allowed"""
