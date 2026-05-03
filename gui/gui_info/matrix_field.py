@@ -169,8 +169,8 @@ class Matrix:
         }
         self.tile_renderer.set_tile_mapping(tile_mapping)
 
-    def set_game_state(self, gs):
-        if gs and gs is not self.game_state:
+    def set_game_state(self, gs, force=False):
+        if gs and gs is not self.game_state or force:
             self.game_state = gs
             self.update_dimensions()
             self.tile_renderer = TileRenderer(

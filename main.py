@@ -86,9 +86,10 @@ class GameApp(ABC):
 
 
 class StandaloneApplication(gunicorn.app.base.BaseApplication):
-    def __init__(self, app, options=None):
+    def __init__(self, app, options=None, on_worker_init=None):
         self.options = options or {}
         self.application = app
+        self.on_worker_init = on_worker_init
         super().__init__()
 
     def load_config(self):
@@ -96,6 +97,8 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
             self.cfg.set(key.lower(), value)
 
     def load(self):
+        if self.on_worker_init:
+            self.on_worker_init()
         return self.application
 
 
@@ -157,7 +160,6 @@ class SocketClientGame(GameApp):
         @self.sio.on("synchronize")
         def on_synchronize(data):
             # Store data to be applied when animations are clear
-            print("wtfffff")
             self.pending_data = data
 
         try:
@@ -168,6 +170,10 @@ class SocketClientGame(GameApp):
     def update(self):
         if self.pending_data and not self.render_engine.animation_mgr.is_running():
             self.game_engine.deserialize(self.pending_data)
+
+            self.field_matrix.set_game_state(
+                self.game_engine.game_state, force=True)
+
             self.render_engine.align_cards(self.field_matrix)
             self.pending_data = None
 
@@ -200,18 +206,16 @@ class SocketServerGame(GameApp):
         self.server_process.start()
 
     def _handle_sub_queue(self):
-        from time import sleep
         while not self._sub_queue.empty():
             key, value = list(self._sub_queue.get().items())[0]
             if key == "connected":
                 self.game_engine.start_game()
                 self.game_started = True
                 self.game_engine.synchronize = self.emit_synchronize
-                sleep(3)
                 self.game_engine.synchronize()
-
             elif key == "disconnected":
                 self.running = False
+                exit(0)
             elif key == "synchronize":
                 self.pending_data = value
             else:
@@ -221,23 +225,33 @@ class SocketServerGame(GameApp):
         sio = socketio.Server(cors_allowed_origins='*', async_mode='threading')
         app = socketio.WSGIApp(sio)
 
+        def start_bridge():
+            bridge_thread = Thread(target=emit_bridge, daemon=True)
+            bridge_thread.start()
+
         def emit_bridge():
             """Listens to the queue and emits to actual connected clients."""
+            print("Bridge thread started in worker process")
             while True:
                 try:
                     # This blocks until the main process sends data
-                    event, data = self._out_queue.get()
+                    item = self._out_queue.get()
+                    print(f"Bridge received item from queue: {
+                          item[0] if isinstance(item, tuple) else item}")
+                    event, data = item
                     if event:
+                        print(f"Bridge emitting event: {event}")
+                        # Check connected clients
+                        clients = list(
+                            sio.manager.rooms['/'].keys()) if '/' in sio.manager.rooms else []
+                        print(f"Connected clients in '/': {clients}")
                         sio.emit(event, data)
+                        print(f"Bridge emit call finished for {event}")
                 except Exception as e:
                     print(f"Bridge Error: {e}")
 
-        bridge_thread = Thread(target=emit_bridge, daemon=True)
-        bridge_thread.start()
-
         @sio.on("synchronize")
         def on_synchronize(sid, data):
-            # self.pending_data = data
             self._sub_queue.put({"synchronize": data})
 
         @sio.event
@@ -255,7 +269,7 @@ class SocketServerGame(GameApp):
             'threads': 4,
             'worker_class': 'sync',
         }
-        StandaloneApplication(app, options).run()
+        StandaloneApplication(app, options, on_worker_init=start_bridge).run()
 
     def emit_synchronize(self):
         print("Synchronization signal sent")

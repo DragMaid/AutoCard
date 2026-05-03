@@ -84,10 +84,10 @@ class CardRegistry:
 
         if card_type == "monster":
             kwargs.update({
-                "attack_points": prototype.get("attack_points", 0),
-                "defense_points": prototype.get("defense_points", 0),
+                "atk": prototype.get("attack_points", 0),
+                "defend": prototype.get("defense_points", 0),
                 "level_star": prototype.get("level_star", 1),
-                "monster_type": prototype.get("type", "Unknown")
+                "type": prototype.get("type", "Unknown")
             })
         else:
             # Spell/Trap fields

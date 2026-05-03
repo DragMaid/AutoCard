@@ -13,18 +13,19 @@ class SpellCard(Card):
                  image_path: str | None = None,
                  **kwargs: Any
                  ):
-        super().__init__(
-            name=name,
-            description=description,
-            ctype="spell",
-            ability=ability,
-            owner_id=owner_id,
-            is_placed=False,  # Spells are not placed on field
-            **kwargs
-        )
+        params = {
+            "name": name,
+            "description": description,
+            "ctype": "spell",
+            "ability": ability,
+            "owner_id": owner_id,
+            "is_placed": False,  # Spells are not placed on field
+        }
+        params.update(kwargs)
+        super().__init__(**params)
         self.value = value
         self.duration = duration
-        self.image_path = image_path
+        self.image_path = str(image_path)
 
     def __str__(self):
         return f"Spell: {self.name} - {self.description} (Ability: {self.ability})"

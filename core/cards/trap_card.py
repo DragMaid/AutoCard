@@ -13,19 +13,20 @@ class TrapCard(Card):
                  image_path: str | None = None,
                  **kwargs: Any
                  ):
-        super().__init__(
-            name=name,
-            description=description,
-            ctype="trap",
-            ability=ability,
-            owner_id=owner_id,
-            is_placed=True,  # Traps are placed on field
-            is_face_down=False,
-            **kwargs
-        )
+        params = {
+            "name": name,
+            "description": description,
+            "ctype": "trap",
+            "ability": ability,
+            "owner_id": owner_id,
+            "is_placed": True,  # Traps are placed on field
+            "is_face_down": False,
+        }
+        params.update(kwargs)
+        super().__init__(**kwargs)
         self.value = value
         self.duration = duration
-        self.image_path = image_path
+        self.image_path = str(image_path)
         self.is_trigger = False
 
     def __str__(self):

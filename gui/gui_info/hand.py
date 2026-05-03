@@ -5,7 +5,7 @@ from gui.cache import load_image
 
 class CollectionInfo:
     def __init__(self, cards, player_id):
-        self.cards = cards # List of card IDs
+        self.cards = cards  # List of card IDs
         self.player_id = player_id
 
     def __len__(self):
