@@ -26,6 +26,10 @@ class AnimationManager:
         if train_mode:
             Animation.audio = False
 
+    def is_running(self):
+        """Returns if any animation is pending or animating."""
+        return self.queues and self.animating
+
     def _duration(self, value):
         """Return 0 duration if train_mode is True, else the given value."""
         return 0 if self.train_mode else value

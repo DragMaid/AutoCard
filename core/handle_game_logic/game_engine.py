@@ -19,7 +19,8 @@ class GameEngine:
     def __init__(self,
                  players: List[Player],
                  verbose: bool = True,
-                 log_to_file: bool = False):
+                 log_to_file: bool = False,
+                 socket_io=None):
         self.game_state = GameState(players)
         self.effect_tracker = EffectTracker()
         self.turn_manager = TurnManager(self.game_state, self.effect_tracker)
@@ -39,6 +40,7 @@ class GameEngine:
         self.trap_factory.build()
 
         self.start_hand_count = 5
+        self.socket_io = socket_io
 
         # --- Control verbosity ---
         if log_to_file:
@@ -52,6 +54,11 @@ class GameEngine:
 
         # Action counter for tracking
         self.action_counter = 0
+
+    # TODO: this only apply for client - server is injected - bad design
+    def synchronize(self):
+        if self.socket_io:
+            self.socket_io.emit("synchronize", self.serialize())
 
     def serialize(self):
         return {
@@ -152,12 +159,14 @@ class GameEngine:
             card = self.draw_system.rate_card_draw(player_id)
             if card:
                 self.game_state.entity_lookup[card.id] = card
-                self.game_state.player_info[player_id]["held_cards"].add(card.id)
+                self.game_state.player_info[player_id]["held_cards"].add(
+                    card.id)
                 self._log_action("DRAW", player_id, {
                     "card": card.name,
                     "type": card.ctype,
                     "hand_size": len(self.game_state.player_info[player_id]["held_cards"])
                 }, True)
+                self.synchronize()
                 return True
 
         return False
@@ -184,6 +193,7 @@ class GameEngine:
                 "from": old_mode,
                 "to": new_mode
             }, True)
+            self.synchronize()
             return True
 
         self._log_action("TOGGLE", owner_id, {
@@ -254,6 +264,7 @@ class GameEngine:
 
         self._log_action("SUMMON", player_id, details, True)
         self.check_summon_trap(card_id)
+        self.synchronize()
         return True
 
     def attack(self,
@@ -305,9 +316,12 @@ class GameEngine:
                     "target": target_card.name if target_card else target_id,
                     "result": "Negated/Reflected by trap"
                 }, True)
+                self.synchronize()
                 return True
 
-        self.resolve_battle(attacker_id, defender_id, card_id, target_id, target_is_player)
+        self.resolve_battle(attacker_id, defender_id,
+                            card_id, target_id, target_is_player)
+        self.synchronize()
         return True
 
     def move_card_to_graveyard(self, card_id: str):
@@ -315,7 +329,8 @@ class GameEngine:
         if not card:
             return
         self.game_state.modify_field("remove", card, card.pos_in_matrix)
-        self.game_state.player_info[card.owner_id]["graveyard_cards"].add(card_id)
+        self.game_state.player_info[card.owner_id]["graveyard_cards"].add(
+            card_id)
         print(f"  → {card.name} moved to {card.owner_id}'s graveyard")
 
     def resolve_battle(self,
@@ -455,6 +470,7 @@ class GameEngine:
 
             self.event_logger.add_event(MergeEvent(
                 own_card_id, target_card_id, upgraded_monster.id))
+            self.synchronize()
             return True
 
         return False
@@ -526,7 +542,8 @@ class GameEngine:
                     details["effect"] = "Trap destroyed"
                 else:
                     details["reason"] = f"Invalid trap target - {target_id}"
-                    self._log_action("CAST_SPELL", spell.owner_id, details, False)
+                    self._log_action(
+                        "CAST_SPELL", spell.owner_id, details, False)
                     return False
 
         elif spell.ability == "summon_monster_from_hand":
@@ -536,10 +553,13 @@ class GameEngine:
         # Move spell to graveyard after use
         self.event_logger.add_event(SpellActiveEvent(
             spell.id, target_id))
-        self.game_state.player_info[spell.owner_id]["held_cards"].remove(spell_id)
-        self.game_state.player_info[spell.owner_id]["graveyard_cards"].add(spell_id)
+        self.game_state.player_info[spell.owner_id]["held_cards"].remove(
+            spell_id)
+        self.game_state.player_info[spell.owner_id]["graveyard_cards"].add(
+            spell_id)
 
         self._log_action("CAST_SPELL", spell.owner_id, details, True)
+        self.synchronize()
         return True
 
     def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True):
@@ -569,7 +589,8 @@ class GameEngine:
                 return False
 
         # Place trap face-down
-        self.game_state.player_info[trap.owner_id]["held_cards"].remove(trap_id)
+        self.game_state.player_info[trap.owner_id]["held_cards"].remove(
+            trap_id)
         self.game_state.modify_field("add", trap, position)
         self.game_state.player_info[trap.owner_id]["has_summoned_trap"] = True
         trap.is_placed = True
@@ -582,6 +603,7 @@ class GameEngine:
             "position": position,
             "state": "face-down"
         }, True)
+        self.synchronize()
         return True
 
     def resolve_trap(self, trap_id: str, attacker_id: str):
@@ -604,7 +626,8 @@ class GameEngine:
             trap.reveal()
             self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
             self.move_card_to_graveyard(trap_id)
-            effect_desc = f"{attacker.name} ATK -{trap.value} for {trap.duration} turns"
+            effect_desc = f"{
+                attacker.name} ATK -{trap.value} for {trap.duration} turns"
 
         elif trap.ability == "debuff_enemy_def":
             self.effect_tracker.add_effect(
@@ -612,7 +635,8 @@ class GameEngine:
             trap.reveal()
             self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
             self.move_card_to_graveyard(trap_id)
-            effect_desc = f"{attacker.name} DEF -{trap.value} for {trap.duration} turns"
+            effect_desc = f"{
+                attacker.name} DEF -{trap.value} for {trap.duration} turns"
 
         elif trap.ability == "dodge_attack":
             attacker.has_attack = True
@@ -655,7 +679,8 @@ class GameEngine:
 
         for opponent_id in opponents_ids:
             opponent_cards = self.game_state.get_player_cards(opponent_id)
-            traps = [card for card in opponent_cards if card.ctype == "trap" and card.is_face_down]
+            traps = [card for card in opponent_cards if card.ctype ==
+                     "trap" and card.is_face_down]
             for trap in traps:
                 if trap.ability == 'debuff_summon':
                     self.event_logger.add_event(

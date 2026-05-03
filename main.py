@@ -1,7 +1,11 @@
 import pygame
-# from threading import Thread
+import socketio
+import gunicorn.app.base
+from abc import abstractmethod
+from threading import Thread
+from multiprocessing import Process, Queue
 from ml.environment.environment import GameEnv
-# from ml.ai_opponent import AIOpponent, HumanVsAIManager
+from ml.ai_opponent import AIOpponent, HumanVsAIManager
 from ml.config import Config
 from core.player import Player
 from core.handle_game_logic.game_engine import GameEngine
@@ -10,88 +14,288 @@ from gui.gui_info.matrix_field import Matrix
 from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
+from abc import ABC
 
-config = Config()
 
-pygame.init()
-screen_size = (1280, 720)
-screen = pygame.display.set_mode(screen_size)
-clock = pygame.time.Clock()
-running = True
-dt = 0
+# NOTE: pygame code is not thread safe
+class GameApp(ABC):
+    def __init__(self):
+        pygame.init()
+        self.config = Config()
+        self.screen_size = (1280, 720)
+        self.screen = pygame.display.set_mode(self.screen_size)
+        self.clock = pygame.time.Clock()
+        self.running = True
+        self.game_started = True
+        self.dt = 0
 
-# Players creation
-player1 = Player(0, 'Binh')
-player2 = Player(1, 'AI', is_opponent=True)
+        self.player1 = Player(0, 'p1')
+        self.player2 = Player(1, 'p2', is_opponent=True)
 
-game_engine = GameEngine([player1, player2], verbose=True, log_to_file=False)
-env = GameEnv(engine=game_engine, render=False)
-game_engine.start_game()
+        self.game_engine = GameEngine(
+            [self.player1, self.player2], verbose=True, log_to_file=False)
+        self.env = GameEnv(engine=self.game_engine, render=False)
+        # self.game_engine.start_game()
 
-# ai = AIOpponent(env, config, config.CHECKPOINT_PATH,
-                # agent_id=1, device=config.DEVICE)
-# ai_manager = HumanVsAIManager(game_engine, env, ai, human_player_idx=0)
+        self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
+        self.render_engine = RenderEngine(
+            self.field_matrix, self.screen, self.game_engine.game_state)
+        self.input_manager = InputManager(
+            self.field_matrix, self.game_engine, self.render_engine)
 
-# GUI handler - separated from logic
-field_matrix = Matrix(screen, game_engine.game_state)
-render_engine = RenderEngine(field_matrix, screen, game_engine.game_state)
+        self.background = load_image("assets/background.png")
+        self.background = pygame.transform.scale(
+            self.background, self.screen_size)
 
-input_manager = InputManager(field_matrix, game_engine, render_engine)
+    def handle_events(self):
+        current_player = self.game_engine.turn_manager.get_current_player()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
 
-image_path = "assets/background.png"
-background = load_image(image_path)
-background = pygame.transform.scale(background, screen_size)
+            self.input_manager.handle_event(event)
 
-ai_state = {"running": False}
-ai_thread = None
+            if (event.type == pygame.KEYDOWN and
+                event.key == pygame.K_SPACE and
+                    current_player == self.player1):
+                self.game_engine.end_turn()
 
-while running:
-    print(game_engine.serialize())
-    current_player = game_engine.turn_manager.get_current_player()
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    @abstractmethod
+    def update(self):
+        ...
 
-        input_manager.handle_event(event)
+    def draw(self):
+        self.screen.blit(self.background, self.background.get_rect())
+        self.field_matrix.areas["preview_card_table"].draw(self.screen)
+        self.field_matrix.draw()
+        self.input_manager.draw(self.screen)
+        self.render_engine.draw()
+        EffectManager.draw(self.screen)
+        pygame.display.flip()
 
-        # TODO: change this with a real turn end button
-        if (event.type == pygame.KEYDOWN
-                and event.key == pygame.K_SPACE
-                and current_player == player1):
-            game_engine.end_turn()
+    def run(self, callback=None):
+        while self.running:
+            if callback:
+                callback()
+            if self.game_started:
+                self.handle_events()
+                self.update()
+                self.draw()
+                self.dt = self.clock.tick(60) / 1000
+        pygame.quit()
 
-    # if current_player == player2 and not ai_state["running"]:
-        # ai_state["running"] = True
-        # ai_thread = Thread(
-            # target=ai_manager.execute_ai_turn,
-            # kwargs={"on_complete": lambda: ai_state.update({"running": False}),
-                    # "callback": lambda: render_engine.align_cards(field_matrix)}
-        # )
-        # ai_thread.start()
 
-    screen.blit(background, background.get_rect())
+class StandaloneApplication(gunicorn.app.base.BaseApplication):
+    def __init__(self, app, options=None):
+        self.options = options or {}
+        self.application = app
+        super().__init__()
 
-    field_matrix.areas["preview_card_table"].draw(screen)
-    field_matrix.draw()
+    def load_config(self):
+        for key, value in self.options.items():
+            self.cfg.set(key.lower(), value)
 
-    input_manager.draw(screen)
+    def load(self):
+        return self.application
 
-    render_engine.update(game_engine.game_state,
-                         field_matrix,
-                         game_engine.event_logger)
-    render_engine.animation_mgr.update(dt)
-    render_engine.draw()
 
-    EffectManager.update()
-    EffectManager.draw(screen)
+class AIGame(GameApp):
+    def __init__(self):
+        super().__init__()
 
-    pygame.display.flip()
+        self.ai = AIOpponent(
+            env=self.env,
+            config=self.config,
+            checkpoint_path=self.config.CHECKPOINT_PATH,
+            agent_id=1,
+            device=self.config.DEVICE
+        )
+        self.ai_manager = HumanVsAIManager(
+            game_engine=self.game_engine,
+            game_env=self.env,
+            ai_opponent=self.ai,
+            human_player_idx=0
+        )
 
-    # Delta time for rate limit
-    dt = clock.tick(60) / 1000
+        self.ai_state = {"running": False}
+        self.ai_thread = None
 
-    if game_engine.game_state.is_game_over():
-        pygame.time.wait(1000)  # pause to show message
-        running = False
+    def update(self):
+        current_player = self.game_engine.turn_manager.get_current_player()
 
-pygame.quit()
+        if current_player == self.player2 and not self.ai_state["running"]:
+            self.ai_state["running"] = True
+            self.ai_thread = Thread(
+                target=self.ai_manager.execute_ai_turn,
+                kwargs={
+                    "on_complete": lambda: self.ai_state.update({"running": False}),
+                    "callback": lambda: self.render_engine.align_cards(self.field_matrix)
+                }
+            )
+            self.ai_thread.start()
+
+        self.render_engine.update(
+            self.game_engine.game_state,
+            self.field_matrix,
+            self.game_engine.event_logger
+        )
+        self.render_engine.animation_mgr.update(self.dt)
+        EffectManager.update()
+
+        if self.game_engine.game_state.is_game_over():
+            pygame.time.wait(1000)
+            self.running = False
+
+
+class SocketClientGame(GameApp):
+    def __init__(self, host="localhost", port=5000):
+        super().__init__()
+        self.sio = socketio.Client()
+        self.game_engine.socket_io = self.sio
+        self.pending_data = None
+
+        @self.sio.on("synchronize")
+        def on_synchronize(data):
+            # Store data to be applied when animations are clear
+            print("wtfffff")
+            self.pending_data = data
+
+        try:
+            self.sio.connect(f"http://{host}:{port}")
+        except Exception as e:
+            print(f"Connection failed: {e}")
+
+    def update(self):
+        if self.pending_data and not self.render_engine.animation_mgr.is_running():
+            self.game_engine.deserialize(self.pending_data)
+            self.render_engine.align_cards(self.field_matrix)
+            self.pending_data = None
+
+        self.render_engine.update(
+            self.game_engine.game_state,
+            self.field_matrix,
+            self.game_engine.event_logger
+        )
+        self.render_engine.animation_mgr.update(self.dt)
+        EffectManager.update()
+
+    def run(self):
+        try:
+            super().run()
+        finally:
+            self.sio.disconnect()
+
+
+class SocketServerGame(GameApp):
+    def __init__(self, host='localhost', port=5000):
+        super().__init__()
+        self.pending_data = None
+        self.game_started = False
+
+        self._sub_queue = Queue()
+        self._out_queue = Queue()
+
+        self.server_process = Process(
+            target=self._run_server, args=(host, port))
+        self.server_process.start()
+
+    def _handle_sub_queue(self):
+        from time import sleep
+        while not self._sub_queue.empty():
+            key, value = list(self._sub_queue.get().items())[0]
+            if key == "connected":
+                self.game_engine.start_game()
+                self.game_started = True
+                self.game_engine.synchronize = self.emit_synchronize
+                sleep(3)
+                self.game_engine.synchronize()
+
+            elif key == "disconnected":
+                self.running = False
+            elif key == "synchronize":
+                self.pending_data = value
+            else:
+                raise
+
+    def _run_server(self, host, port):
+        sio = socketio.Server(cors_allowed_origins='*', async_mode='threading')
+        app = socketio.WSGIApp(sio)
+
+        def emit_bridge():
+            """Listens to the queue and emits to actual connected clients."""
+            while True:
+                try:
+                    # This blocks until the main process sends data
+                    event, data = self._out_queue.get()
+                    if event:
+                        sio.emit(event, data)
+                except Exception as e:
+                    print(f"Bridge Error: {e}")
+
+        bridge_thread = Thread(target=emit_bridge, daemon=True)
+        bridge_thread.start()
+
+        @sio.on("synchronize")
+        def on_synchronize(sid, data):
+            # self.pending_data = data
+            self._sub_queue.put({"synchronize": data})
+
+        @sio.event
+        def connect(sid, environ, auth):
+            print(f"SID {sid} jointed the game")
+            self._sub_queue.put({"connected": {}})
+
+        @sio.event
+        def disconnect(sid, environ):
+            self._sub_queue.put({"disconnected": {}})
+
+        options = {
+            'bind': f'{host}:{port}',
+            'workers': 1,
+            'threads': 4,
+            'worker_class': 'sync',
+        }
+        StandaloneApplication(app, options).run()
+
+    def emit_synchronize(self):
+        print("Synchronization signal sent")
+        game_data = self.game_engine.serialize()
+        self._out_queue.put(("synchronize", game_data))
+
+    def run(self):
+        super().run(callback=self._handle_sub_queue)
+
+    def update(self):
+        if self.pending_data and not self.render_engine.animation_mgr.is_running():
+            self.game_engine.deserialize(self.pending_data)
+            self.render_engine.align_cards(self.field_matrix)
+            self.pending_data = None
+
+        self.render_engine.update(
+            self.game_engine.game_state,
+            self.field_matrix,
+            self.game_engine.event_logger
+        )
+        self.render_engine.animation_mgr.update(self.dt)
+        EffectManager.update()
+
+
+if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument("--client", action="store_true")
+    parser.add_argument("--server", action="store_true")
+    parser.add_argument("--ai", action="store_true")
+    args = parser.parse_args()
+
+    app = None
+    if args.client:
+        app = SocketClientGame()
+
+    if args.server:
+        app = SocketServerGame()
+
+    if args.ai:
+        app = AIGame()
+
+    app.run()
