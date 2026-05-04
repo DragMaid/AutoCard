@@ -1,6 +1,5 @@
 import pygame
 import socketio
-import gunicorn.app.base
 from abc import abstractmethod
 from threading import Thread
 from multiprocessing import Process, Queue
@@ -15,19 +14,19 @@ from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
 from abc import ABC
+from gui.matchmaking import MatchmakingScreen, ScreenState
 
 
-# NOTE: pygame code is not thread safe
 class GameApp(ABC):
-    def __init__(self):
-        pygame.init()
+    def __init__(self, screen):
         self.config = Config()
         self.screen_size = (1280, 720)
-        self.screen = pygame.display.set_mode(self.screen_size)
+        self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
         self.game_started = True
         self.dt = 0
+        self.should_exit_to_menu = False
 
         self.player1 = Player(0, 'p1')
         self.player2 = Player(1, 'p2', is_opponent=True)
@@ -35,8 +34,6 @@ class GameApp(ABC):
         self.game_engine = GameEngine(
             [self.player1, self.player2], verbose=True, log_to_file=False)
 
-        # TODO: remove this debug call
-        self.game_engine.draw_specific_card(self.player1.id, "Maniac War", "spell")
         self.env = GameEnv(engine=self.game_engine, render=False)
 
         self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
@@ -54,6 +51,11 @@ class GameApp(ABC):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+                return False
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.should_exit_to_menu = True
+                return False
 
             self.input_manager.handle_event(event)
 
@@ -61,6 +63,7 @@ class GameApp(ABC):
                 event.key == pygame.K_SPACE and
                     not current_player.is_opponent):
                 self.game_engine.end_turn()
+        return True
 
     @abstractmethod
     def update(self):
@@ -75,38 +78,19 @@ class GameApp(ABC):
         EffectManager.draw(self.screen)
         pygame.display.flip()
 
-    def run(self, callback=None):
-        while self.running:
-            if callback:
-                callback()
-            if self.game_started:
-                self.handle_events()
-                self.update()
-                self.draw()
-                self.dt = self.clock.tick(60) / 1000
-        pygame.quit()
-
-
-class StandaloneApplication(gunicorn.app.base.BaseApplication):
-    def __init__(self, app, options=None, on_worker_init=None):
-        self.options = options or {}
-        self.application = app
-        self.on_worker_init = on_worker_init
-        super().__init__()
-
-    def load_config(self):
-        for key, value in self.options.items():
-            self.cfg.set(key.lower(), value)
-
-    def load(self):
-        if self.on_worker_init:
-            self.on_worker_init()
-        return self.application
+    def step(self, dt):
+        self.dt = dt
+        if not self.handle_events():
+            return False
+        if self.game_started:
+            self.update()
+            self.draw()
+        return self.running
 
 
 class AIGame(GameApp):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, screen):
+        super().__init__(screen)
 
         self.ai = AIOpponent(
             env=self.env,
@@ -124,6 +108,9 @@ class AIGame(GameApp):
 
         self.ai_state = {"running": False}
         self.ai_thread = None
+
+        self.game_started = True
+        self.game_engine.start_game()
 
     def update(self):
         current_player = self.game_engine.turn_manager.get_current_player()
@@ -153,36 +140,62 @@ class AIGame(GameApp):
 
 
 class SocketClientGame(GameApp):
-    def __init__(self, host="localhost", port=5000):
-        super().__init__()
-        self.sio = socketio.Client()
+    def __init__(self, screen, host="localhost", port=5000, password=""):
+        super().__init__(screen)
+        print(f"Connecting to http://{host}:{port}...")
+        self.sio = socketio.Client(logger=True, engineio_logger=True)
         self.game_engine.socket_io = self.sio
         self.pending_data = None
+        self.connected = False
+        self.connection_error = None
+        self.game_started = False
 
         @self.sio.on("synchronize")
         def on_synchronize(data):
-            print("Recieved new sync state")
-            # Store data to be applied when animations are clear
+            print("Received initial synchronization data")
             self.pending_data = data
+            self.game_started = True
 
         @self.sio.event
-        def disconnect(sid):
+        def disconnect():
+            print("Disconnected from server")
             self.running = False
 
+        @self.sio.event
+        def connect():
+            print("Socket.IO connection established")
+            self.connected = True
+
+        @self.sio.on("connect_error")
+        def on_connect_error(data):
+            print(f"Socket.IO connection error: {data}")
+            self.connection_error = str(data)
+
+        self.connect_thread = Thread(
+            target=self._connect, args=(host, port, password), daemon=True)
+        self.connect_thread.start()
+
+    def _connect(self, host, port, password):
         try:
-            self.sio.connect(f"http://{host}:{port}")
+            # Added a slight delay to ensure server is ready if we just started it locally
+            import time
+            time.sleep(0.5)
+            url = f"http://{host}:{port}"
+            # Add password to query string if provided
+            if password:
+                import urllib.parse
+                url += f"?password={urllib.parse.quote(password)}"
+            print(f"Attempting to connect to {url}")
+            self.sio.connect(url, wait_timeout=10)
         except Exception as e:
-            print(f"Connection failed: {e}")
+            print(f"Connection thread exception: {e}")
+            self.connection_error = str(e)
 
     def update(self):
-        # if self.pending_data and not self.render_engine.animation_mgr.is_running():
         if self.pending_data:
             self.game_engine.deserialize(self.pending_data)
-            print("Pending data synchronized")
-
             self.field_matrix.set_game_state(
                 self.game_engine.game_state, force=True)
-
             self.render_engine.align_cards(self.field_matrix)
             self.pending_data = None
 
@@ -194,106 +207,107 @@ class SocketClientGame(GameApp):
         self.render_engine.animation_mgr.update(self.dt)
         EffectManager.update()
 
-    def run(self):
+    def cleanup(self):
         try:
-            super().run()
-        finally:
             self.sio.disconnect()
+        except:
+            pass
 
 
 class SocketServerGame(GameApp):
-    def __init__(self, host='localhost', port=5000):
-        super().__init__()
+    def __init__(self, screen, host='localhost', port=5000, room_name="AutoCard Room", password=""):
+        super().__init__(screen)
         self.pending_data = None
         self.game_started = False
+        self.connected_clients = 0
+        self.password = password
 
         self._sub_queue = Queue()
         self._out_queue = Queue()
 
+        from core.network.discovery import DiscoveryServer
+        self.discovery_server = DiscoveryServer(
+            port, room_name=room_name, password_protected=bool(password))
+        self.discovery_server.start()
+
         self.server_process = Process(
-            target=self._run_server, args=(host, port))
+            target=self._run_server, args=(host, port, password))
         self.server_process.start()
 
     def _handle_sub_queue(self):
         while not self._sub_queue.empty():
-            key, value = list(self._sub_queue.get().items())[0]
+            msg = self._sub_queue.get()
+            key, value = list(msg.items())[0]
             if key == "connected":
+                self.connected_clients += 1
                 self.game_engine.start_game()
                 self.game_started = True
                 self.game_engine.synchronize = self.emit_synchronize
                 self.game_engine.synchronize()
             elif key == "disconnected":
-                self.running = False
-                exit(0)
+                self.connected_clients -= 1
             elif key == "synchronize":
-                print("Sync request processed")
                 self.pending_data = value
-            else:
-                raise
 
-    def _run_server(self, host, port):
+    def _run_server(self, host, port, password):
+        from werkzeug.serving import run_simple
+
         sio = socketio.Server(cors_allowed_origins='*', async_mode='threading')
         app = socketio.WSGIApp(sio)
 
-        def start_bridge():
-            bridge_thread = Thread(target=emit_bridge, daemon=True)
-            bridge_thread.start()
-
         def emit_bridge():
-            """Listens to the queue and emits to actual connected clients."""
-            print("Bridge thread started in worker process")
             while True:
                 try:
-                    # This blocks until the main process sends data
                     item = self._out_queue.get()
-                    print(f"Bridge received item from queue: {
-                          item[0] if isinstance(item, tuple) else item}")
+                    if item is None:
+                        break
                     event, data = item
-                    if event:
-                        print(f"Bridge emitting event: {event}")
-                        # Check connected clients
-                        clients = list(
-                            sio.manager.rooms['/'].keys()) if '/' in sio.manager.rooms else []
-                        print(f"Connected clients in '/': {clients}")
-                        sio.emit(event, data)
-                        print(f"Bridge emit call finished for {event}")
-                except Exception as e:
-                    print(f"Bridge Error: {e}")
-                    print(f"Sample row: {data}")
+                    sio.emit(event, data)
+                except Exception:
+                    pass
+
+        bridge_thread = Thread(target=emit_bridge, daemon=True)
+        bridge_thread.start()
 
         @sio.on("synchronize")
         def on_synchronize(sid, data):
-            print("Sync request recieved")
             self._sub_queue.put({"synchronize": data})
 
         @sio.event
-        def connect(sid, environ, auth):
-            print(f"SID {sid} jointed the game")
+        def connect(sid, environ):
+            if password:
+                client_pass = None
+                # Extract auth data from query parameters or headers
+                if 'HTTP_AUTHORIZATION' in environ:
+                    client_pass = environ.get(
+                        'HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+                elif 'QUERY_STRING' in environ:
+                    import urllib.parse
+                    query = urllib.parse.parse_qs(environ['QUERY_STRING'])
+                    client_pass = query.get('password', [None])[0]
+
+                if client_pass != password:
+                    print(f"Invalid password from {sid}")
+                    return False  # Reject connection
+
+            print(f"SID {sid} connected")
             self._sub_queue.put({"connected": {}})
+            return True
 
         @sio.event
-        def disconnect(sid, environ):
+        def disconnect(sid):
             self._sub_queue.put({"disconnected": {}})
 
-        options = {
-            'bind': f'{host}:{port}',
-            'workers': 1,
-            'threads': 4,
-            'worker_class': 'sync',
-        }
-        StandaloneApplication(app, options, on_worker_init=start_bridge).run()
+        print(f"Server listening on {host}:{port} (werkzeug threading)")
+        run_simple(host, port, app, threaded=True, use_reloader=False)
 
     def emit_synchronize(self):
-        print("Synchronization signal sent")
         game_data = self.game_engine.serialize()
         self._out_queue.put(("synchronize", game_data))
 
-    def run(self):
-        super().run(callback=self._handle_sub_queue)
-
     def update(self):
+        self._handle_sub_queue()
         if self.pending_data:
-            print("Sync successful")
             self.game_engine.deserialize(self.pending_data)
             self.field_matrix.set_game_state(
                 self.game_engine.game_state, force=True)
@@ -307,6 +321,119 @@ class SocketServerGame(GameApp):
         )
         self.render_engine.animation_mgr.update(self.dt)
         EffectManager.update()
+
+    def cleanup(self):
+        print("Stopping SocketServerGame...")
+        try:
+            if self.discovery_server:
+                self.discovery_server.stop()
+            if self.server_process:
+                self.server_process.terminate()
+                self.server_process.join(timeout=2)
+                if self.server_process.is_alive():
+                    print("Force killing server process...")
+                    self.server_process.kill()
+            self._out_queue.put(None)
+        except Exception as e:
+            print(f"Error during SocketServerGame cleanup: {e}")
+
+
+class MainApplication:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1280, 720))
+        self.clock = pygame.time.Clock()
+        self.matchmaker = MatchmakingScreen(self.screen)
+        self.game_app = None
+        self.running = True
+
+    def run(self):
+        while self.running:
+            dt = self.clock.tick(60) / 1000.0
+
+            # Check for user cancellation in matchmaking UI
+            if self.matchmaker.state == ScreenState.MENU and self.game_app:
+                print("Matchmaking cancelled or returned to menu, cleaning up game...")
+                self._cleanup_game()
+                self.matchmaker.result = None
+
+            # If we have an active game and it's actually started, let it take over
+            if self.game_app and self.game_app.game_started and self.matchmaker.state == ScreenState.START_GAME:
+                if not self.game_app.step(dt) or self.game_app.should_exit_to_menu:
+                    self._cleanup_game()
+            else:
+                # In matchmaking (includes MENU, HOST, JOIN, and WAITING states)
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                    self.matchmaker.handle_event(event)
+
+                self.matchmaker.update(dt)
+                self.matchmaker.draw(self.screen)
+
+                if self.matchmaker.state == ScreenState.WAITING:
+                    if self.game_app is None:
+                        self._create_game_app(self.matchmaker.result)
+
+                    if self.game_app:
+                        if isinstance(self.game_app, SocketServerGame):
+                            self.game_app._handle_sub_queue()
+                            if self.game_app.game_started:
+                                self.matchmaker.set_state(
+                                    ScreenState.START_GAME)
+                        elif isinstance(self.game_app, SocketClientGame):
+                            if self.game_app.connection_error:
+                                self.matchmaker._show_error(
+                                    f"Failed: {self.game_app.connection_error}")
+                                self._cleanup_game()
+                                self.matchmaker.set_state(ScreenState.JOIN)
+                            elif self.game_app.connected and self.game_app.game_started:
+                                self.matchmaker.set_state(
+                                    ScreenState.START_GAME)
+
+                elif self.matchmaker.state == ScreenState.START_GAME:
+                    # Double check we have a game app
+                    if not self.game_app:
+                        self._create_game_app(self.matchmaker.result)
+
+                elif self.matchmaker.state == ScreenState.EXIT:
+                    self.running = False
+
+        self._cleanup_game()
+        pygame.quit()
+
+    def _cleanup_game(self):
+        if self.game_app:
+            print("Cleaning up game resources...")
+            try:
+                if hasattr(self.game_app, 'cleanup'):
+                    self.game_app.cleanup()
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+            finally:
+                self.game_app = None
+
+    def _create_game_app(self, result):
+        if not result:
+            return
+        mode = result[0]
+        try:
+            if mode == "SERVER":
+                self.game_app = SocketServerGame(
+                    self.screen, port=result[1], password=result[2], room_name=result[3])
+            elif mode == "CLIENT":
+                self.game_app = SocketClientGame(
+                    self.screen, host=result[1], port=result[2], password=result[3])
+            elif mode == "AI":
+                self.game_app = AIGame(self.screen)
+        except Exception as e:
+            print(f"Failed to create game app: {e}")
+            self.matchmaker._show_error(str(e))
+            self.matchmaker.set_state(ScreenState.MENU)
+
+    def _start_game(self, result):
+        if not self.game_app:
+            self._create_game_app(result)
 
 
 if __name__ == "__main__":
@@ -315,16 +442,26 @@ if __name__ == "__main__":
     parser.add_argument("--client", action="store_true")
     parser.add_argument("--server", action="store_true")
     parser.add_argument("--ai", action="store_true")
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=5000)
     args = parser.parse_args()
 
-    app = None
-    if args.client:
-        app = SocketClientGame()
+    if not (args.client or args.server or args.ai):
+        app = MainApplication()
+        app.run()
+    else:
+        pygame.init()
+        screen = pygame.display.set_mode((1280, 720))
+        if args.client:
+            app = SocketClientGame(screen, host=args.host, port=args.port)
+        elif args.server:
+            app = SocketServerGame(screen, host=args.host, port=args.port)
+        elif args.ai:
+            app = AIGame(screen)
 
-    if args.server:
-        app = SocketServerGame()
-
-    if args.ai:
-        app = AIGame()
-
-    app.run()
+        running = True
+        clock = pygame.time.Clock()
+        while running:
+            dt = clock.tick(60) / 1000.0
+            running = app.step(dt)
+        pygame.quit()
