@@ -35,7 +35,6 @@ class GameApp(ABC):
         self.game_engine = GameEngine(
             [self.player1, self.player2], verbose=True, log_to_file=False)
         self.env = GameEnv(engine=self.game_engine, render=False)
-        # self.game_engine.start_game()
 
         self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
         self.render_engine = RenderEngine(
@@ -161,6 +160,10 @@ class SocketClientGame(GameApp):
         def on_synchronize(data):
             # Store data to be applied when animations are clear
             self.pending_data = data
+
+        @self.sio.event
+        def disconnect(sid):
+            self.running = False
 
         try:
             self.sio.connect(f"http://{host}:{port}")

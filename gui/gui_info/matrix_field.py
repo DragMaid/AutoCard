@@ -256,9 +256,16 @@ class Matrix:
         """Create all game areas (decks, graveyards, etc.)"""
         area_dims = self._calculate_area_dimensions(margins)
         padding = self.config.AREA_PADDING
-        
+
         p1 = self.game_state.players[0]
         p2 = self.game_state.players[1]
+
+        if p1.is_opponent:
+            opponent = p1
+            ally = p2
+        else:
+            opponent = p2
+            ally = p1
 
         self.areas = {
             'opponent_deck': DeckArea(
@@ -267,14 +274,14 @@ class Matrix:
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'opponent_lp_area': TextArea(
-                p2,
+                opponent,
                 padding, padding,
                 area_dims['deck_width']/2, area_dims['top_height'],
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'opponent_hand_area': HandUI(
-                p2.id,
-                self.game_state.player_info[p2.id]["held_cards"],
+                opponent.id,
+                self.game_state.player_info[opponent.id]["held_cards"],
                 self.grid['origin_x'], padding,
                 self.grid['width'], margins['top'] - (2 * padding),
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
@@ -292,8 +299,8 @@ class Matrix:
                 self.config.PLAYER_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'my_hand_area': HandUI(
-                p1.id,
-                self.game_state.player_info[p1.id]["held_cards"],
+                ally.id,
+                self.game_state.player_info[ally.id]["held_cards"],
                 self.grid['origin_x'],
                 screen_height - margins['bottom'] + padding,
                 self.grid['width'], area_dims['bottom_height'],

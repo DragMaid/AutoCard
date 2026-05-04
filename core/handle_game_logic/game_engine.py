@@ -75,6 +75,7 @@ class GameEngine:
         self.game_state.deserialize(content["game_state"])
         self.action_counter = content["action_counter"]
         self.start_hand_count = content["start_hand_count"]
+        self.players = self.game_state.players
 
     def reset(self):
         self.effect_tracker.clear_all_effects(self.game_state)

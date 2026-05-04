@@ -97,6 +97,7 @@ class CardRegistry:
                 "duration": prototype.get("duration", None)
             })
 
+        print(kwargs)
         return CardClass(**kwargs)
 
     @classmethod

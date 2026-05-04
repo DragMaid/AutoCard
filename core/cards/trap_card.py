@@ -11,6 +11,7 @@ class TrapCard(Card):
                  value: int | None,
                  duration: int | None,
                  image_path: str | None = None,
+                 is_trigger: bool = False,
                  **kwargs: Any
                  ):
         params = {
@@ -23,11 +24,11 @@ class TrapCard(Card):
             "is_face_down": False,
         }
         params.update(kwargs)
-        super().__init__(**kwargs)
+        super().__init__(**params)
         self.value = value
         self.duration = duration
         self.image_path = str(image_path)
-        self.is_trigger = False
+        self.is_trigger = is_trigger
 
     def __str__(self):
         return f"Trap: {self.name} - {self.description} (Ability: {self.ability})"
