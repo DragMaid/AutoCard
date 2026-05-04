@@ -277,10 +277,9 @@ class GameEngine:
                ):
         can_attack = self.rule_engine.can_attack(
             attacker_id, defender_id, card_id, target_id, target_is_player)
+        print(can_attack)
 
         card = self.game_state.get_card_by_id(card_id)
-        if not card:
-            return False
 
         if not can_attack:
             reasons = []
@@ -663,6 +662,7 @@ class GameEngine:
         defender_cards = self.game_state.get_player_cards(defender_id)
         traps = [card for card in defender_cards
                  if card.ctype == "trap" and card.is_face_down]
+        print("Defender traps:", traps)
 
         for trap in traps:
             if self.resolve_trap(trap.id, attacker_id):
@@ -719,6 +719,7 @@ class GameEngine:
         print(f"Next Player: {next_player.name} ({next_player.id})")
         print(f"{'='*60}\n")
 
+        # NOTE: draw_card already sync the state once
         self.draw_card(next_player.id)
-        self.synchronize()
+        # self.synchronize()
         self._log_game_state(f"Start of Turn {self.turn_manager.turn_count}")

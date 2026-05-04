@@ -293,7 +293,10 @@ class SocketServerGame(GameApp):
 
     def update(self):
         if self.pending_data:
+            print("Sync successful")
             self.game_engine.deserialize(self.pending_data)
+            self.field_matrix.set_game_state(
+                self.game_engine.game_state, force=True)
             self.render_engine.align_cards(self.field_matrix)
             self.pending_data = None
 
