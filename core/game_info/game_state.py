@@ -13,8 +13,8 @@ class GameState:
     def __init__(self, players: List[Player], rows: int = 4, cols: int = 5):
         self.players: List[Player] = players
         self.players_lookup: dict[str, Player] = {p.id: p for p in players}
-        self.game_over: bool = False
         self.max_cards: int = 10
+        self.game_over: bool = False
         self.entity_lookup: dict = {}
 
         self.logger = logging.getLogger("GameEngine")
@@ -25,9 +25,6 @@ class GameState:
         self.logger.info(f"GameState initialized: {rows}x{
                          cols} field, {len(players)} players")
 
-    # -------------------------
-    # Game state utilities
-    # -------------------------
     def reset(self):
         # Initialize player-related info
         self.player_info = {
@@ -277,3 +274,109 @@ class GameState:
                         f"  - Type: {mtype}, Lv{level}: {len(cards)} cards ({card_names})")
 
         return groups
+
+    def serialize(self):
+        content = {}
+
+        players = []
+        for p in self.players:
+            p = vars(p).copy()
+            del p["original_life_points"]
+            del p["max_life_points"]
+            players.append(p)
+        content["players"] = players
+        content["player_info"] = self.player_info
+
+        content["player_info"] = {
+            k: {
+                "has_summoned_trap": v["has_summoned_trap"],
+                "has_summoned_monster": v["has_summoned_monster"],
+                "has_toggled": v["has_toggled"],
+                "held_cards": vars(v["held_cards"]),
+                "graveyard_cards": vars(v["graveyard_cards"]),
+                "deck_cards": vars(v["deck_cards"]),
+                "active_traps": v["active_traps"]
+            }
+            for k, v in self.player_info.items()
+        }
+        content["game_over"] = self.game_over
+        content["entity_lookup"] = {k: vars(v)
+                                    for k, v in self.entity_lookup.items()}
+        content["field_matrix"] = self.field_matrix
+        content["field_matrix_ownership"] = self.field_matrix_ownership
+        content["player_cards"] = self._player_cards
+
+        content["max_cards"] = self.max_cards
+        content["rows"] = self.rows
+        content["cols"] = self.cols
+
+        return content
+
+    def deserialize(self, content):
+        from core.player import Player
+
+        players = []
+        for p in content["players"]:
+            p["is_opponent"] = not p["is_opponent"]
+            players.append(Player(**p))
+        self.players = players
+        self.players_lookup = {p.id: p for p in self.players}
+
+        self.player_info = {
+            k: {
+                "has_summoned_trap": v["has_summoned_trap"],
+                "has_summoned_monster": v["has_summoned_monster"],
+                "has_toggled": v["has_toggled"],
+                "held_cards": CollectionInfo(**v["held_cards"]),
+                "graveyard_cards": CollectionInfo(**v["graveyard_cards"]),
+                "deck_cards": CollectionInfo(**v["deck_cards"]),
+                "active_traps": v["active_traps"]
+            }
+            for k, v in content["player_info"].items()
+        }
+        self.game_over = content["game_over"]
+
+        self.max_cards = content["max_cards"]
+        self.rows = content["rows"]
+        self.cols = content["cols"]
+
+        # TODO: also need to worry about the type mismatch during deserialization process
+        self.entity_lookup = {k: self._deserialize_card(
+            v) for k, v in content["entity_lookup"].items()}
+
+        self.field_matrix = self._deserialize_2d_matrix(
+            content["field_matrix"])
+
+        # Update new flipped position
+        for i in range(len(self.field_matrix)):
+            for j in range(len(self.field_matrix[i])):
+                card_id = self.field_matrix[i][j]
+                if card_id:
+                    self.entity_lookup[card_id].pos_in_matrix = [i, j]
+
+        self.field_matrix_ownership = self._deserialize_2d_matrix(
+            content["field_matrix_ownership"])
+        self._player_cards = content["player_cards"]
+
+    @staticmethod
+    def _deserialize_card(card_dict):
+        from core.cards.monster_card import MonsterCard
+        from core.cards.spell_card import SpellCard
+        from core.cards.trap_card import TrapCard
+
+        card_map = {
+            "monster": MonsterCard,
+            "spell": SpellCard,
+            "trap": TrapCard
+        }
+
+        ctype = card_dict.pop("ctype")
+        card_dict["is_face_down"] = not card_dict["is_face_down"]
+        card_dict["pos_in_matrix"] = 0
+        card = card_map[ctype](**card_dict)
+        return card
+
+    @staticmethod
+    def _deserialize_2d_matrix(matrix):
+        # Flip matrix 180 degrees (both axes)
+        return [row[::-1] for row in matrix[::-1]]

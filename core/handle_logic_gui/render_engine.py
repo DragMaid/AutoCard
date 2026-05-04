@@ -1,6 +1,5 @@
 import pygame
 from collections import defaultdict
-from gui.cards_gui.card_gui import CardGUI
 from gui.cards_gui.monster_card import MonsterCardGUI
 from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
@@ -15,13 +14,16 @@ from gui.sprite_manager import SpriteManager
 
 
 class RenderEngine:
-    def __init__(self, field_matrix, screen, train_mode=False, player_idx=0):
+    def __init__(self, field_matrix, screen, game_state, train_mode=False, player_idx=0):
         self.screen = screen
         self.field_matrix = field_matrix
         self.sprite_manager = SpriteManager()
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
-        self.animation_mgr = AnimationManager(train_mode=train_mode)
+        self.game_state = game_state
+        self.animation_mgr = AnimationManager(
+            train_mode=train_mode, game_state=game_state)
+        self.sprite_lookup = {}
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -29,6 +31,7 @@ class RenderEngine:
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges.clear()
 
+    # TODO: since im passing in game state anyway so remove these
     def update(self, game_state, matrix, events):
         self.handle_events(game_state, matrix, events)
         self.register_cards(game_state, matrix)
@@ -96,7 +99,8 @@ class RenderEngine:
                     trap = self.sprite_manager.get_sprite(event.card_id)
                     if trap:
                         self.animation_mgr.create_trigger_animation(trap)
-                        matrix.areas["preview_card_table"].set_card(trap)
+                        matrix.areas["preview_card_table"].set_card(
+                            trap, game_state)
 
                 elif et is ToggleEvent:
                     card = self.sprite_manager.get_sprite(event.card_id)
@@ -141,6 +145,7 @@ class RenderEngine:
                 return True
         return False
 
+    # TODO: maybe doing an event based manager is more efficient ?
     def sync_sprites(self, desired_set, zone, create_sprite,
                      add_animation=None, align_fn=None):
         sprite_dict = self.sprite_manager.sprites[zone]
@@ -168,13 +173,21 @@ class RenderEngine:
                 if not self.is_pending_merge(cid):
                     add_animation(sprite_dict[cid])
 
-    def create_gui_card(self, card, matrix):
+    def create_gui_card(self, card, matrix, flip=False):
         """Create GUI card with proper orientation"""
+        is_opponent = self.game_state.players_lookup[card.owner_id].is_opponent
+
+        # TODO: the card instance is not getting updated after every sync
+        # TODO: the traps and spell is ok since the values do not change but not scalable
         if card.ctype == "monster":
-            card_gui = CardStatOverlay(MonsterCardGUI(card, size=(
-                matrix.grid["slot_width"] / 2,
-                matrix.grid["slot_height"]
-            )))
+            card_gui = CardStatOverlay(MonsterCardGUI(
+                monster_info=card,
+                size=(
+                    matrix.grid["slot_width"] / 2,
+                    matrix.grid["slot_height"]
+                )),
+                game_state=self.game_state,
+                position="top" if is_opponent else "bottom")
         elif card.ctype == "spell":
             card_gui = SpellCardGUI(card, size=(
                 matrix.grid["slot_width"] / 2,
@@ -186,10 +199,10 @@ class RenderEngine:
                 matrix.grid["slot_height"]
             ))
         else:
-            card_gui = CardGUI(card, size=(
-                matrix.grid["slot_width"] / 2,
-                matrix.grid["slot_height"]
-            ))
+            raise
+
+        if flip:
+            card_gui.flip()
 
         return card_gui
 
@@ -202,6 +215,7 @@ class RenderEngine:
                 if card:
                     current_cards.append(card)
 
+            # TODO: remove all these render adapter bs
             # player_idx = 0 if player.id == game_state.players[0].id else 1
             # is_local = (player_idx == self.render_adapter.player_idx)
 
@@ -210,7 +224,8 @@ class RenderEngine:
                 # self.field_matrix.areas[hand_area_key].hand_info = held_cards
 
         def make_hand_sprite(card):
-            sprite = self.create_gui_card(card, matrix)
+            is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            sprite = self.create_gui_card(card, matrix, flip=is_opponent)
             return sprite
 
         self.sync_sprites(
@@ -224,29 +239,34 @@ class RenderEngine:
 
     def register_matrix(self, game_state, matrix, animation=None):
         current_cards = {
-            game_state.get_card_by_id(card_id) 
-            for row in game_state.field_matrix 
+            game_state.get_card_by_id(card_id)
+            for row in game_state.field_matrix
             for card_id in row if card_id
         }
         current_cards = {c for c in current_cards if c is not None}
 
         def make_matrix_sprite(card):
-            sprite = self.create_gui_card(card, matrix)
+            is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            sprite = self.create_gui_card(card, matrix, flip=is_opponent)
 
+            # TODO: remove all these render adapter vs
             # Use render adapter to get visual position
             # visual_row, visual_col = self.render_adapter.transform_position(
-                # *card.pos_in_matrix
+            # *card.pos_in_matrix
             # )
 
-            # sprite.rect.center = matrix.get_slot_rect(
-                # visual_row, visual_col).center
+            # TODO: I should create a row, col system relative to the user not the entire field
+            row, col = card.pos_in_matrix
+            sprite.rect.center = matrix.get_slot_rect(row, col).center
+
+            # visual_row, visual_col).center
             sprite.placed_pos = sprite.rect.center
 
-            owner_idx = 0 if card.owner_id == game_state.players[0].id else 1
+            # owner_idx = 0 if card.owner_id == game_state.players[0].id else 1
 
             if isinstance(sprite, TrapCardGUI):
                 # sprite.is_face_down = self.render_adapter.is_card_face_down_for_viewer(
-                    # card, owner_idx
+                # card, owner_idx
                 # )
                 if sprite.is_face_down:
                     sprite.card_surface = pygame.transform.smoothscale(
@@ -260,8 +280,8 @@ class RenderEngine:
 
                 # Flip opponent cards
                 # if self.render_adapter.should_flip_card_image(owner_idx):
-                    # sprite.card_surface = pygame.transform.flip(
-                        # sprite.card_surface, False, True)
+                # sprite.card_surface = pygame.transform.flip(
+                # sprite.card_surface, False, True)
                 sprite.update()
 
             return sprite

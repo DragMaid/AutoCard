@@ -36,19 +36,17 @@ class CardGUI(Sprite, Draggable):
         self._render_card_with_text()
         self.annotated_image = self.card_surface
 
-        '''Opponenet check'''
         self.image_face_down = pygame.image.load("assets/card-back.png")
         self.is_face_down = False
         self.show_text = False
 
-        # TODO: move this logic elsewhere
-        # if self.logic_card.owner_id.is_opponent:
-            # self.is_face_down = True
-            # self.card_surface = self.image_face_down
-            # self.card_surface = pygame.transform.smoothscale(
-                # self.card_surface, self.display_size)
-            # self.card_surface = pygame.transform.flip(
-                # self.card_surface, False, True)
+    def flip(self):
+        self.is_face_down = True
+        self.card_surface = self.image_face_down
+        self.card_surface = pygame.transform.smoothscale(
+            self.card_surface, self.display_size)
+        self.card_surface = pygame.transform.flip(
+            self.card_surface, False, True)
 
         self.update()
 
@@ -193,10 +191,11 @@ class CardGUI(Sprite, Draggable):
         self.is_selected = False
         return success
 
-    def refresh_stats(self):
-        self._render_card_with_text()
-        if self.logic_card.owner.is_opponent:
-            # self.is_face_down = True
-            self.card_surface = pygame.transform.flip(
-                self.card_surface, False, True)
-        self.update()
+    # TODO: refer to this owner instance
+    # def refresh_stats(self):
+        # self._render_card_with_text()
+        # if self.logic_card.owner.is_opponent:
+            # # self.is_face_down = True
+            # self.card_surface = pygame.transform.flip(
+                # self.card_surface, False, True)
+        # self.update()

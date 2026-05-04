@@ -1,10 +1,7 @@
 from dataclasses import dataclass, asdict
-from typing import Union, Any, Type
+from typing import Union, Type
 
 
-# -------------------------------------------------
-# EVENT DEFINITIONS (ID-ONLY)
-# -------------------------------------------------
 @dataclass
 class AttackEvent:
     card_id: str
@@ -46,9 +43,6 @@ GameEvent = Union[
 ]
 
 
-# -------------------------------------------------
-# EVENT LOGGER
-# -------------------------------------------------
 class EventLogger:
     """Lightweight event logger storing only ID references."""
 
@@ -65,64 +59,16 @@ class EventLogger:
     def clear_events(self):
         self._events.clear()
 
-    # -------------------------------------------------
-    # FACTORY HELPERS
-    # -------------------------------------------------
-    @staticmethod
-    def _get_id(obj: Any) -> str | None:
-        """Extract ID from Card or Player object, else return None."""
-        if hasattr(obj, "id"):
-            return getattr(obj, "id")
-        return None
-
-    @classmethod
-    def create_attack(cls, card, target):
-        return AttackEvent(card_id=cls._get_id(card) or str(card),
-                           target_id=cls._get_id(target) or str(target))
-
-    @classmethod
-    def create_trap_trigger(cls, card, target):
-        return TrapTriggerEvent(card_id=cls._get_id(card) or str(card),
-                                target_id=cls._get_id(target) or str(target))
-
-    @classmethod
-    def create_toggle(cls, card, mode: str):
-        return ToggleEvent(card_id=cls._get_id(card) or str(card), mode=mode)
-
-    @classmethod
-    def create_spell_active(cls, spell, target=None, target_type=None):
-        return SpellActiveEvent(
-            spell_id=cls._get_id(spell) or str(spell),
-            target_id=cls._get_id(target) or (str(target) if target else None),
-            target_type=target_type
-        )
-
-    @classmethod
-    def create_merge(cls, card, target, result):
-        return MergeEvent(
-            card_id=cls._get_id(card) or str(card),
-            target_id=cls._get_id(target) or str(target),
-            result_card_id=cls._get_id(result) or str(result)
-        )
-
-    # -------------------------------------------------
-    # SERIALIZATION
-    # -------------------------------------------------
-    @staticmethod
-    def _serialize_events(event_logger: "EventLogger") -> dict:
+    def serialize(self):
         """Convert EventLogger contents into a serializable dict."""
         return {
             "events": [
                 {"type": e.__class__.__name__, "data": asdict(e)}
-                for e in event_logger._events
+                for e in self._events
             ]
         }
 
-    # -------------------------------------------------
-    # DESERIALIZATION
-    # -------------------------------------------------
-    @staticmethod
-    def _deserialize_events(serialized: dict) -> "EventLogger":
+    def deserialize(self, serialized):
         """Rebuild EventLogger from serialized dict (ID-only)."""
         event_map: dict[str, Type[GameEvent]] = {
             "AttackEvent": AttackEvent,
@@ -132,8 +78,7 @@ class EventLogger:
             "MergeEvent": MergeEvent,
         }
 
-        logger = EventLogger()
-
+        events = []
         for ev in serialized.get("events", []):
             ev_type = ev.get("type")
             ev_data = ev.get("data", {})
@@ -142,9 +87,9 @@ class EventLogger:
                 continue
             try:
                 event = cls(**ev_data)
-                logger.add_event(event)
+                events.append(event)
             except TypeError:
                 # Skip malformed entries
                 continue
 
-        return logger
+        self._events = events

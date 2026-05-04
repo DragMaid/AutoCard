@@ -1,8 +1,5 @@
 from core.handle_game_logic.turn_manager import TurnManager
 from core.game_info.game_state import GameState
-from core.player import Player
-from core.cards.card import Card
-from core.cards.monster_card import MonsterCard
 from typing import Tuple, List
 import logging
 
@@ -95,7 +92,8 @@ class RuleEngine:
             return False
 
         # Check max cards on field
-        player_card_count = len(self.game_state._player_cards.get(player_id, []))
+        player_card_count = len(
+            self.game_state._player_cards.get(player_id, []))
         if player_card_count >= 10:
             self.logger.debug(f"[RULE] {player_id} cannot summon {
                               card.name}: Field full ({player_card_count}/10)")
@@ -131,6 +129,7 @@ class RuleEngine:
         current_player = self.turn_manager.get_current_player()
         card = self.game_state.get_card_by_id(card_id)
 
+        # If no source card
         if not card:
             return False
 
@@ -167,8 +166,15 @@ class RuleEngine:
         # If attacking a monster
         if not target_is_player:
             target = self.game_state.get_card_by_id(target_id)
+
             if not target:
                 return False
+
+            if target.ctype != "monster":
+                self.logger.debug(
+                    f"[RULE] {card.name} cannot attack a trap card {target.name}")
+                return False
+
             if target.owner_id != defender_id:
                 self.logger.debug(f"[RULE] {attacker_id} cannot attack {
                                   target.name}: Target belongs to {target.owner_id}, not defender {defender_id}")

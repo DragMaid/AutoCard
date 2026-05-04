@@ -6,7 +6,7 @@ import math
 
 
 class AttackPlayerAnimation(Animation):
-    def __init__(self, card, game_area, duration=0.6, on_finish=None):
+    def __init__(self, card, game_area, game_state, duration=0.6, on_finish=None):
         super().__init__({card}, duration)
         self.card = card
         self.original_image = card.image.copy()
@@ -17,8 +17,9 @@ class AttackPlayerAnimation(Animation):
         self.on_finish = on_finish
 
         # Facing direction for rotation (toward deck center)
+        owner = game_state.players_lookup[card.logic_card.owner_id]
         direction = pygame.Vector2(
-            0, 1) if card.logic_card.owner.is_opponent else pygame.Vector2(0, -1)
+            0, 1) if owner.is_opponent else pygame.Vector2(0, -1)
         self.final_angle = self._signed_angle(
             self.end_pos - self.start_pos, direction)
 

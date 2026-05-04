@@ -5,6 +5,17 @@ class TurnManager:
         self.current_player_index = 0
         self.turn_count = 1
 
+    def serialize(self):
+        return {
+            "current_player_index": self.current_player_index,
+            "turn_count": self.turn_count
+        }
+
+    def deserialize(self, content):
+        self.current_player_index = content["current_player_index"]
+        self.turn_count = content["turn_count"]
+        print(self.turn_count)
+
     def get_current_player(self):
         return self.game_state.players[self.current_player_index]
 

@@ -15,15 +15,21 @@ from gui.audio_manager import AudioManager
 
 
 class AnimationManager:
-    def __init__(self, train_mode=False):
+    def __init__(self, game_state, train_mode=False):
         self.queues = defaultdict(AnimationQueue)
         self.animating = defaultdict(set)
         self.train_mode = train_mode
+        self.game_state = game_state
         EffectManager.set_train_mode(train_mode)
         AudioManager.set_train_mode(train_mode)
 
         if train_mode:
             Animation.audio = False
+
+    def is_running(self):
+        """Returns if any animation is pending or animating."""
+        return any(len(q) > 0 for q in self.queues.values()) or \
+            any(len(s) > 0 for s in self.animating.values())
 
     def _duration(self, value):
         """Return 0 duration if train_mode is True, else the given value."""
@@ -80,11 +86,11 @@ class AnimationManager:
 
     def create_attack_animation(self, card1, card2, duration=1):
         self.add_animation(AttackAnimation(
-            card1, card2, self._duration(duration)))
+            card1, card2, self.game_state, self._duration(duration)))
 
     def create_attack_player_animation(self, card, game_area, duration=0.6):
         self.add_animation(AttackPlayerAnimation(
-            card, game_area, duration=self._duration(duration)))
+            card, game_area, self.game_state, duration=self._duration(duration)))
 
     def create_trigger_animation(self, card, duration=1):
         self.add_animation(TrapTriggerAnimation(

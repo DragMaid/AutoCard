@@ -1,14 +1,14 @@
-from core.cards.monster_card import MonsterCard
+from core.game_info.game_state import GameState
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from typing import List
 
 
 class EffectType(Enum):
     """Different types of effects a spell can apply"""
-    BUFF = auto()
-    DEBUFF = auto()
-    INSTANT = auto()  # one-time effects like destroy, heal, etc.
+    BUFF = "BUFF"
+    DEBUFF = "DEBUFF"
+    INSTANT = "INSTANT"  # one-time effects like destroy, heal, etc.
 
 
 @dataclass
@@ -34,7 +34,7 @@ class EffectTracker:
                    stat: str,
                    value: int,
                    duration: int,
-                   game_state: 'GameState'):
+                   game_state: GameState):
         """Add a new timed effect and apply it immediately"""
         effect = Effect(
             effect_type=effect_type,
@@ -48,7 +48,8 @@ class EffectTracker:
         self._apply_effect(effect, game_state)
         self.active_effects.append(effect)
 
-    def apply_instant_effect(self, effect_type: EffectType,
+    def apply_instant_effect(self,
+                             effect_type: EffectType,
                              target_id: str,
                              stat: str = "",
                              value: int = 0,
@@ -108,6 +109,17 @@ class EffectTracker:
         self.active_effects.clear()
 
     def get_round_info(self):
-        return {
-            "active_effects_count": len(self.active_effects)
-        }
+        return {"active_effects_count": len(self.active_effects)}
+
+    def serialize(self):
+        effects = []
+        for e in self.active_effects:
+            effect = vars(e).copy()
+            effect["effect_type"] = effect["effect_type"].value
+            effects.append(effect)
+        return effects
+
+    def deserialize(self, content):
+        for c in content:
+            c["effect_type"] = EffectType(c["effect_type"])
+        self.active_effects = [Effect(**c) for c in content]
