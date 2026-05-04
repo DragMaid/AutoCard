@@ -2,10 +2,11 @@ from gui.cache import get_font
 
 
 class CardStatOverlay:
-    def __init__(self, card_gui, font_size=20, position="bottom"):
+    def __init__(self, card_gui, game_state, font_size=20, position="bottom"):
         self._card = card_gui
         self.font = get_font(font_size)
         self.position = position
+        self.game_state = game_state
 
     def __getattr__(self, name):
         """
@@ -22,6 +23,8 @@ class CardStatOverlay:
 
     def draw(self, surface):
         # First draw the card itself
+        card_id = self._card.logic_card.id
+        self._card.logic_card = self.game_state.get_card_by_id(card_id)
         self._card.draw(surface)
 
         # Then draw the ATK/DEF overlay

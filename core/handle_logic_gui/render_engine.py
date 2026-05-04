@@ -1,6 +1,5 @@
 import pygame
 from collections import defaultdict
-from gui.cards_gui.card_gui import CardGUI
 from gui.cards_gui.monster_card import MonsterCardGUI
 from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
@@ -24,6 +23,7 @@ class RenderEngine:
         self.game_state = game_state
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
+        self.sprite_lookup = {}
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -175,12 +175,19 @@ class RenderEngine:
 
     def create_gui_card(self, card, matrix, flip=False):
         """Create GUI card with proper orientation"""
-        is_opponent = self.game_state.players_lookup[card.owner_id]
+        is_opponent = self.game_state.players_lookup[card.owner_id].is_opponent
+
+        # TODO: the card instance is not getting updated after every sync
+        # TODO: the traps and spell is ok since the values do not change but not scalable
         if card.ctype == "monster":
-            card_gui = CardStatOverlay(MonsterCardGUI(card, size=(
-                matrix.grid["slot_width"] / 2,
-                matrix.grid["slot_height"]
-            )), position="top" if is_opponent else "bottom")
+            card_gui = CardStatOverlay(MonsterCardGUI(
+                monster_info=card,
+                size=(
+                    matrix.grid["slot_width"] / 2,
+                    matrix.grid["slot_height"]
+                )),
+                game_state=self.game_state,
+                position="top" if is_opponent else "bottom")
         elif card.ctype == "spell":
             card_gui = SpellCardGUI(card, size=(
                 matrix.grid["slot_width"] / 2,
@@ -192,10 +199,7 @@ class RenderEngine:
                 matrix.grid["slot_height"]
             ))
         else:
-            card_gui = CardGUI(card, size=(
-                matrix.grid["slot_width"] / 2,
-                matrix.grid["slot_height"]
-            ))
+            raise
 
         if flip:
             card_gui.flip()
