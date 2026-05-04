@@ -293,7 +293,7 @@ class Matrix:
                 self.config.PLAYER_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'my_lp_area': TextArea(
-                p1,
+                ally,
                 padding, screen_height - margins['bottom'] + padding,
                 area_dims['deck_width']/2, area_dims['bottom_height'],
                 self.config.PLAYER_COLOR, self.config.AREA_BORDER_WIDTH
