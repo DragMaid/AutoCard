@@ -27,6 +27,7 @@ class GameApp(ABC):
         self.game_started = True
         self.dt = 0
         self.should_exit_to_menu = False
+        self.exit_reason = None
 
         self.player1 = Player(0, 'p1')
         self.player2 = Player(1, 'p2', is_opponent=True)
@@ -159,6 +160,7 @@ class SocketClientGame(GameApp):
         @self.sio.event
         def disconnect():
             print("Disconnected from server")
+            self.exit_reason = "Disconnected from server"
             self.running = False
 
         @self.sio.event
@@ -180,6 +182,8 @@ class SocketClientGame(GameApp):
             # Added a slight delay to ensure server is ready if we just started it locally
             import time
             time.sleep(0.5)
+            # NOTE: whenn playing by yourself, you gotta do localhost
+            host = "localhost"
             url = f"http://{host}:{port}"
             # Add password to query string if provided
             if password:
@@ -246,6 +250,9 @@ class SocketServerGame(GameApp):
                 self.game_engine.synchronize()
             elif key == "disconnected":
                 self.connected_clients -= 1
+                if self.game_started:
+                    self.exit_reason = "Client disconnected"
+                    self.running = False
             elif key == "synchronize":
                 self.pending_data = value
 
@@ -360,7 +367,11 @@ class MainApplication:
             # If we have an active game and it's actually started, let it take over
             if self.game_app and self.game_app.game_started and self.matchmaker.state == ScreenState.START_GAME:
                 if not self.game_app.step(dt) or self.game_app.should_exit_to_menu:
+                    reason = getattr(self.game_app, 'exit_reason', None)
                     self._cleanup_game()
+                    self.matchmaker.set_state(ScreenState.MENU)
+                    if reason:
+                        self.matchmaker._show_error(reason)
             else:
                 # In matchmaking (includes MENU, HOST, JOIN, and WAITING states)
                 for event in pygame.event.get():
