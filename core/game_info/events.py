@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict
-from typing import Union, Any, Type
+from typing import Union, Type
 
 
 @dataclass
@@ -59,49 +59,6 @@ class EventLogger:
     def clear_events(self):
         self._events.clear()
 
-    @staticmethod
-    def _get_id(obj: Any) -> str | None:
-        """Extract ID from Card or Player object, else return None."""
-        if hasattr(obj, "id"):
-            return getattr(obj, "id")
-        return None
-
-    @classmethod
-    def create_attack(cls, card, target):
-        return AttackEvent(card_id=cls._get_id(card) or str(card),
-                           target_id=cls._get_id(target) or str(target))
-
-    @classmethod
-    def create_trap_trigger(cls, card, target):
-        return TrapTriggerEvent(card_id=cls._get_id(card) or str(card),
-                                target_id=cls._get_id(target) or str(target))
-
-    @classmethod
-    def create_toggle(cls, card, mode: str):
-        return ToggleEvent(card_id=cls._get_id(card) or str(card), mode=mode)
-
-    @classmethod
-    def create_spell_active(cls, spell, target=None, target_type=None):
-        return SpellActiveEvent(
-            spell_id=cls._get_id(spell) or str(spell),
-            target_id=cls._get_id(target) or (str(target) if target else None),
-            target_type=target_type
-        )
-
-    @classmethod
-    def create_merge(cls, card, target, result):
-        return MergeEvent(
-            card_id=cls._get_id(card) or str(card),
-            target_id=cls._get_id(target) or str(target),
-            result_card_id=cls._get_id(result) or str(result)
-        )
-
-    # TODO: the question is this is only for running the animation
-    # One very troublesome thing is that the logic is depleted first but then the UI
-    # is updated after instead of immediately removing the sprite
-    # Below are built-in functions for network process
-    # Then we just have to send an update for every action that happens afterwards
-    # The thing is to ask for it to finish running the animation before updating the event list
     def serialize(self):
         """Convert EventLogger contents into a serializable dict."""
         return {

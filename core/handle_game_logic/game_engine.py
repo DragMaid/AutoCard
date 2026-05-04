@@ -469,7 +469,10 @@ class GameEngine:
             }, True)
 
             self.event_logger.add_event(MergeEvent(
-                own_card_id, target_card_id, upgraded_monster.id))
+                card_id=own_card_id,
+                target_id=target_card_id,
+                result_card_id=upgraded_monster.id
+            ))
             self.synchronize()
             return True
 
@@ -552,7 +555,7 @@ class GameEngine:
 
         # Move spell to graveyard after use
         self.event_logger.add_event(SpellActiveEvent(
-            spell.id, target_id))
+            spell_id=spell.id, target_id=target_id))
         self.game_state.player_info[spell.owner_id]["held_cards"].remove(
             spell_id)
         self.game_state.player_info[spell.owner_id]["graveyard_cards"].add(
@@ -611,7 +614,7 @@ class GameEngine:
         trap = self.game_state.get_card_by_id(trap_id)
         attacker = self.game_state.get_card_by_id(attacker_id)
 
-        if not trap or trap.ctype != "trap" or not trap.is_face_down or not attacker:
+        if not trap or trap.ctype != "trap" or not attacker:
             return False
 
         print(f"  🪤 TRAP ACTIVATED: {trap.name} (Owner: {trap.owner_id})")
@@ -624,7 +627,7 @@ class GameEngine:
             self.effect_tracker.add_effect(
                 EffectType.DEBUFF, attacker_id, "atk", trap.value, trap.duration, self.game_state)
             trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
+            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
             self.move_card_to_graveyard(trap_id)
             effect_desc = f"{
                 attacker.name} ATK -{trap.value} for {trap.duration} turns"
@@ -633,7 +636,7 @@ class GameEngine:
             self.effect_tracker.add_effect(
                 EffectType.DEBUFF, attacker_id, "defend", trap.value, trap.duration, self.game_state)
             trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
+            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
             self.move_card_to_graveyard(trap_id)
             effect_desc = f"{
                 attacker.name} DEF -{trap.value} for {trap.duration} turns"
@@ -644,13 +647,13 @@ class GameEngine:
             effect_desc = "Attack negated"
             result = True
             trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
+            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
 
         elif trap.ability == "reflect_attack":
             self.move_card_to_graveyard(attacker_id)
             self.move_card_to_graveyard(trap_id)
             trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap, attacker))
+            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
             effect_desc = "Attack reflected, attacker destroyed"
             result = True
 
@@ -660,9 +663,7 @@ class GameEngine:
     def check_trap_triggers(self, attacker_id: str, defender_id: str):
         """Check if any traps should be triggered by an attack"""
         defender_cards = self.game_state.get_player_cards(defender_id)
-        traps = [card for card in defender_cards
-                 if card.ctype == "trap" and card.is_face_down]
-        print("Defender traps:", traps)
+        traps = [card for card in defender_cards if card.ctype == "trap"]
 
         for trap in traps:
             if self.resolve_trap(trap.id, attacker_id):
@@ -674,14 +675,12 @@ class GameEngine:
         if not card_summon or card_summon.ctype != "monster":
             return
 
-        card_summon_owner_id = card_summon.owner_id
         opponents_ids = [
-            pid for pid in self.game_state.player_info.keys() if pid != card_summon_owner_id]
+            pid for pid in self.game_state.player_info.keys() if pid != card_summon.owner_id]
 
         for opponent_id in opponents_ids:
             opponent_cards = self.game_state.get_player_cards(opponent_id)
-            traps = [card for card in opponent_cards if card.ctype ==
-                     "trap" and card.is_face_down]
+            traps = [card for card in opponent_cards if card.ctype == "trap"]
             for trap in traps:
                 if trap.ability == 'debuff_summon':
                     self.event_logger.add_event(

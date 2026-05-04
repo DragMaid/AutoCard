@@ -33,14 +33,6 @@ class TrapCard(Card):
     def __str__(self):
         return f"Trap: {self.name} - {self.description} (Ability: {self.ability})"
 
-    def can_trigger(self) -> bool:  # attacker, defender
-        """Check if this trap can be triggered by the given attack"""
-        if self.ability in ["debuff_enemy_atk", "debuff_enemy_def", "dodge_attack", "reflect_attack"]:
-            return True  # Triggered by any attack
-        elif self.ability == "debuff_summon":
-            return False  # Triggered by summon, not attack
-        return False
-
     def reveal(self):
         """Reveal the trap (flip face-up)"""
         self.is_face_down = False
