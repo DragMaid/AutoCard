@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Tuple, List, Any
 from core.factory.draw_system import DrawSystem
 from core.player import Player
@@ -9,10 +10,7 @@ from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager
 from core.game_info.effect_tracker import EffectTracker, EffectType
 from core.game_info.events import EventLogger, AttackEvent, TrapTriggerEvent, ToggleEvent, SpellActiveEvent, MergeEvent
-from core.utils import disable_print, setup_silent_logger
-
-import logging
-from datetime import datetime
+from core.utils import disable_print, setup_logger
 
 
 class GameEngine:
@@ -43,14 +41,14 @@ class GameEngine:
         self.socket_io = socket_io
 
         # --- Control verbosity ---
+        if not verbose:
+            disable_print()
+
+        log_path = None
         if log_to_file:
             timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
             log_path = f"logs/game_run_{timestamp}.log"
-            self.logger = setup_silent_logger(log_path)
-        elif not verbose:
-            disable_print()
-        else:
-            self.logger = logging.getLogger("GameEngine")
+        setup_logger(log_path=log_path, console=True)
 
         # Action counter for tracking
         self.action_counter = 0
@@ -66,7 +64,8 @@ class GameEngine:
             "event_logger": self.event_logger.serialize(),
             "game_state": self.game_state.serialize(),
             "action_counter": self.action_counter,
-            "start_hand_count": self.start_hand_count
+            "start_hand_count": self.start_hand_count,
+            "turn_manager": self.turn_manager.serialize()
         }
 
     def deserialize(self, content):
@@ -75,6 +74,7 @@ class GameEngine:
         self.game_state.deserialize(content["game_state"])
         self.action_counter = content["action_counter"]
         self.start_hand_count = content["start_hand_count"]
+        self.turn_manager.deserialize(content["turn_manager"])
         self.players = self.game_state.players
 
     def reset(self):
@@ -139,18 +139,18 @@ class GameEngine:
                 self.draw_card(player.id, check=False)
 
     # DEBUG FUNCTION
-    # def draw_specific_card(self, player_id: str, name: str, ctype: str):
-        # if ctype == "monster":
-            # card = self.monster_factory.load(player_id, name)
-        # elif ctype == "trap":
-            # card = self.trap_factory.load(player_id, name)
-        # elif ctype == "spell":
-            # card = self.spell_factory.load(player_id, name)
-        # else:
-            # return
-        # self.game_state.entity_lookup[card.id] = card
-        # self.game_state.player_info[player_id]["held_cards"].add(card.id)
-        # print(f"[DEBUG] {player_id} received specific card: {name}")
+    def draw_specific_card(self, player_id: str, name: str, ctype: str):
+        if ctype == "monster":
+            card = self.monster_factory.load(player_id, name)
+        elif ctype == "trap":
+            card = self.trap_factory.load(player_id, name)
+        elif ctype == "spell":
+            card = self.spell_factory.load(player_id, name)
+        else:
+            return
+        self.game_state.entity_lookup[card.id] = card
+        self.game_state.player_info[player_id]["held_cards"].add(card.id)
+        print(f"[DEBUG] {player_id} received specific card: {name}")
 
     def draw_card(self, player_id: str, check=True):
         """Player draws a card if allowed"""
@@ -720,4 +720,5 @@ class GameEngine:
         print(f"{'='*60}\n")
 
         self.draw_card(next_player.id)
+        self.synchronize()
         self._log_game_state(f"Start of Turn {self.turn_manager.turn_count}")

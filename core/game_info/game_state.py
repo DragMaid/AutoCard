@@ -315,7 +315,6 @@ class GameState:
     def deserialize(self, content):
         from core.player import Player
 
-        # TODO: write the reverse logic
         players = []
         for p in content["players"]:
             p["is_opponent"] = not p["is_opponent"]

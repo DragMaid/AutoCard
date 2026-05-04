@@ -34,6 +34,9 @@ class GameApp(ABC):
 
         self.game_engine = GameEngine(
             [self.player1, self.player2], verbose=True, log_to_file=False)
+
+        # TODO: remove this debug call
+        self.game_engine.draw_specific_card(self.player1.id, "Maniac War", "spell")
         self.env = GameEnv(engine=self.game_engine, render=False)
 
         self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
@@ -56,7 +59,7 @@ class GameApp(ABC):
 
             if (event.type == pygame.KEYDOWN and
                 event.key == pygame.K_SPACE and
-                    current_player == self.player1):
+                    not current_player.is_opponent):
                 self.game_engine.end_turn()
 
     @abstractmethod
@@ -158,6 +161,7 @@ class SocketClientGame(GameApp):
 
         @self.sio.on("synchronize")
         def on_synchronize(data):
+            print("Recieved new sync state")
             # Store data to be applied when animations are clear
             self.pending_data = data
 
@@ -171,8 +175,10 @@ class SocketClientGame(GameApp):
             print(f"Connection failed: {e}")
 
     def update(self):
-        if self.pending_data and not self.render_engine.animation_mgr.is_running():
+        # if self.pending_data and not self.render_engine.animation_mgr.is_running():
+        if self.pending_data:
             self.game_engine.deserialize(self.pending_data)
+            print("Pending data synchronized")
 
             self.field_matrix.set_game_state(
                 self.game_engine.game_state, force=True)
@@ -220,6 +226,7 @@ class SocketServerGame(GameApp):
                 self.running = False
                 exit(0)
             elif key == "synchronize":
+                print("Sync request processed")
                 self.pending_data = value
             else:
                 raise
@@ -252,9 +259,11 @@ class SocketServerGame(GameApp):
                         print(f"Bridge emit call finished for {event}")
                 except Exception as e:
                     print(f"Bridge Error: {e}")
+                    print(f"Sample row: {data}")
 
         @sio.on("synchronize")
         def on_synchronize(sid, data):
+            print("Sync request recieved")
             self._sub_queue.put({"synchronize": data})
 
         @sio.event
@@ -283,7 +292,7 @@ class SocketServerGame(GameApp):
         super().run(callback=self._handle_sub_queue)
 
     def update(self):
-        if self.pending_data and not self.render_engine.animation_mgr.is_running():
+        if self.pending_data:
             self.game_engine.deserialize(self.pending_data)
             self.render_engine.align_cards(self.field_matrix)
             self.pending_data = None

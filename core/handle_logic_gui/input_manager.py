@@ -62,13 +62,18 @@ class InputManager:
             success = False
             # Checking for cards in field matrix
             for row in self.game_engine.game_state.field_matrix:
-                for card_info in row:
-                    if not card_info:
+                for card_id in row:
+                    if not card_id:
                         continue
+
                     card = self.render_engine.sprite_manager.get_sprite(
-                        card_info.id)
+                        card_id)
+                    card_info = self.game_engine.game_state.get_card_by_id(
+                        card_id)
+
                     if not card.rect.collidepoint(pos):
                         continue
+
                     if card_info.owner_id != self.drag_arrow.targets[0].owner_id:
                         self.drag_arrow.end_pos = card.rect.center
                         self.drag_arrow.targets[1] = card_info
@@ -150,11 +155,11 @@ class InputManager:
     def _handle_right_click(self, pos):
         # Check all cards on the field
         for row in self.game_engine.game_state.field_matrix:
-            for card_info in row:
-                if not card_info:
+            for card_id in row:
+                if not card_id:
                     continue
                 card = self.render_engine.sprite_manager.get_sprite(
-                    card_info.id)
+                    card_id)
                 if card.rect.collidepoint(pos):
                     # Only call on_toggle when the sprite implements it.
                     # MonsterCardGUI implements on_toggle; generic CardGUI does not.

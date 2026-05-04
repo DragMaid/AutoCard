@@ -28,7 +28,8 @@ class AnimationManager:
 
     def is_running(self):
         """Returns if any animation is pending or animating."""
-        return self.queues and self.animating
+        return any(len(q) > 0 for q in self.queues.values()) or \
+            any(len(s) > 0 for s in self.animating.values())
 
     def _duration(self, value):
         """Return 0 duration if train_mode is True, else the given value."""

@@ -112,7 +112,12 @@ class EffectTracker:
         return {"active_effects_count": len(self.active_effects)}
 
     def serialize(self):
-        return [vars(e) for e in self.active_effects]
+        effects = []
+        for e in self.active_effects:
+            effect = vars(e).copy()
+            effect["effect_type"] = effect["effect_type"].value
+            effects.append(effect)
+        return effects
 
     def deserialize(self, content):
         for c in content:
