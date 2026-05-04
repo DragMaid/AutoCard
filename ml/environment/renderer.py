@@ -40,7 +40,7 @@ class Renderer:
         """Initialize or update field_matrix and render_engine for the current engine."""
         self.field_matrix = Matrix(self.screen, self.engine.game_state)
         self.render_engine = RenderEngine(
-            self.field_matrix, self.screen, train_mode=self.train_mode
+            self.field_matrix, self.screen, self.engine.game_state, train_mode=self.train_mode
         )
 
     def render(self, components=[]):

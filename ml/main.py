@@ -8,7 +8,6 @@ from typing import Tuple
 
 def new_players() -> Tuple[Player, Player]:
     p1 = Player(0, "p1")
-    # TODO: this is a shitty way to handle it tbh
     p2 = Player(1, "p2", is_opponent=True)
     return p1, p2
 
@@ -16,6 +15,6 @@ def new_players() -> Tuple[Player, Player]:
 if __name__ == "__main__":
     cfg = Config()
     engine = GameEngine(players=new_players(), verbose=True, log_to_file=True)
-    env = GameEnv(engine=engine, render=False)
+    env = GameEnv(engine=engine, render=True)
     trainer = Trainer(env, cfg)
     trainer.train()

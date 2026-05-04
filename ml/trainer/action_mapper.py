@@ -139,7 +139,7 @@ class ActionMapper:
             return self.end_turn_idx, None
         pair = self._pick_from_list(pairs, cont_params[0])
         return self.env.ACTIONS.index("combine"), {
-            "pair": (int(pair[0]), int(pair[1]))
+            "pair": ((pair[0]), (pair[1]))
         }
 
     def _handle_end_turn(self, params: Dict, cont_params: np.ndarray):
