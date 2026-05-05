@@ -4,13 +4,12 @@ from core.cards.monster_card import MonsterCard
 
 
 class InputManager:
-    def __init__(self, matrix, game_engine, render_engine, mp_manager=None):
+    def __init__(self, matrix, game_engine, render_engine):
         self.matrix = matrix
         self.game_engine = game_engine
         self.dragging_card = None
         self.drag_arrow = None
         self.render_engine = render_engine
-        self.mp_manager = mp_manager
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -29,13 +28,10 @@ class InputManager:
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self.dragging_card:
-                success = self.dragging_card.on_drop(
+                _ = self.dragging_card.on_drop(
                     self.matrix, self.game_engine)
                 self.dragging_card = None
                 self.render_engine.align_cards(self.matrix)
-
-                if success and self.mp_manager:
-                    self.mp_manager._broadcast_state()
 
             self._handle_release_arrow(event.pos)
 
@@ -90,7 +86,7 @@ class InputManager:
 
                         # Use logic_card to check type
                         if isinstance(card.logic_card, MonsterCard):
-                            success = self.game_engine.upgrade_monster(
+                            _ = self.game_engine.upgrade_monster(
                                 self.game_engine.turn_manager.get_current_player().id,
                                 # attacking/dragging monster
                                 self.drag_arrow.targets[0].id,
@@ -98,8 +94,6 @@ class InputManager:
                                 self.drag_arrow.targets[1].id,
                             )
                             break   # stop after successful merge
-                if success and self.mp_manager:
-                    self.mp_manager._broadcast_state()
 
             # Checking for player hitbox
             if self.drag_arrow:
@@ -118,15 +112,13 @@ class InputManager:
             self.drag_arrow.end_pos = opponent_hand.rect.center
             self.drag_arrow.targets[1] = self.game_engine.turn_manager.get_next_player(
             )
-            success = self.game_engine.attack(
+            _ = self.game_engine.attack(
                 self.game_engine.turn_manager.get_current_player().id,
                 self.game_engine.turn_manager.get_next_player().id,
                 self.drag_arrow.targets[0].id,
                 self.drag_arrow.targets[1].id,
                 target_is_player=True
             )
-            if success and self.mp_manager:
-                self.mp_manager._broadcast_state()
 
     def _handle_left_click_arrow(self, pos):
         for row in self.game_engine.game_state.field_matrix:
@@ -165,10 +157,7 @@ class InputManager:
                     # MonsterCardGUI implements on_toggle; generic CardGUI does not.
                     on_toggle = getattr(card, "on_toggle", None)
                     if callable(on_toggle):
-                        success = on_toggle(self.game_engine)
-
-                    if success and self.mp_manager:
-                        self.mp_manager._broadcast_state()
+                        on_toggle(self.game_engine)
 
                     return
 

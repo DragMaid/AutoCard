@@ -1,5 +1,6 @@
 import pygame
 import socketio
+import socket
 from abc import abstractmethod
 from threading import Thread
 from multiprocessing import Process, Queue
@@ -182,8 +183,24 @@ class SocketClientGame(GameApp):
             # Added a slight delay to ensure server is ready if we just started it locally
             import time
             time.sleep(0.5)
-            # NOTE: whenn playing by yourself, you gotta do localhost
-            # host = "localhost"
+
+            # If the host is this machine, use localhost to avoid NAT loopback or firewall issues
+            # that might prevent connecting to our own public/LAN IP.
+            if host not in ["localhost", "127.0.0.1"]:
+                try:
+                    hostname = socket.gethostname()
+                    local_ips = [socket.gethostbyname(hostname)]
+                    try:
+                        _, _, ip_list = socket.gethostbyname_ex(hostname)
+                        local_ips.extend(ip_list)
+                    except:
+                        pass
+                    if host in local_ips:
+                        print(f"Redirecting local host {host} to localhost")
+                        host = "localhost"
+                except:
+                    pass
+
             url = f"http://{host}:{port}"
             # Add password to query string if provided
             if password:
@@ -219,7 +236,7 @@ class SocketClientGame(GameApp):
 
 
 class SocketServerGame(GameApp):
-    def __init__(self, screen, host='localhost', port=5000, room_name="AutoCard Room", password=""):
+    def __init__(self, screen, host='0.0.0.0', port=5000, room_name="AutoCard Room", password=""):
         super().__init__(screen)
         self.pending_data = None
         self.game_started = False
@@ -476,3 +493,11 @@ if __name__ == "__main__":
             dt = clock.tick(60) / 1000.0
             running = app.step(dt)
         pygame.quit()
+
+
+# TODO: the attack animation is still bugged if the target is in defend mode
+# TODO: weird interaction when attacking with a trap card triggered
+# TODO: the online mode game does not stop even when opponent health dropped below 0
+# TODO: make a victory and and return to matching screen
+# TODO: add a end turn button instead of the usual space key
+# TODO: add an option for the game to be hosted instead of local socket

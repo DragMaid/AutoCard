@@ -3,8 +3,6 @@ import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.player import Player
-from core.cards.monster_card import MonsterCard
-from core.cards.trap_card import TrapCard
 
 
 @dataclass
