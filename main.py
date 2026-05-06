@@ -543,7 +543,6 @@ if __name__ == "__main__":
         pygame.quit()
 
 
-# TODO: the attack animation is still bugged if the target is in defend mode
 # TODO: weird interaction when attacking with a trap card triggered
 # TODO: add a end turn button instead of the usual space key
 # TODO: add an option for the game to be hosted instead of local socket
