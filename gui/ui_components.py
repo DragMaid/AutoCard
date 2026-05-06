@@ -33,8 +33,11 @@ class Button(UIComponent):
         self.hover_color = hover_color
         self.text_color = text_color
         self.callback = callback
+        self.enabled = True
 
     def handle_event(self, event):
+        if not self.enabled:
+            return False
         super().handle_event(event)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.is_hovered:
@@ -44,12 +47,20 @@ class Button(UIComponent):
         return False
 
     def draw(self, screen):
-        color = self.hover_color if self.is_hovered else self.color
+        if self.enabled:
+            color = self.hover_color if self.is_hovered else self.color
+            border_color = (200, 200, 200)
+            text_color = self.text_color
+        else:
+            color = (30, 30, 30)
+            border_color = (60, 60, 60)
+            text_color = (100, 100, 100)
+
         pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, (200, 200, 200),
+        pygame.draw.rect(screen, border_color,
                          self.rect, 2, border_radius=5)
 
-        text_surf = self.font.render(self.text, True, self.text_color)
+        text_surf = self.font.render(self.text, True, text_color)
         text_rect = text_surf.get_rect(center=self.rect.center)
         screen.blit(text_surf, text_rect)
 

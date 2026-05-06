@@ -58,6 +58,12 @@ class MatchmakingScreen:
         ai_btn.callback = lambda: self.set_state(ScreenState.AI)
         self.menu_buttons.append(ai_btn)
 
+        quit_btn = Button((center_x - btn_width // 2, start_y +
+                          spacing * 3, btn_width, btn_height), "Quit Game",
+                          color=(100, 50, 50), hover_color=(130, 70, 70))
+        quit_btn.callback = lambda: self.set_state(ScreenState.EXIT)
+        self.menu_buttons.append(quit_btn)
+
     def _init_host(self):
         center_x = self.screen.get_width() // 2
         self.host_components = []
