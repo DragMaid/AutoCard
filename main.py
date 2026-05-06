@@ -547,4 +547,3 @@ if __name__ == "__main__":
 # TODO: add a end turn button instead of the usual space key
 # TODO: add an option for the game to be hosted instead of local socket
 # TODO: some time its not anybody turn
-# TODO: the draw card spell should only be used in correct turn
