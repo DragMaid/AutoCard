@@ -277,7 +277,6 @@ class GameEngine:
                ):
         can_attack = self.rule_engine.can_attack(
             attacker_id, defender_id, card_id, target_id, target_is_player)
-        print(can_attack)
 
         card = self.game_state.get_card_by_id(card_id)
 
@@ -308,16 +307,15 @@ class GameEngine:
             return False
 
         # Check for trap triggers before resolving battle
-        if not target_is_player:
-            if self.check_trap_triggers(card_id, defender_id):
-                target_card = self.game_state.get_card_by_id(target_id)
-                self._log_action("ATTACK", attacker_id, {
-                    "attacker_card": card.name,
-                    "target": target_card.name if target_card else target_id,
-                    "result": "Negated/Reflected by trap"
-                }, True)
-                self.synchronize()
-                return True
+        if self.check_trap_triggers(card_id, defender_id):
+            target_card = self.game_state.get_card_by_id(target_id)
+            self._log_action("ATTACK", attacker_id, {
+                "attacker_card": card.name,
+                "target": target_card.name if target_card else target_id,
+                "result": "Negated/Reflected by trap"
+            }, True)
+            self.synchronize()
+            return True
 
         self.resolve_battle(attacker_id, defender_id,
                             card_id, target_id, target_is_player)

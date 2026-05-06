@@ -57,6 +57,7 @@ class GameApp(ABC):
             callback=self.return_to_menu
         )
 
+        # TODO: bruh please do handle this later
         self.end_turn_button = Button(
             pygame.Rect(15, self.screen_size[1]-50-10, 150, 50),
             "End Turn",

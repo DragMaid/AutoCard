@@ -95,7 +95,7 @@ class EffectTracker:
                         getattr(target, effect.stat) - effect.value)
             elif effect.effect_type == EffectType.DEBUFF:
                 setattr(target, effect.stat,
-                        getattr(target, effect.stat) + effect.value)
+                        max(getattr(target, effect.stat) + effect.value, 0))
 
     def get_effects_on_target(self, target_id: str) -> List[Effect]:
         """Get all active effects on a monster"""
