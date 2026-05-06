@@ -13,9 +13,10 @@ from core.handle_logic_gui.input_manager import InputManager
 from gui.gui_info.matrix_field import Matrix
 from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
-from gui.cache import load_image
+from gui.cache import load_image, get_font
 from abc import ABC
 from gui.matchmaking import MatchmakingScreen, ScreenState
+from gui.ui_components import Button
 
 
 class GameApp(ABC):
@@ -29,6 +30,8 @@ class GameApp(ABC):
         self.dt = 0
         self.should_exit_to_menu = False
         self.exit_reason = None
+        self.game_over = False
+        self.winner_text = ""
 
         self.player1 = Player(0, 'p1')
         self.player2 = Player(1, 'p2', is_opponent=True)
@@ -48,7 +51,24 @@ class GameApp(ABC):
         self.background = pygame.transform.scale(
             self.background, self.screen_size)
 
+        self.continue_button = Button(
+            pygame.Rect(540, 400, 200, 50),
+            "Continue",
+            callback=self.return_to_menu
+        )
+
+    def return_to_menu(self):
+        self.should_exit_to_menu = True
+
     def handle_events(self):
+        if self.game_over:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    return False
+                self.continue_button.handle_event(event)
+            return True
+
         current_player = self.game_engine.turn_manager.get_current_player()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -71,6 +91,17 @@ class GameApp(ABC):
     def update(self):
         ...
 
+    def check_game_over(self):
+        if not self.game_over and self.game_engine.game_state.is_game_over():
+            self.game_over = True
+            # Find local player in game_state.players (is_opponent=False)
+            local_player = next(
+                (p for p in self.game_engine.game_state.players if not p.is_opponent), None)
+            if local_player and local_player.life_points > 0:
+                self.winner_text = "VICTORY"
+            else:
+                self.winner_text = "DEFEAT"
+
     def draw(self):
         self.screen.blit(self.background, self.background.get_rect())
         self.field_matrix.areas["preview_card_table"].draw(self.screen)
@@ -78,7 +109,24 @@ class GameApp(ABC):
         self.input_manager.draw(self.screen)
         self.render_engine.draw()
         EffectManager.draw(self.screen)
+
+        if self.game_over:
+            self.draw_game_over_overlay()
+
         pygame.display.flip()
+
+    def draw_game_over_overlay(self):
+        overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        font = get_font(72)
+        color = (50, 250, 50) if self.winner_text == "VICTORY" else (250, 50, 50)
+        text_surf = font.render(self.winner_text, True, color)
+        text_rect = text_surf.get_rect(center=(self.screen_size[0]//2, 300))
+        self.screen.blit(text_surf, text_rect)
+
+        self.continue_button.draw(self.screen)
 
     def step(self, dt):
         self.dt = dt
@@ -86,6 +134,8 @@ class GameApp(ABC):
             return False
         if self.game_started:
             self.update()
+            if not self.game_over:
+                self.check_game_over()
             self.draw()
         return self.running
 
@@ -136,16 +186,12 @@ class AIGame(GameApp):
         self.render_engine.animation_mgr.update(self.dt)
         EffectManager.update()
 
-        if self.game_engine.game_state.is_game_over():
-            pygame.time.wait(1000)
-            self.running = False
-
 
 class SocketClientGame(GameApp):
     def __init__(self, screen, host="localhost", port=5000, password=""):
         super().__init__(screen)
         print(f"Connecting to http://{host}:{port}...")
-        self.sio = socketio.Client(logger=True, engineio_logger=True)
+        self.sio = socketio.Client(logger=True, engineio_logger=True, reconnection=False)
         self.game_engine.socket_io = self.sio
         self.pending_data = None
         self.connected = False
@@ -161,8 +207,9 @@ class SocketClientGame(GameApp):
         @self.sio.event
         def disconnect():
             print("Disconnected from server")
-            self.exit_reason = "Disconnected from server"
-            self.running = False
+            if not self.game_over:
+                self.exit_reason = "Disconnected from server"
+                self.running = False
 
         @self.sio.event
         def connect():
@@ -262,12 +309,13 @@ class SocketServerGame(GameApp):
             if key == "connected":
                 self.connected_clients += 1
                 self.game_engine.start_game()
+                self.game_engine.draw_specific_card(self.player1.id, "Silent Witch", "monster")
                 self.game_started = True
                 self.game_engine.synchronize = self.emit_synchronize
                 self.game_engine.synchronize()
             elif key == "disconnected":
                 self.connected_clients -= 1
-                if self.game_started:
+                if self.game_started and not self.game_over:
                     self.exit_reason = "Client disconnected"
                     self.running = False
             elif key == "synchronize":
@@ -497,7 +545,7 @@ if __name__ == "__main__":
 
 # TODO: the attack animation is still bugged if the target is in defend mode
 # TODO: weird interaction when attacking with a trap card triggered
-# TODO: the online mode game does not stop even when opponent health dropped below 0
-# TODO: make a victory and and return to matching screen
 # TODO: add a end turn button instead of the usual space key
 # TODO: add an option for the game to be hosted instead of local socket
+# TODO: some time its not anybody turn
+# TODO: the draw card spell should only be used in correct turn
