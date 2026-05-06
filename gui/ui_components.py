@@ -25,14 +25,14 @@ class UIComponent:
 
 
 class Button(UIComponent):
-    def __init__(self, rect, text, font_size=32, color=(50, 50, 50), hover_color=(80, 80, 80), text_color=(255, 255, 255)):
+    def __init__(self, rect, text, font_size=32, color=(50, 50, 50), hover_color=(80, 80, 80), text_color=(255, 255, 255), callback=None):
         super().__init__(rect)
         self.text = text
         self.font = get_font(font_size)
         self.color = color
         self.hover_color = hover_color
         self.text_color = text_color
-        self.callback = None
+        self.callback = callback
 
     def handle_event(self, event):
         super().handle_event(event)
