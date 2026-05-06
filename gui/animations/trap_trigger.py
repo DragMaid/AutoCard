@@ -24,7 +24,7 @@ class TrapTriggerAnimation(Animation):
             # shrink to 0 then expand
             scale_y = max(0.05, abs(math.cos(p * math.pi)))
             new_img = pygame.transform.scale(
-                self.card.original_image,
+                self.card.card_surface,
                 (self.card.rect.width, max(1, int(self.card.rect.height * scale_y)))
             )
             self.card.image = new_img

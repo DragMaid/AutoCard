@@ -28,9 +28,9 @@ class AttackAnimation(Animation):
         self.final_angle2 = self._signed_angle(
             self.start_pos1 - self.start_pos2, direction2)
 
-        # Start from 0° rotation (upright card orientation)
-        self.start_angle1 = 0
-        self.start_angle2 = 0
+        # Base angles from card mode (defense = 90 deg)
+        self.start_angle1 = 90 if getattr(card1.logic_card, "mode", "attack") == "defense" else 0
+        self.start_angle2 = 90 if getattr(card2.logic_card, "mode", "attack") == "defense" else 0
 
     @staticmethod
     def _signed_angle(vec, facing):
@@ -66,9 +66,13 @@ class AttackAnimation(Animation):
                 (self.final_angle2 - self.start_angle2) * p
 
             self.card1.image = pygame.transform.rotate(
-                self.card1.original_image, -current_a1)
+                self.card1.card_surface, -current_a1)
             self.card2.image = pygame.transform.rotate(
-                self.card2.original_image, -current_a2)
+                self.card2.card_surface, -current_a2)
+            self.card1.rect = self.card1.image.get_rect(
+                center=self.card1.rect.center)
+            self.card2.rect = self.card2.image.get_rect(
+                center=self.card2.rect.center)
 
         else:
             # Bounce back phase
@@ -80,22 +84,34 @@ class AttackAnimation(Animation):
                 EffectManager.spawn("slam", self.midpoint)
                 AudioManager.play_sound("assets/sounds/sword-clash.mp3")
 
-                # Add squash/stretch impact
-                self.card1.image = pygame.transform.scale(
-                    self.card1.original_image,
-                    (int(self.card1.rect.width * 1.1),
-                     int(self.card1.rect.height * 0.9))
+                # Add squash/stretch impact while maintaining rotation
+                scaled1 = pygame.transform.scale(
+                    self.card1.card_surface,
+                    (int(self.card1.card_surface.get_width() * 1.1),
+                     int(self.card1.card_surface.get_height() * 0.9))
                 )
-                self.card2.image = pygame.transform.scale(
-                    self.card2.original_image,
-                    (int(self.card2.rect.width * 1.1),
-                     int(self.card2.rect.height * 0.9))
+                self.card1.image = pygame.transform.rotate(
+                    scaled1, -self.final_angle1)
+
+                scaled2 = pygame.transform.scale(
+                    self.card2.card_surface,
+                    (int(self.card2.card_surface.get_width() * 1.1),
+                     int(self.card2.card_surface.get_height() * 0.9))
                 )
+                self.card2.image = pygame.transform.rotate(
+                    scaled2, -self.final_angle2)
+
+                self.card1.rect = self.card1.image.get_rect(
+                    center=self.card1.rect.center)
+                self.card2.rect = self.card2.image.get_rect(
+                    center=self.card2.rect.center)
                 self.impact_done = True
 
         if t >= 1:
-            # Reset state
-            self.card1.image = self.card1.original_image
-            self.card2.image = self.card2.original_image
-            self.card1.rect.center = self.start_pos1
-            self.card2.rect.center = self.start_pos2
+            # Reset state to original rotation and position
+            self.card1.image = pygame.transform.rotate(
+                self.card1.card_surface, -self.start_angle1)
+            self.card2.image = pygame.transform.rotate(
+                self.card2.card_surface, -self.start_angle2)
+            self.card1.rect = self.card1.image.get_rect(center=self.start_pos1)
+            self.card2.rect = self.card2.image.get_rect(center=self.start_pos2)
