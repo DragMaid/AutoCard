@@ -57,6 +57,52 @@ class GameApp(ABC):
             callback=self.return_to_menu
         )
 
+        self.end_turn_button = Button(
+            pygame.Rect(15, self.screen_size[1]-50-10, 150, 50),
+            "End Turn",
+            font_size=28,
+            color=(50, 100, 50),
+            hover_color=(70, 130, 70),
+            callback=self.game_engine.end_turn
+        )
+
+        self.surrender_button = Button(
+            pygame.Rect(15, self.screen_size[1]-40-50-10-10, 150, 40),
+            "Surrender",
+            font_size=20,
+            color=(80, 30, 30),
+            hover_color=(120, 40, 40),
+            callback=self.confirm_surrender
+        )
+
+        self.confirm_surrender_visible = False
+        self.yes_surrender_button = Button(
+            pygame.Rect(530, 380, 100, 40),
+            "Yes",
+            color=(120, 30, 30),
+            callback=self.surrender
+        )
+        self.no_surrender_button = Button(
+            pygame.Rect(650, 380, 100, 40),
+            "No",
+            color=(30, 100, 30),
+            callback=self.cancel_surrender
+        )
+
+    def confirm_surrender(self):
+        self.confirm_surrender_visible = True
+
+    def cancel_surrender(self):
+        self.confirm_surrender_visible = False
+
+    def surrender(self):
+        local_player = next(
+            (p for p in self.game_engine.game_state.players if not p.is_opponent), None)
+        if local_player:
+            local_player.life_points = 0
+            self.check_game_over()
+        self.confirm_surrender_visible = False
+
     def return_to_menu(self):
         self.should_exit_to_menu = True
 
@@ -69,7 +115,19 @@ class GameApp(ABC):
                 self.continue_button.handle_event(event)
             return True
 
+        if self.confirm_surrender_visible:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    return False
+                self.yes_surrender_button.handle_event(event)
+                self.no_surrender_button.handle_event(event)
+            return True
+
         current_player = self.game_engine.turn_manager.get_current_player()
+        is_local_turn = not current_player.is_opponent
+        self.end_turn_button.enabled = is_local_turn
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -80,10 +138,12 @@ class GameApp(ABC):
                 return False
 
             self.input_manager.handle_event(event)
+            self.end_turn_button.handle_event(event)
+            self.surrender_button.handle_event(event)
 
             if (event.type == pygame.KEYDOWN and
                 event.key == pygame.K_SPACE and
-                    not current_player.is_opponent):
+                    is_local_turn):
                 self.game_engine.end_turn()
         return True
 
@@ -110,39 +170,64 @@ class GameApp(ABC):
         self.render_engine.draw()
         EffectManager.draw(self.screen)
         self.draw_turn_info()
+        self.surrender_button.draw(self.screen)
+
+        if self.confirm_surrender_visible:
+            self.draw_surrender_confirmation()
 
         if self.game_over:
             self.draw_game_over_overlay()
 
         pygame.display.flip()
 
+    def draw_surrender_confirmation(self):
+        overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
+
+        font = get_font(36)
+        text_surf = font.render("Surrender?", True, (255, 255, 255))
+        text_rect = text_surf.get_rect(center=(self.screen_size[0]//2, 340))
+        self.screen.blit(text_surf, text_rect)
+
+        self.yes_surrender_button.draw(self.screen)
+        self.no_surrender_button.draw(self.screen)
+
     def draw_turn_info(self):
         font = get_font(24)
         turn_count = self.game_engine.turn_manager.turn_count
         current_player = self.game_engine.turn_manager.get_current_player()
-        
+
         # Determine if it's the local player's turn
         is_local_turn = not current_player.is_opponent
-        player_name = "Your Turn" if is_local_turn else f"Opponent's Turn ({current_player.name})"
+        player_name = "Your Turn" if is_local_turn else "Opponent Turn"
         color = (100, 255, 100) if is_local_turn else (255, 100, 100)
+
+        # Panel Background (Centered vertically in the left margin)
+        panel_rect = pygame.Rect(10, self.screen_size[1]-235, 160, 235)
+        
+        # Create a temporary surface for transparency
+        panel_surf = pygame.Surface((panel_rect.width, panel_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (20, 20, 30, 200), (0, 0, panel_rect.width, panel_rect.height), border_radius=10)
+        pygame.draw.rect(panel_surf, (100, 100, 150), (0, 0, panel_rect.width, panel_rect.height), 2, border_radius=10)
+        self.screen.blit(panel_surf, panel_rect)
 
         # Draw Turn Number
         turn_text = f"Turn: {turn_count}"
-        turn_surf = font.render(turn_text, True, (255, 255, 255))
-        turn_rect = turn_surf.get_rect(topright=(self.screen_size[0] - 20, 20))
-        
-        # Background for turn info
-        bg_rect = pygame.Rect(0, 0, 250, 70)
-        bg_rect.topright = (self.screen_size[0] - 10, 10)
-        pygame.draw.rect(self.screen, (0, 0, 0, 150), bg_rect, border_radius=5)
-        pygame.draw.rect(self.screen, (200, 200, 200), bg_rect, 2, border_radius=5)
-
+        turn_surf = font.render(turn_text, True, (220, 220, 255))
+        turn_rect = turn_surf.get_rect(center=(panel_rect.centerx, panel_rect.top + 35))
         self.screen.blit(turn_surf, turn_rect)
 
         # Draw Player Turn
         player_surf = font.render(player_name, True, color)
-        player_rect = player_surf.get_rect(topright=(self.screen_size[0] - 20, 50))
+        player_rect = player_surf.get_rect(center=(panel_rect.centerx, panel_rect.top + 75))
         self.screen.blit(player_surf, player_rect)
+
+        # Draw End Turn Button
+        self.end_turn_button.draw(self.screen)
+
+        # Draw Surrender Button
+        self.surrender_button.draw(self.screen)
 
     def draw_game_over_overlay(self):
         overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
@@ -220,7 +305,8 @@ class SocketClientGame(GameApp):
     def __init__(self, screen, host="localhost", port=5000, password=""):
         super().__init__(screen)
         print(f"Connecting to http://{host}:{port}...")
-        self.sio = socketio.Client(logger=True, engineio_logger=True, reconnection=False)
+        self.sio = socketio.Client(
+            logger=True, engineio_logger=True, reconnection=False)
         self.game_engine.socket_io = self.sio
         self.pending_data = None
         self.connected = False
@@ -338,7 +424,8 @@ class SocketServerGame(GameApp):
             if key == "connected":
                 self.connected_clients += 1
                 self.game_engine.start_game()
-                self.game_engine.draw_specific_card(self.player1.id, "Silent Witch", "monster")
+                self.game_engine.draw_specific_card(
+                    self.player1.id, "Silent Witch", "monster")
                 self.game_started = True
                 self.game_engine.synchronize = self.emit_synchronize
                 self.game_engine.synchronize()
@@ -573,5 +660,4 @@ if __name__ == "__main__":
 
 
 # TODO: weird interaction when attacking with a trap card triggered
-# TODO: add a end turn button instead of the usual space key
 # TODO: add an option for the game to be hosted instead of local socket

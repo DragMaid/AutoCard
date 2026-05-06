@@ -269,13 +269,13 @@ class Matrix:
 
         self.areas = {
             'opponent_deck': DeckArea(
-                area_dims['deck_width']/1.8, padding,
+                padding, padding,
                 area_dims['deck_width']/2, area_dims['top_height'],
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'opponent_lp_area': TextArea(
                 opponent,
-                padding, padding,
+                area_dims['deck_width']/1.8, padding,
                 area_dims['deck_width']/2, area_dims['top_height'],
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
             ),
@@ -288,13 +288,13 @@ class Matrix:
             ),
 
             'my_deck': DeckArea(
-                padding*16.5, screen_height - margins['bottom'] + padding,
+                padding, screen_height - margins['bottom'] + padding,
                 area_dims['deck_width']/2, area_dims['bottom_height'],
                 self.config.PLAYER_COLOR, self.config.AREA_BORDER_WIDTH
             ),
             'my_lp_area': TextArea(
                 ally,
-                padding, screen_height - margins['bottom'] + padding,
+                padding*16.5, screen_height - margins['bottom'] + padding,
                 area_dims['deck_width']/2, area_dims['bottom_height'],
                 self.config.PLAYER_COLOR, self.config.AREA_BORDER_WIDTH
             ),
