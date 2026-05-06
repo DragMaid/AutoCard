@@ -109,11 +109,40 @@ class GameApp(ABC):
         self.input_manager.draw(self.screen)
         self.render_engine.draw()
         EffectManager.draw(self.screen)
+        self.draw_turn_info()
 
         if self.game_over:
             self.draw_game_over_overlay()
 
         pygame.display.flip()
+
+    def draw_turn_info(self):
+        font = get_font(24)
+        turn_count = self.game_engine.turn_manager.turn_count
+        current_player = self.game_engine.turn_manager.get_current_player()
+        
+        # Determine if it's the local player's turn
+        is_local_turn = not current_player.is_opponent
+        player_name = "Your Turn" if is_local_turn else f"Opponent's Turn ({current_player.name})"
+        color = (100, 255, 100) if is_local_turn else (255, 100, 100)
+
+        # Draw Turn Number
+        turn_text = f"Turn: {turn_count}"
+        turn_surf = font.render(turn_text, True, (255, 255, 255))
+        turn_rect = turn_surf.get_rect(topright=(self.screen_size[0] - 20, 20))
+        
+        # Background for turn info
+        bg_rect = pygame.Rect(0, 0, 250, 70)
+        bg_rect.topright = (self.screen_size[0] - 10, 10)
+        pygame.draw.rect(self.screen, (0, 0, 0, 150), bg_rect, border_radius=5)
+        pygame.draw.rect(self.screen, (200, 200, 200), bg_rect, 2, border_radius=5)
+
+        self.screen.blit(turn_surf, turn_rect)
+
+        # Draw Player Turn
+        player_surf = font.render(player_name, True, color)
+        player_rect = player_surf.get_rect(topright=(self.screen_size[0] - 20, 50))
+        self.screen.blit(player_surf, player_rect)
 
     def draw_game_over_overlay(self):
         overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
@@ -546,4 +575,3 @@ if __name__ == "__main__":
 # TODO: weird interaction when attacking with a trap card triggered
 # TODO: add a end turn button instead of the usual space key
 # TODO: add an option for the game to be hosted instead of local socket
-# TODO: some time its not anybody turn

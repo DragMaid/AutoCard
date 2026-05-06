@@ -719,7 +719,6 @@ class GameEngine:
         print(f"Next Player: {next_player.name} ({next_player.id})")
         print(f"{'='*60}\n")
 
-        # NOTE: draw_card already sync the state once
         self.draw_card(next_player.id)
-        # self.synchronize()
+        self.synchronize()
         self._log_game_state(f"Start of Turn {self.turn_manager.turn_count}")
