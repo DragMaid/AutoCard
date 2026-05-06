@@ -488,31 +488,32 @@ class GameEngine:
             return False
 
         current_player = self.turn_manager.get_current_player()
-        if spell.ability not in ("draw_two_cards", "call_of_brave"):
-            if spell.owner_id != current_player.id:
+
+        if spell.owner_id != current_player.id:
+            self._log_action("CAST_SPELL", spell.owner_id, {
+                "spell": spell.name,
+                "reason": f"Not your turn (current: {current_player.name})"
+            }, False)
+            return False
+
+        # TODO: this is way too hard coded
+        if spell.ability not in ("draw_two_cards", "call_of_brave") and target_id:
+            target_card = self.game_state.get_card_by_id(target_id)
+            if target_card and target_card.ctype == "monster" and spell.owner_id != target_card.owner_id:
                 self._log_action("CAST_SPELL", spell.owner_id, {
                     "spell": spell.name,
-                    "reason": f"Not your turn (current: {current_player.name})"
+                    "target": target_card.name,
+                    "reason": "Cannot target enemy monsters with buff spells"
                 }, False)
                 return False
 
-            if target_id:
-                target_card = self.game_state.get_card_by_id(target_id)
-                if target_card and target_card.ctype == "monster" and spell.owner_id != target_card.owner_id:
-                    self._log_action("CAST_SPELL", spell.owner_id, {
-                        "spell": spell.name,
-                        "target": target_card.name,
-                        "reason": "Cannot target enemy monsters with buff spells"
-                    }, False)
-                    return False
-
-                if target_card and target_card.ctype == "trap" and spell.owner_id == target_card.owner_id:
-                    self._log_action("CAST_SPELL", spell.owner_id, {
-                        "spell": spell.name,
-                        "target": target_card.name,
-                        "reason": "Cannot destroy your own trap"
-                    }, False)
-                    return False
+            if target_card and target_card.ctype == "trap" and spell.owner_id == target_card.owner_id:
+                self._log_action("CAST_SPELL", spell.owner_id, {
+                    "spell": spell.name,
+                    "target": target_card.name,
+                    "reason": "Cannot destroy your own trap"
+                }, False)
+                return False
 
         details = {"spell": spell.name, "ability": spell.ability}
 
