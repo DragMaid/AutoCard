@@ -101,12 +101,7 @@ class InputManager:
                 self.drag_arrow = None
 
     def _handle_arrow_drop_player_hitbox(self, pos):
-        current_player_index = self.game_engine.turn_manager.current_player_index
-
-        if current_player_index == 0:
-            opponent_hand = self.matrix.areas["opponent_hand_area"]
-        else:
-            opponent_hand = self.matrix.areas["my_hand_area"]
+        opponent_hand = self.matrix.areas["opponent_hand_area"]
 
         if (opponent_hand.rect.collidepoint(pos)):
             self.drag_arrow.end_pos = opponent_hand.rect.center

@@ -206,22 +206,28 @@ class GameApp(ABC):
 
         # Panel Background (Centered vertically in the left margin)
         panel_rect = pygame.Rect(10, self.screen_size[1]-235, 160, 235)
-        
+
         # Create a temporary surface for transparency
-        panel_surf = pygame.Surface((panel_rect.width, panel_rect.height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, (20, 20, 30, 200), (0, 0, panel_rect.width, panel_rect.height), border_radius=10)
-        pygame.draw.rect(panel_surf, (100, 100, 150), (0, 0, panel_rect.width, panel_rect.height), 2, border_radius=10)
+        panel_surf = pygame.Surface(
+            (panel_rect.width, panel_rect.height), pygame.SRCALPHA)
+        panel_surf.set_alpha(175)
+        pygame.draw.rect(panel_surf, (20, 20, 30, 200), (0, 0,
+                         panel_rect.width, panel_rect.height), border_radius=10)
+        pygame.draw.rect(panel_surf, (100, 100, 150), (0, 0,
+                         panel_rect.width, panel_rect.height), 2, border_radius=10)
         self.screen.blit(panel_surf, panel_rect)
 
         # Draw Turn Number
         turn_text = f"Turn: {turn_count}"
         turn_surf = font.render(turn_text, True, (220, 220, 255))
-        turn_rect = turn_surf.get_rect(center=(panel_rect.centerx, panel_rect.top + 35))
+        turn_rect = turn_surf.get_rect(
+            center=(panel_rect.centerx, panel_rect.top + 35))
         self.screen.blit(turn_surf, turn_rect)
 
         # Draw Player Turn
         player_surf = font.render(player_name, True, color)
-        player_rect = player_surf.get_rect(center=(panel_rect.centerx, panel_rect.top + 75))
+        player_rect = player_surf.get_rect(
+            center=(panel_rect.centerx, panel_rect.top + 75))
         self.screen.blit(player_surf, player_rect)
 
         # Draw End Turn Button
@@ -306,8 +312,9 @@ class SocketClientGame(GameApp):
     def __init__(self, screen, host="localhost", port=5000, password=""):
         super().__init__(screen)
         print(f"Connecting to http://{host}:{port}...")
+        # If engineio_logger is set to True then it just output the serialized content
         self.sio = socketio.Client(
-            logger=True, engineio_logger=True, reconnection=False)
+            logger=False, engineio_logger=False, reconnection=False)
         self.game_engine.socket_io = self.sio
         self.pending_data = None
         self.connected = False
@@ -425,8 +432,6 @@ class SocketServerGame(GameApp):
             if key == "connected":
                 self.connected_clients += 1
                 self.game_engine.start_game()
-                self.game_engine.draw_specific_card(
-                    self.player1.id, "Silent Witch", "monster")
                 self.game_started = True
                 self.game_engine.synchronize = self.emit_synchronize
                 self.game_engine.synchronize()
@@ -660,5 +665,5 @@ if __name__ == "__main__":
         pygame.quit()
 
 
-# TODO: weird interaction when attacking with a trap card triggered
+# TODO: add train mode to the arguments
 # TODO: add an option for the game to be hosted instead of local socket

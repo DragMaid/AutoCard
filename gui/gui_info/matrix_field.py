@@ -123,6 +123,7 @@ class Matrix:
         self.config = GameAreaConfig()
 
         self.areas = {}
+        self.player_zones = {}
         self.sprite_manager = TileSpriteManager()
 
         self._setup_default_sprites()
@@ -135,18 +136,19 @@ class Matrix:
         self.hands = [self.areas["my_hand_area"],
                       self.areas["opponent_hand_area"]]
 
-        self.player_zones = {
-            self.game_state.players[0].id: {
-                "hand": self.areas["my_hand_area"],
-                "deck": self.areas["my_deck"],
-                "lp": self.areas["my_lp_area"],
-            },
-            self.game_state.players[1].id: {
-                "hand": self.areas["opponent_hand_area"],
-                "deck": self.areas["opponent_deck"],
-                "lp": self.areas["opponent_lp_area"],
-            },
-        }
+        for player in self.game_state.players:
+            if player.is_opponent:
+                self.player_zones[player.id] = {
+                    "hand": self.areas["opponent_hand_area"],
+                    "deck": self.areas["opponent_deck"],
+                    "lp": self.areas["opponent_lp_area"],
+                }
+            else:
+                self.player_zones[player.id] = {
+                    "hand": self.areas["my_hand_area"],
+                    "deck": self.areas["my_deck"],
+                    "lp": self.areas["my_lp_area"],
+                }
 
     def _setup_default_sprites(self):
         """Register default sprite paths"""

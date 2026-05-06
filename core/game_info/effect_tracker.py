@@ -83,8 +83,12 @@ class EffectTracker:
                 setattr(target, effect.stat,
                         getattr(target, effect.stat) + effect.value)
             elif effect.effect_type == EffectType.DEBUFF:
-                setattr(target, effect.stat,
-                        getattr(target, effect.stat) - effect.value)
+                # NOTE: update effect effectiveness so it wouldn't buff the card
+                # ex: 500 atk -> -100 atk -> 0 atk -> 500 atk instead of 600 atk
+                new_stat = getattr(target, effect.stat) - effect.value
+                new_stat_filtered = max(new_stat, 0)
+                effect.stat = abs(new_stat_filtered - new_stat)
+                setattr(target, effect.stat, new_stat)
 
     def _remove_effect(self, effect: Effect, game_state: 'GameState'):
         """Revert the effect when it expires"""
@@ -95,7 +99,7 @@ class EffectTracker:
                         getattr(target, effect.stat) - effect.value)
             elif effect.effect_type == EffectType.DEBUFF:
                 setattr(target, effect.stat,
-                        max(getattr(target, effect.stat) + effect.value, 0))
+                        getattr(target, effect.stat) + effect.value, 0)
 
     def get_effects_on_target(self, target_id: str) -> List[Effect]:
         """Get all active effects on a monster"""

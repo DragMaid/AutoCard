@@ -361,13 +361,13 @@ class GameEngine:
             if target.mode == 'attack':
                 if card.atk > target.atk:
                     damage = abs(card.atk - target.atk)
-                    defender.life_points -= damage
+                    defender.life_points = max(defender.life_points - damage, 0)
                     self.move_card_to_graveyard(target_id)
                     battle_details["result"] = f"Target destroyed, {
                         defender.name} -{damage}LP"
                 elif card.atk < target.atk:
                     damage = abs(target.atk - card.atk)
-                    attacker.life_points -= damage
+                    attacker.life_points = max(attacker.life_points - damage, 0)
                     self.move_card_to_graveyard(card_id)
                     battle_details["result"] = f"Attacker destroyed, {
                         attacker.name} -{damage}LP"
@@ -381,7 +381,7 @@ class GameEngine:
                     battle_details["result"] = "Target destroyed (defense pierced)"
                 elif card.atk < target.defend:
                     damage = abs(target.defend - card.atk)
-                    attacker.life_points -= damage
+                    attacker.life_points = max(attacker.life_points - damage, 0)
                     battle_details["result"] = f"Attack got reflected, {
                         attacker.name} -{damage}LP"
                 else:
@@ -391,7 +391,7 @@ class GameEngine:
         else:  # direct attack to player
             target_player = self.game_state.players_lookup[target_id]
             damage = card.atk
-            target_player.life_points -= damage
+            target_player.life_points = max(target_player.life_points - damage, 0)
             self._log_action("ATTACK", attacker_id, {
                 "attacker_card": f"{card.name} (ATK:{card.atk})",
                 "target": f"Player {target_player.name}",
