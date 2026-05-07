@@ -83,6 +83,7 @@ class GameApp(ABC):
             local_player.life_points = 0
             self._check_game_over()
         self.surrender_overlay.hide()
+        self.game_engine.synchronize()
 
     def _on_return_to_menu(self):
         self.should_exit_to_menu = True
