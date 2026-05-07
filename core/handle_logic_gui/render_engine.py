@@ -35,8 +35,23 @@ class RenderEngine:
     def update(self, game_state, matrix, events):
         self.handle_events(game_state, matrix, events)
         self.register_cards(game_state, matrix)
+        self.update_triggerable_traps(game_state)
         self.handle_merge(game_state)
         self.process_pending_merges()
+
+    def update_triggerable_traps(self, game_state):
+        """Update UI display for traps marked as triggerable."""
+        # Get all trap sprites on matrix
+        trap_sprites = {}
+        for card_id, sprite in self.sprite_manager.sprites.get("matrix", {}).items():
+            card = game_state.get_card_by_id(card_id)
+            if card and card.ctype == "trap" and isinstance(sprite, TrapCardGUI):
+                trap_sprites[card_id] = sprite
+        
+        # Update triggerable state for each trap
+        for trap_id, sprite in trap_sprites.items():
+            is_triggerable = trap_id in game_state.triggerable_traps
+            sprite.set_triggerable(is_triggerable)
 
     def handle_merge(self, game_state):
         for player in game_state.players:

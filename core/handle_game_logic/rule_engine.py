@@ -318,3 +318,99 @@ class RuleEngine:
                 self.logger.warning(f"  - {violation}")
 
         return violations
+
+    def get_attack_traps(self, attacker_id: str, defender_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by an attack.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'attack'
+        - attacker_id: the attacking card's owner
+        - target_id: the defending card/player
+        """
+        defender_cards = self.game_state.get_player_cards(defender_id)
+        triggerable = []
+
+        for card in defender_cards:
+            if card.ctype != "trap" or card.is_face_down:
+                continue
+
+            # Traps that trigger on attack
+            if card.ability in ["debuff_enemy_atk", "debuff_enemy_def", "dodge_attack", "reflect_attack"]:
+                context = {
+                    "trigger_type": "attack",
+                    "attacker_id": attacker_id,
+                    "defender_id": defender_id
+                }
+                triggerable.append((card.id, context))
+
+        return triggerable
+
+    def get_summon_traps(self, summoned_card_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by a card summon.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'summon'
+        - summoned_card_id: the card that was summoned
+        """
+        summoned_card = self.game_state.get_card_by_id(summoned_card_id)
+        if not summoned_card or summoned_card.ctype != "monster":
+            return []
+
+        triggerable = []
+        opponents_ids = [
+            pid for pid in self.game_state.player_info.keys()
+            if pid != summoned_card.owner_id
+        ]
+
+        for opponent_id in opponents_ids:
+            opponent_cards = self.game_state.get_player_cards(opponent_id)
+            for card in opponent_cards:
+                if card.ctype != "trap" or card.is_face_down:
+                    continue
+
+                # Traps that trigger on summon
+                if card.ability == "debuff_summon":
+                    context = {
+                        "trigger_type": "summon",
+                        "summoned_card_id": summoned_card_id
+                    }
+                    triggerable.append((card.id, context))
+
+        return triggerable
+
+    def get_toggle_traps(self, toggled_card_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by a card toggle.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'toggle'
+        - toggled_card_id: the card that was toggled
+        """
+        toggled_card = self.game_state.get_card_by_id(toggled_card_id)
+        if not toggled_card or toggled_card.ctype != "monster":
+            return []
+
+        # Only trigger if toggled to defense mode
+        if toggled_card.mode != "defense":
+            return []
+
+        triggerable = []
+        opponents_ids = [
+            pid for pid in self.game_state.player_info.keys()
+            if pid != toggled_card.owner_id
+        ]
+
+        for opponent_id in opponents_ids:
+            opponent_cards = self.game_state.get_player_cards(opponent_id)
+            for card in opponent_cards:
+                if card.ctype != "trap" or card.is_face_down:
+                    continue
+
+                # Traps that trigger on toggle to defense
+                if card.ability == "debuff_defend_toggle":
+                    context = {
+                        "trigger_type": "toggle",
+                        "toggled_card_id": toggled_card_id
+                    }
+                    triggerable.append((card.id, context))
+
+        return triggerable

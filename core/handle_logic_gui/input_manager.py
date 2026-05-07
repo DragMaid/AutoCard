@@ -13,10 +13,12 @@ class InputManager:
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # left click → start drag
-                self._handle_left_click(event.pos)
-                self._handle_left_click_arrow(event.pos)
-                self.handle_click_card(event.pos)
+            if event.button == 1:  # left click → start drag or activate trap
+                # Check for trap activation first
+                if not self._handle_trap_activation(event.pos):
+                    self._handle_left_click(event.pos)
+                    self._handle_left_click_arrow(event.pos)
+                    self.handle_click_card(event.pos)
             elif event.button == 3:  # right click → toggle
                 self._handle_right_click(event.pos)
 
@@ -34,6 +36,19 @@ class InputManager:
                 self.render_engine.align_cards(self.matrix)
 
             self._handle_release_arrow(event.pos)
+
+    def _handle_trap_activation(self, pos):
+        """Check if a trap activation button was clicked. Returns True if activated."""
+        # Check all trap sprites on matrix
+        for card_id, sprite in self.render_engine.sprite_manager.sprites.get("matrix", {}).items():
+            from gui.cards_gui.trap_card import TrapCardGUI
+            if isinstance(sprite, TrapCardGUI) and sprite.activate_button_rect:
+                if sprite.activate_button_rect.collidepoint(pos):
+                    # Activate the trap
+                    sprite.on_activate(self.game_engine)
+                    return True
+        
+        return False
 
     def _handle_left_click(self, pos):
         # Check hands from top-most first

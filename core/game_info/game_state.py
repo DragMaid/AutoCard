@@ -57,6 +57,13 @@ class GameState:
         self._player_cards: dict[str, List[str]] = {
             player.id: [] for player in self.players}
 
+        # Track traps that can be triggered this phase (trap_id -> trigger context)
+        # Context includes: {'trigger_type': 'attack'|'summon'|'toggle', 'attacker_id': str, 'defender_id': str}
+        self.triggerable_traps: dict[str, dict] = {}
+
+        # Track which traps the player has chosen to activate in current phase
+        self.activated_traps: set[str] = set()
+
     def is_game_over(self) -> bool:
         """Check if any player's life points reached 0 and mark the game as over."""
         for player in self.players:
@@ -309,6 +316,8 @@ class GameState:
         content["max_cards"] = self.max_cards
         content["rows"] = self.rows
         content["cols"] = self.cols
+        content["triggerable_traps"] = self.triggerable_traps
+        content["activated_traps"] = list(self.activated_traps)
 
         return content
 
@@ -356,6 +365,8 @@ class GameState:
         self.field_matrix_ownership = self._deserialize_2d_matrix(
             content["field_matrix_ownership"])
         self._player_cards = content["player_cards"]
+        self.triggerable_traps = content.get("triggerable_traps", {})
+        self.activated_traps = set(content.get("activated_traps", []))
 
     @staticmethod
     def _deserialize_card(card_dict):
