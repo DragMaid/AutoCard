@@ -48,15 +48,20 @@ class GameEngine:
         if log_to_file:
             timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
             log_path = f"logs/game_run_{timestamp}.log"
-        setup_logger(log_path=log_path, console=True)
+        self.logger = setup_logger(log_path=log_path, console=True)
 
         # Action counter for tracking
         self.action_counter = 0
 
-    # TODO: this only apply for client - server is injected - bad design
     def synchronize(self):
         if self.socket_io:
-            self.socket_io.emit("synchronize", self.serialize())
+            try:
+                data = self.serialize()
+                self.socket_io.emit("synchronize", data)
+            except Exception as e:
+                self.logger.error(e)
+                self.logger.debug(data)
+                raise
 
     def serialize(self):
         return {
@@ -105,33 +110,11 @@ class GameEngine:
         else:
             print(f"❌ {log_msg}")
 
-    def _log_game_state(self, context: str = ""):
-        """Log current game state for debugging"""
-        current_player = self.turn_manager.get_current_player()
-        print(f"\n{'='*60}")
-        print(f"GAME STATE {f'- {context}' if context else ''}")
-        print(f"{'='*60}")
-        print(f"Turn: {self.turn_manager.turn_count} | Current Player: {
-              current_player.name} ({current_player.id})")
-
-        for player in self.players:
-            info = self.game_state.player_info[player.id]
-            print(f"\n{player.name} (LP: {player.life_points}):")
-            print(f"  Hand: {len(info['held_cards'])} cards")
-            player_cards = self.game_state.get_player_cards(player.id)
-            print(f"  Field: {len([c for c in player_cards if c.ctype == 'monster'])} monsters, "
-                  f"{len([c for c in player_cards if c.ctype == 'trap'])} traps")
-            print(f"  Graveyard: {len(info['graveyard_cards'])} cards")
-            print(f"  Has summoned: {info['has_summoned_monster']}")
-            print(f"  Has toggled: {info['has_toggled']}")
-        print(f"{'='*60}\n")
-
     def start_game(self):
         print("="*60)
         print("GAME STARTED")
         print("="*60)
         self.give_init_cards(self.start_hand_count)
-        self._log_game_state("Initial Setup")
 
     def give_init_cards(self, number: int):
         for player in self.players:
@@ -187,7 +170,7 @@ class GameEngine:
             self.event_logger.add_event(
                 ToggleEvent(card_id=card.id, mode=new_mode))
             self.game_state.player_info[owner_id]["has_toggled"] = True
-
+            self.check_toggle_trap(card_id)
             self._log_action("TOGGLE", owner_id, {
                 "card": card.name,
                 "position": card.pos_in_matrix,
@@ -307,7 +290,7 @@ class GameEngine:
             return False
 
         # Check for trap triggers before resolving battle
-        if self.check_trap_triggers(card_id, defender_id):
+        if self.check_attack_trap(card_id, defender_id):
             target_card = self.game_state.get_card_by_id(target_id)
             self._log_action("ATTACK", attacker_id, {
                 "attacker_card": card.name,
@@ -361,13 +344,15 @@ class GameEngine:
             if target.mode == 'attack':
                 if card.atk > target.atk:
                     damage = abs(card.atk - target.atk)
-                    defender.life_points = max(defender.life_points - damage, 0)
+                    defender.life_points = max(
+                        defender.life_points - damage, 0)
                     self.move_card_to_graveyard(target_id)
                     battle_details["result"] = f"Target destroyed, {
                         defender.name} -{damage}LP"
                 elif card.atk < target.atk:
                     damage = abs(target.atk - card.atk)
-                    attacker.life_points = max(attacker.life_points - damage, 0)
+                    attacker.life_points = max(
+                        attacker.life_points - damage, 0)
                     self.move_card_to_graveyard(card_id)
                     battle_details["result"] = f"Attacker destroyed, {
                         attacker.name} -{damage}LP"
@@ -381,7 +366,8 @@ class GameEngine:
                     battle_details["result"] = "Target destroyed (defense pierced)"
                 elif card.atk < target.defend:
                     damage = abs(target.defend - card.atk)
-                    attacker.life_points = max(attacker.life_points - damage, 0)
+                    attacker.life_points = max(
+                        attacker.life_points - damage, 0)
                     battle_details["result"] = f"Attack got reflected, {
                         attacker.name} -{damage}LP"
                 else:
@@ -391,7 +377,8 @@ class GameEngine:
         else:  # direct attack to player
             target_player = self.game_state.players_lookup[target_id]
             damage = card.atk
-            target_player.life_points = max(target_player.life_points - damage, 0)
+            target_player.life_points = max(
+                target_player.life_points - damage, 0)
             self._log_action("ATTACK", attacker_id, {
                 "attacker_card": f"{card.name} (ATK:{card.atk})",
                 "target": f"Player {target_player.name}",
@@ -622,6 +609,7 @@ class GameEngine:
         result = False
         effect_desc = ""
 
+        # TODO: sometime the debuff trigger first then the one time use which is a waste
         if trap.ability == "debuff_enemy_atk":
             self.effect_tracker.add_effect(
                 EffectType.DEBUFF, attacker_id, "atk", trap.value, trap.duration, self.game_state)
@@ -659,20 +647,51 @@ class GameEngine:
         print(f"Effect: {effect_desc}")
         return result
 
-    def check_trap_triggers(self, attacker_id: str, defender_id: str):
+    # TODO: this is just such a bad way to handle it tbh
+    def check_toggle_trap(self, card_toggle_id: str):
+        card_toggle = self.game_state.get_card_by_id(card_toggle_id)
+        triggered = False
+
+        if not card_toggle or card_toggle.ctype != "monster":
+            return triggered
+
+        opponents_ids = [
+            pid for pid in self.game_state.player_info.keys() if pid != card_toggle.owner_id]
+
+        for opponent_id in opponents_ids:
+            opponent_cards = self.game_state.get_player_cards(opponent_id)
+            traps = [card for card in opponent_cards if card.ctype == "trap"]
+            for trap in traps:
+                # Only debuff its defend if it went into defend mode
+                if card_toggle.mode == "defense" and trap.ability == 'debuff_defend_toggle':
+                    self.event_logger.add_event(
+                        TrapTriggerEvent(trap.id, card_toggle_id))
+                    self.effect_tracker.add_effect(
+                        EffectType.DEBUFF, card_toggle_id, "defend", trap.value, trap.duration, self.game_state
+                    )
+                    trap.reveal()
+                    self.move_card_to_graveyard(trap.id)
+                    triggered = True
+
+        return triggered
+
+    def check_attack_trap(self, attacker_id: str, defender_id: str):
         """Check if any traps should be triggered by an attack"""
         defender_cards = self.game_state.get_player_cards(defender_id)
         traps = [card for card in defender_cards if card.ctype == "trap"]
 
         for trap in traps:
             if self.resolve_trap(trap.id, attacker_id):
+                self.synchronize()
                 return True
+
         return False
 
     def check_summon_trap(self, card_summon_id: str):
         card_summon = self.game_state.get_card_by_id(card_summon_id)
+        triggered = False
         if not card_summon or card_summon.ctype != "monster":
-            return
+            return triggered
 
         opponents_ids = [
             pid for pid in self.game_state.player_info.keys() if pid != card_summon.owner_id]
@@ -682,8 +701,9 @@ class GameEngine:
             traps = [card for card in opponent_cards if card.ctype == "trap"]
             for trap in traps:
                 if trap.ability == 'debuff_summon':
+                    # NOTE: please do make sure these are all ids
                     self.event_logger.add_event(
-                        TrapTriggerEvent(trap, card_summon))
+                        TrapTriggerEvent(trap.id, card_summon_id))
 
                     self.effect_tracker.add_effect(
                         EffectType.DEBUFF, card_summon_id, "atk", trap.value, trap.duration, self.game_state
@@ -694,8 +714,9 @@ class GameEngine:
                     )
                     trap.reveal()
                     self.move_card_to_graveyard(trap.id)
+                    triggered = True
 
-                    return False
+        return triggered
 
     def update_effects(self):
         """Update all active effects (call at end of each turn)"""
@@ -712,11 +733,5 @@ class GameEngine:
         self.turn_manager.end_turn()
         next_player = self.turn_manager.get_current_player()
 
-        print(f"\n{'='*60}")
-        print(f"TURN {self.turn_manager.turn_count} ENDED")
-        print(f"Next Player: {next_player.name} ({next_player.id})")
-        print(f"{'='*60}\n")
-
         self.draw_card(next_player.id)
         self.synchronize()
-        self._log_game_state(f"Start of Turn {self.turn_manager.turn_count}")

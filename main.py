@@ -169,3 +169,5 @@ if __name__ == "__main__":
 
 # TODO: add --train mode to CLI args
 # TODO: add hosted (non-local) server option
+# TODO: sometime the TrapCard still gets into serialize data
+# TODO: debuff appear differently on client or server

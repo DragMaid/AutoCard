@@ -340,7 +340,6 @@ class GameState:
         self.rows = content["rows"]
         self.cols = content["cols"]
 
-        # TODO: also need to worry about the type mismatch during deserialization process
         self.entity_lookup = {k: self._deserialize_card(
             v) for k, v in content["entity_lookup"].items()}
 
