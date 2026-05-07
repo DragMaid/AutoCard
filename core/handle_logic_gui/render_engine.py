@@ -177,8 +177,6 @@ class RenderEngine:
         """Create GUI card with proper orientation"""
         is_opponent = self.game_state.players_lookup[card.owner_id].is_opponent
 
-        # TODO: the card instance is not getting updated after every sync
-        # TODO: the traps and spell is ok since the values do not change but not scalable
         if card.ctype == "monster":
             card_gui = CardStatOverlay(MonsterCardGUI(
                 monster_info=card,
@@ -215,14 +213,6 @@ class RenderEngine:
                 if card:
                     current_cards.append(card)
 
-            # TODO: remove all these render adapter bs
-            # player_idx = 0 if player.id == game_state.players[0].id else 1
-            # is_local = (player_idx == self.render_adapter.player_idx)
-
-            # hand_area_key = self.render_adapter.get_hand_position(is_local)
-            # if hand_area_key in self.field_matrix.areas:
-                # self.field_matrix.areas[hand_area_key].hand_info = held_cards
-
         def make_hand_sprite(card):
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
@@ -249,25 +239,12 @@ class RenderEngine:
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
 
-            # TODO: remove all these render adapter vs
-            # Use render adapter to get visual position
-            # visual_row, visual_col = self.render_adapter.transform_position(
-            # *card.pos_in_matrix
-            # )
-
-            # TODO: I should create a row, col system relative to the user not the entire field
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
 
-            # visual_row, visual_col).center
             sprite.placed_pos = sprite.rect.center
 
-            # owner_idx = 0 if card.owner_id == game_state.players[0].id else 1
-
             if isinstance(sprite, TrapCardGUI):
-                # sprite.is_face_down = self.render_adapter.is_card_face_down_for_viewer(
-                # card, owner_idx
-                # )
                 if sprite.is_face_down:
                     sprite.card_surface = pygame.transform.smoothscale(
                         sprite.image_face_down.copy(), sprite.display_size)

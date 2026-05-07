@@ -179,7 +179,6 @@ class CardGUI(Sprite, Draggable):
     def on_drag(self, pos):
         self.rect.center = pos
 
-    # TODO: its because of these shit that they do not rely completely on the logic - render separation
     def on_drop(self, matrix, game_engine):
         cell = matrix.get_slot_at_pos(self.rect.center)
         success = False
@@ -190,12 +189,3 @@ class CardGUI(Sprite, Draggable):
                     self.is_draggable = False
         self.is_selected = False
         return success
-
-    # TODO: refer to this owner instance
-    # def refresh_stats(self):
-        # self._render_card_with_text()
-        # if self.logic_card.owner.is_opponent:
-            # # self.is_face_down = True
-            # self.card_surface = pygame.transform.flip(
-                # self.card_surface, False, True)
-        # self.update()
