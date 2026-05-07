@@ -11,9 +11,9 @@
   },
   {
     "name": "Shattered Guard",
-    "description": "When an opponent's monster attacks, reduce its DEF by 300 points.",
+    "description": "When an opponent's monster toggle to defense mode, reduce its DEF by 500 points.",
     "ctype": "trap",
-    "ability": "debuff_enemy_def",
+    "ability": "debuff_defend_toggle",
     "texture": "/images/trap/debuff_def.png",
     "value": 500,
     "duration": 5
