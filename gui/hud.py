@@ -45,11 +45,15 @@ class GameHUD:
     def _draw_panel(self, screen):
         font = get_font(24)
         turn_count = self.game_engine.turn_manager.turn_count
-        current_player = self.game_engine.turn_manager.get_current_player()
-        is_local_turn = not current_player.is_opponent
+        is_local_turn = self.game_engine.is_local_turn()
+        is_trap_stage = self.game_engine.turn_manager.is_trap_stage()
 
-        player_label = "Your Turn" if is_local_turn else "Opponent Turn"
-        label_color = (100, 255, 100) if is_local_turn else (255, 100, 100)
+        if is_trap_stage:
+            player_label = "Your Trap" if is_local_turn else "Enemy Trap"
+            label_color = (255, 200, 0)  # Golden/Yellow for traps
+        else:
+            player_label = "Your Turn" if is_local_turn else "Opponent Turn"
+            label_color = (100, 255, 100) if is_local_turn else (255, 100, 100)
 
         panel_rect = pygame.Rect(10, SCREEN_SIZE[1] - 235, 160, 235)
         panel_surf = pygame.Surface(
@@ -68,6 +72,33 @@ class GameHUD:
         player_surf = font.render(player_label, True, label_color)
         screen.blit(player_surf, player_surf.get_rect(
             center=(panel_rect.centerx, panel_rect.top + 75)))
+
+
+class TrapStageOverlay:
+    """Overlay shown when waiting for the opponent to resolve traps."""
+
+    def __init__(self, screen_size):
+        self.screen_size = screen_size
+        self.visible = False
+
+    def show(self):
+        self.visible = True
+
+    def hide(self):
+        self.visible = False
+
+    def draw(self, screen):
+        if not self.visible:
+            return
+        overlay = pygame.Surface(self.screen_size, pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 120))
+        screen.blit(overlay, (0, 0))
+
+        font = get_font(48)
+        text_surf = font.render(
+            "Opponent Resolving Traps...", True, (255, 255, 255))
+        screen.blit(text_surf, text_surf.get_rect(
+            center=(self.screen_size[0] // 2, self.screen_size[1] // 2)))
 
 
 class SurrenderOverlay:

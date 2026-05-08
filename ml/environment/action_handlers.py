@@ -1,8 +1,5 @@
 from .utils import safe_index
 from core.player import Player
-from core.cards.monster_card import MonsterCard
-from core.cards.spell_card import SpellCard
-from core.cards.trap_card import TrapCard
 from typing import Optional, Dict
 import logging
 

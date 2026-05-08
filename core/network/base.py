@@ -9,7 +9,7 @@ from gui.gui_info.matrix_field import Matrix
 from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
-from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay
+from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
 
 # TODO: move this to config
 SCREEN_SIZE = (1280, 720)
@@ -75,6 +75,7 @@ class GameApp(ABC):
             SCREEN_SIZE,
             on_continue=self._on_return_to_menu,
         )
+        self.trap_overlay = TrapStageOverlay(SCREEN_SIZE)
 
     def _on_surrender_requested(self):
         self.surrender_overlay.show()
@@ -136,6 +137,12 @@ class GameApp(ABC):
         is_local = self.game_engine.is_local_turn()
         self.hud.set_local_turn(is_local)
 
+        # Show trap overlay if it's the opponent's turn to activate traps
+        if self.game_engine.turn_manager.is_trap_stage() and not is_local:
+            self.trap_overlay.show()
+        else:
+            self.trap_overlay.hide()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -170,6 +177,7 @@ class GameApp(ABC):
         self.render_engine.draw()
         EffectManager.draw(self.screen)
         self.hud.draw(self.screen)
+        self.trap_overlay.draw(self.screen)
         self.surrender_overlay.draw(self.screen)
         self.game_over_overlay.draw(self.screen)
         pygame.display.flip()

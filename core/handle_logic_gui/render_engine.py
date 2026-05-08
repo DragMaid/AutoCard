@@ -13,6 +13,7 @@ from core.game_info.events import (
 from gui.sprite_manager import SpriteManager
 
 
+# TODO: remove all the AI written slops with weird icons
 class RenderEngine:
     def __init__(
         self,
