@@ -25,14 +25,5 @@ class TrapCardGUI(CardGUI):
         self.is_selected = False
         return success
 
-    # def on_trigger(self, game_engine):
-        # self.is_face_down = False
-        # self.logic_card.reveal()
-
-        # # Update preview panel
-        # preview_area = game_engine.render_engine.matrix.areas["preview_card_table"]
-        # preview_area.set_card(self)
-
-        # # Resolve trap effect
-        # game_engine.resolve_trap(self.logic_card)
-        # self.kill()  # remove from field
+    def draw(self, surface):
+        super().draw(surface)

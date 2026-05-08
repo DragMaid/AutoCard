@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Tuple, List, Any
+from core.cards.trap_card import ActivateCondition
 from core.factory.draw_system import DrawSystem
 from core.player import Player
 from core.factory.monster_factory import MonsterFactory
@@ -170,6 +171,8 @@ class GameEngine:
             self.event_logger.add_event(
                 ToggleEvent(card_id=card.id, mode=new_mode))
             self.game_state.player_info[owner_id]["has_toggled"] = True
+            # TODO: allow the usage of this
+            # TODO: this was a shitty way to do it, please fix this
             self.check_toggle_trap(card_id)
             self._log_action("TOGGLE", owner_id, {
                 "card": card.name,
@@ -247,7 +250,11 @@ class GameEngine:
             })
 
         self._log_action("SUMMON", player_id, details, True)
-        self.check_summon_trap(card_id)
+
+        # TODO: fix this and leave the activation to the other first
+        # TODO: add an indicator for the target also
+        # self.check_summon_trap(card_id)
+
         self.synchronize()
         return True
 
@@ -289,16 +296,17 @@ class GameEngine:
             }, False)
             return False
 
+        # TODO: this was a shitty way to do it, please fix this
         # Check for trap triggers before resolving battle
-        if self.check_attack_trap(card_id, defender_id):
-            target_card = self.game_state.get_card_by_id(target_id)
-            self._log_action("ATTACK", attacker_id, {
-                "attacker_card": card.name,
-                "target": target_card.name if target_card else target_id,
-                "result": "Negated/Reflected by trap"
-            }, True)
-            self.synchronize()
-            return True
+        # if self.check_attack_trap(card_id, defender_id):
+            # target_card = self.game_state.get_card_by_id(target_id)
+            # self._log_action("ATTACK", attacker_id, {
+                # "attacker_card": card.name,
+                # "target": target_card.name if target_card else target_id,
+                # "result": "Negated/Reflected by trap"
+            # }, True)
+            # self.synchronize()
+            # return True
 
         self.resolve_battle(attacker_id, defender_id,
                             card_id, target_id, target_is_player)
@@ -647,58 +655,23 @@ class GameEngine:
         print(f"Effect: {effect_desc}")
         return result
 
-    # TODO: this is just such a bad way to handle it tbh
-    def check_toggle_trap(self, card_toggle_id: str):
+    def check_trap(self, condition: ActivateCondition, **kwargs):
         """Identify traps triggerable by a toggle, add them to triggerable_traps"""
-        triggerable = self.rule_engine.get_toggle_traps(card_toggle_id)
+        condition_map = {
+            ActivateCondition.TOGGLE: self.rule_engine.get_toggle_traps,
+            ActivateCondition.ATTACK: self.rule_engine.get_attack_traps,
+            ActivateCondition.SUMMON: self.rule_engine.get_toggle_traps
+        }
+        triggerable = condition_map[condition](**kwargs)
+        return triggerable
 
-        for trap_id, context in triggerable:
-            self.game_state.triggerable_traps[trap_id] = context
-            trap = self.game_state.get_card_by_id(trap_id)
-            if trap:
-                trap.reveal()  # Flip trap up temporarily
-                self.event_logger.add_event(
-                    TrapTriggerEvent(trap_id, card_toggle_id))
+        # TODO: fix this later
+        # for trap_id, target_id, context in triggerable:
+            # self.game_state.triggerable_traps[trap_id] = context
+            # self.event_logger.add_event(
+                # TrapTriggerEvent(trap_id, target_id))
 
-        if triggerable:
-            self.synchronize()
-
-        return len(triggerable) > 0
-
-    def check_attack_trap(self, attacker_id: str, defender_id: str):
-        """Identify traps triggerable by an attack, add them to triggerable_traps"""
-        triggerable = self.rule_engine.get_attack_traps(
-            attacker_id, defender_id)
-
-        for trap_id, context in triggerable:
-            self.game_state.triggerable_traps[trap_id] = context
-            trap = self.game_state.get_card_by_id(trap_id)
-            if trap:
-                trap.reveal()  # Flip trap up temporarily
-                self.event_logger.add_event(
-                    TrapTriggerEvent(trap_id, attacker_id))
-
-        if triggerable:
-            self.synchronize()
-
-        return len(triggerable) > 0
-
-    def check_summon_trap(self, card_summon_id: str):
-        """Identify traps triggerable by a summon, add them to triggerable_traps"""
-        triggerable = self.rule_engine.get_summon_traps(card_summon_id)
-
-        for trap_id, context in triggerable:
-            self.game_state.triggerable_traps[trap_id] = context
-            trap = self.game_state.get_card_by_id(trap_id)
-            if trap:
-                trap.reveal()  # Flip trap up temporarily
-                self.event_logger.add_event(
-                    TrapTriggerEvent(trap_id, card_summon_id))
-
-        if triggerable:
-            self.synchronize()
-
-        return len(triggerable) > 0
+        # return len(triggerable) > 0
 
     def get_triggerable_traps(self) -> list:
         """Return list of trap IDs that are currently triggerable."""
@@ -708,52 +681,53 @@ class GameEngine:
         """Check if there are any triggerable traps waiting for activation."""
         return len(self.game_state.triggerable_traps) > 0
 
-    def activate_trap(self, trap_id: str) -> bool:
-        """Activate a specific trap that is marked as triggerable.
+    # TODO: this function jjust doesnt get used at all
+    # def activate_trap(self, trap_id: str) -> bool:
+        # """Activate a specific trap that is marked as triggerable.
 
-        Args:
-            trap_id: ID of the trap to activate
+        # Args:
+            # trap_id: ID of the trap to activate
 
-        Returns:
-            True if trap was successfully activated, False otherwise
-        """
-        if trap_id not in self.game_state.triggerable_traps:
-            self.logger.warning(
-                f"[TRAP] Attempted to activate non-triggerable trap {trap_id}")
-            return False
+        # Returns:
+            # True if trap was successfully activated, False otherwise
+        # """
+        # if trap_id not in self.game_state.triggerable_traps:
+            # self.logger.warning(
+                # f"[TRAP] Attempted to activate non-triggerable trap {trap_id}")
+            # return False
 
-        trap = self.game_state.get_card_by_id(trap_id)
-        if not trap or trap.ctype != "trap":
-            self.logger.warning(f"[TRAP] Trap {trap_id} not found or invalid")
-            return False
+        # trap = self.game_state.get_card_by_id(trap_id)
+        # if not trap or trap.ctype != "trap":
+            # self.logger.warning(f"[TRAP] Trap {trap_id} not found or invalid")
+            # return False
 
-        context = self.game_state.triggerable_traps[trap_id]
-        self.game_state.activated_traps.add(trap_id)
+        # context = self.game_state.triggerable_traps[trap_id]
+        # self.game_state.activated_traps.add(trap_id)
 
-        # Resolve the trap's effect based on its ability
-        trigger_type = context.get("trigger_type")
+        # # Resolve the trap's effect based on its ability
+        # trigger_type = context.get("trigger_type")
 
-        if trigger_type == "attack":
-            attacker_id = context.get("attacker_id")
-            result = self.resolve_trap(trap_id, attacker_id)
-        elif trigger_type == "toggle":
-            toggled_card_id = context.get("toggled_card_id")
-            # Apply toggle trap effect
-            result = self._resolve_toggle_trap(trap_id, toggled_card_id)
-        elif trigger_type == "summon":
-            summoned_card_id = context.get("summoned_card_id")
-            # Apply summon trap effect
-            result = self._resolve_summon_trap(trap_id, summoned_card_id)
-        else:
-            result = False
+        # if trigger_type == "attack":
+            # attacker_id = context.get("attacker_id")
+            # result = self.resolve_trap(trap_id, attacker_id)
+        # elif trigger_type == "toggle":
+            # toggled_card_id = context.get("toggled_card_id")
+            # # Apply toggle trap effect
+            # result = self._resolve_toggle_trap(trap_id, toggled_card_id)
+        # elif trigger_type == "summon":
+            # summoned_card_id = context.get("summoned_card_id")
+            # # Apply summon trap effect
+            # result = self._resolve_summon_trap(trap_id, summoned_card_id)
+        # else:
+            # result = False
 
-        # Remove from triggerable list
-        del self.game_state.triggerable_traps[trap_id]
+        # # Remove from triggerable list
+        # del self.game_state.triggerable_traps[trap_id]
 
-        self.logger.info(
-            f"[TRAP] Trap {trap.name} activated (result: {result})")
-        self.synchronize()
-        return result
+        # self.logger.info(
+            # f"[TRAP] Trap {trap.name} activated (result: {result})")
+        # self.synchronize()
+        # return result
 
     def skip_triggerable_traps(self) -> bool:
         """Skip all remaining triggerable traps and clear the list."""

@@ -1,5 +1,12 @@
 from core.cards.card import Card
 from typing import Any
+from enum import Enum
+
+
+class ActivateCondition(Enum):
+    TOGGLE = "TOGGLE"
+    ATTACK = "ATTACK"
+    SUMMON = "SUMMON"
 
 
 class TrapCard(Card):

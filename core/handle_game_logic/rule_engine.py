@@ -313,7 +313,7 @@ class RuleEngine:
                                           card.pos_in_matrix} but field has {field_card.name if field_card else 'None'}")
 
         if violations:
-            self.logger.warning(f"[RULE] ⚠️ Game rule violations detected:")
+            self.logger.warning("[RULE] ⚠️ Game rule violations detected:")
             for violation in violations:
                 self.logger.warning(f"  - {violation}")
 
@@ -341,7 +341,7 @@ class RuleEngine:
                     "attacker_id": attacker_id,
                     "defender_id": defender_id
                 }
-                triggerable.append((card.id, context))
+                triggerable.append((card.id, attacker_id, context))
 
         return triggerable
 
@@ -374,7 +374,7 @@ class RuleEngine:
                         "trigger_type": "summon",
                         "summoned_card_id": summoned_card_id
                     }
-                    triggerable.append((card.id, context))
+                    triggerable.append((card.id, summoned_card_id, context))
 
         return triggerable
 
@@ -411,6 +411,6 @@ class RuleEngine:
                         "trigger_type": "toggle",
                         "toggled_card_id": toggled_card_id
                     }
-                    triggerable.append((card.id, context))
+                    triggerable.append((card.id, toggled_card_id, context))
 
         return triggerable
