@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Tuple, List, Any
+from typing import Tuple, List
 from core.cards.trap_card import ActivateCondition
 from core.factory.draw_system import DrawSystem
 from core.player import Player
@@ -9,9 +9,11 @@ from core.factory.trap_factory import TrapFactory
 from core.game_info.game_state import GameState
 from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager
-from core.game_info.effect_tracker import EffectTracker, EffectType
-from core.game_info.events import EventLogger, AttackEvent, TrapTriggerEvent, ToggleEvent, SpellActiveEvent, MergeEvent
+from core.game_info.effect_tracker import EffectTracker
+from core.game_info.events import EventLogger, AttackEvent, ToggleEvent, MergeEvent
 from core.utils import disable_print, setup_logger
+from core.handle_game_logic.trap_engine import TrapEngine
+from core.handle_game_logic.spell_engine import SpellEngine
 
 
 class GameEngine:
@@ -26,6 +28,13 @@ class GameEngine:
         self.rule_engine = RuleEngine(self.game_state, self.turn_manager)
         self.draw_system = DrawSystem()
         self.event_logger = EventLogger()
+
+        self.trap_engine = TrapEngine(
+            self.game_state,
+            self.event_logger,
+            self.rule_engine
+        )
+        self.spell_engine = SpellEngine(self)
 
         self.players = players
 
@@ -122,20 +131,6 @@ class GameEngine:
             for _ in range(number):
                 self.draw_card(player.id, check=False)
 
-    # DEBUG FUNCTION
-    def draw_specific_card(self, player_id: str, name: str, ctype: str):
-        if ctype == "monster":
-            card = self.monster_factory.load(player_id, name)
-        elif ctype == "trap":
-            card = self.trap_factory.load(player_id, name)
-        elif ctype == "spell":
-            card = self.spell_factory.load(player_id, name)
-        else:
-            return
-        self.game_state.entity_lookup[card.id] = card
-        self.game_state.player_info[player_id]["held_cards"].add(card.id)
-        print(f"[DEBUG] {player_id} received specific card: {name}")
-
     def draw_card(self, player_id: str, check=True):
         """Player draws a card if allowed"""
         can_draw = not check or self.rule_engine.can_draw(player_id)
@@ -171,16 +166,21 @@ class GameEngine:
             self.event_logger.add_event(
                 ToggleEvent(card_id=card.id, mode=new_mode))
             self.game_state.player_info[owner_id]["has_toggled"] = True
+
+            self.synchronize()
             # TODO: allow the usage of this
             # TODO: this was a shitty way to do it, please fix this
-            self.check_toggle_trap(card_id)
+            # TODO: the thing is to make it shows only for correct user
+            if self.trap_engine.check_traps(ActivateCondition.TOGGLE, toggled_card_id=card_id):
+                self.turn_manager.toggle_trap_stage(state=True)
+                self.synchronize()
+
             self._log_action("TOGGLE", owner_id, {
                 "card": card.name,
                 "position": card.pos_in_matrix,
                 "from": old_mode,
                 "to": new_mode
             }, True)
-            self.synchronize()
             return True
 
         self._log_action("TOGGLE", owner_id, {
@@ -252,6 +252,7 @@ class GameEngine:
         self._log_action("SUMMON", player_id, details, True)
 
         # TODO: fix this and leave the activation to the other first
+        # TODO: the summon one is easy, the toggle one is easy, but the attack one is hard
         # TODO: add an indicator for the target also
         # self.check_summon_trap(card_id)
 
@@ -301,9 +302,9 @@ class GameEngine:
         # if self.check_attack_trap(card_id, defender_id):
             # target_card = self.game_state.get_card_by_id(target_id)
             # self._log_action("ATTACK", attacker_id, {
-                # "attacker_card": card.name,
-                # "target": target_card.name if target_card else target_id,
-                # "result": "Negated/Reflected by trap"
+            # "attacker_card": card.name,
+            # "target": target_card.name if target_card else target_id,
+            # "result": "Negated/Reflected by trap"
             # }, True)
             # self.synchronize()
             # return True
@@ -471,342 +472,41 @@ class GameEngine:
 
         return False
 
-    def cast_spell(self, spell_id: str, target_id: Any = None):
-        """Cast a spell card immediately"""
-        spell = self.game_state.get_card_by_id(spell_id)
-        if not spell or spell.ctype != "spell":
-            self._log_action("CAST_SPELL", None, {
-                "reason": "Not a spell card"
-            }, False)
-            return False
+    def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True) -> bool:
+        success, log = self.trap_engine.set_trap(trap_id, position, check)
+        if success:
+            self.synchronize()
+        self._log_action(**log)
+        return success
 
-        current_player = self.turn_manager.get_current_player()
-
-        if spell.owner_id != current_player.id:
-            self._log_action("CAST_SPELL", spell.owner_id, {
-                "spell": spell.name,
-                "reason": f"Not your turn (current: {current_player.name})"
-            }, False)
-            return False
-
-        # TODO: this is way too hard coded
-        if spell.ability not in ("draw_two_cards", "call_of_brave") and target_id:
-            target_card = self.game_state.get_card_by_id(target_id)
-            if target_card and target_card.ctype == "monster" and spell.owner_id != target_card.owner_id:
-                self._log_action("CAST_SPELL", spell.owner_id, {
-                    "spell": spell.name,
-                    "target": target_card.name,
-                    "reason": "Cannot target enemy monsters with buff spells"
-                }, False)
-                return False
-
-            if target_card and target_card.ctype == "trap" and spell.owner_id == target_card.owner_id:
-                self._log_action("CAST_SPELL", spell.owner_id, {
-                    "spell": spell.name,
-                    "target": target_card.name,
-                    "reason": "Cannot destroy your own trap"
-                }, False)
-                return False
-
-        details = {"spell": spell.name, "ability": spell.ability}
-
-        # Resolve spell based on ability
-        if spell.ability == "draw_two_cards":
-            self.draw_card(spell.owner_id, check=False)
-            self.draw_card(spell.owner_id, check=False)
-            details["effect"] = "Drew 2 cards"
-
-        elif spell.ability == "buff_attack":
-            self.effect_tracker.add_effect(
-                EffectType.BUFF, target_id, "atk", spell.value, spell.duration, self.game_state)
-            target_card = self.game_state.get_card_by_id(target_id)
-            details["target"] = target_card.name if target_card else target_id
-            details["effect"] = f"+{spell.value} ATK for {spell.duration} turns"
-
-        elif spell.ability == "buff_defense":
-            self.effect_tracker.add_effect(
-                EffectType.BUFF, target_id, "defend", spell.value, spell.duration, self.game_state)
-            target_card = self.game_state.get_card_by_id(target_id)
-            details["target"] = target_card.name if target_card else target_id
-            details["effect"] = f"+{spell.value} DEF for {spell.duration} turns"
-
-        elif spell.ability == "destroy_trap":
-            if target_id:
-                target_card = self.game_state.get_card_by_id(target_id)
-                if target_card and target_card.ctype == "trap":
-                    self.move_card_to_graveyard(target_id)
-                    details["target"] = target_card.name
-                    details["effect"] = "Trap destroyed"
-                else:
-                    details["reason"] = f"Invalid trap target - {target_id}"
-                    self._log_action(
-                        "CAST_SPELL", spell.owner_id, details, False)
-                    return False
-
-        elif spell.ability == "summon_monster_from_hand":
-            self.game_state.player_info[spell.owner_id]['has_summoned_monster'] = False
-            details["effect"] = "Extra summon enabled"
-
-        # Move spell to graveyard after use
-        self.event_logger.add_event(SpellActiveEvent(
-            spell_id=spell.id, target_id=target_id))
-        self.game_state.player_info[spell.owner_id]["held_cards"].remove(
-            spell_id)
-        self.game_state.player_info[spell.owner_id]["graveyard_cards"].add(
-            spell_id)
-
-        self._log_action("CAST_SPELL", spell.owner_id, details, True)
-        self.synchronize()
-        return True
-
-    def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True):
-        """Set a trap card face-down on the field"""
-        trap = self.game_state.get_card_by_id(trap_id)
-        if not trap or trap.ctype != "trap":
-            return False
-
-        can_set = self.rule_engine.can_summon(
-            trap.owner_id, trap_id, self.game_state.field_matrix, position) or not check
-
-        if not can_set:
-            self._log_action("SET_TRAP", trap.owner_id, {
-                "trap": trap.name,
-                "position": position,
-                "reason": "Cannot set trap (already set one or no space)"
-            }, False)
-            return False
-
-        if position is None:
-            position = self.game_state.get_random_empty_slot(trap.owner_id)
-            if position is None:
-                self._log_action("SET_TRAP", trap.owner_id, {
-                    "trap": trap.name,
-                    "reason": "No empty slots available"
-                }, False)
-                return False
-
-        # Place trap face-down
-        self.game_state.player_info[trap.owner_id]["held_cards"].remove(
-            trap_id)
-        self.game_state.modify_field("add", trap, position)
-        self.game_state.player_info[trap.owner_id]["has_summoned_trap"] = True
-        trap.is_placed = True
-        trap.is_face_down = True
-        trap.pos_in_matrix = position
-
-        self._log_action("SET_TRAP", trap.owner_id, {
-            "trap": trap.name,
-            "ability": trap.ability,
-            "position": position,
-            "state": "face-down"
-        }, True)
-        self.synchronize()
-        return True
-
-    def resolve_trap(self, trap_id: str, attacker_id: str):
-        """Resolve a trap card when triggered"""
-        trap = self.game_state.get_card_by_id(trap_id)
-        attacker = self.game_state.get_card_by_id(attacker_id)
-
-        if not trap or trap.ctype != "trap" or not attacker:
-            return False
-
-        print(f"  🪤 TRAP ACTIVATED: {trap.name} (Owner: {trap.owner_id})")
-        print(f"     Trigger: {attacker.name} (Owner: {attacker.owner_id})")
-
-        result = False
-        effect_desc = ""
-
-        # TODO: sometime the debuff trigger first then the one time use which is a waste
-        if trap.ability == "debuff_enemy_atk":
-            self.effect_tracker.add_effect(
-                EffectType.DEBUFF, attacker_id, "atk", trap.value, trap.duration, self.game_state)
-            trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
-            self.move_card_to_graveyard(trap_id)
-            effect_desc = f"{
-                attacker.name} ATK -{trap.value} for {trap.duration} turns"
-
-        elif trap.ability == "debuff_enemy_def":
-            self.effect_tracker.add_effect(
-                EffectType.DEBUFF, attacker_id, "defend", trap.value, trap.duration, self.game_state)
-            trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
-            self.move_card_to_graveyard(trap_id)
-            effect_desc = f"{
-                attacker.name} DEF -{trap.value} for {trap.duration} turns"
-
-        elif trap.ability == "dodge_attack":
-            attacker.has_attack = True
-            self.move_card_to_graveyard(trap_id)
-            effect_desc = "Attack negated"
-            result = True
-            trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
-
-        elif trap.ability == "reflect_attack":
-            self.move_card_to_graveyard(attacker_id)
-            self.move_card_to_graveyard(trap_id)
-            trap.reveal()
-            self.event_logger.add_event(TrapTriggerEvent(trap_id, attacker_id))
-            effect_desc = "Attack reflected, attacker destroyed"
-            result = True
-
-        print(f"Effect: {effect_desc}")
-        return result
-
-    def check_trap(self, condition: ActivateCondition, **kwargs):
-        """Identify traps triggerable by a toggle, add them to triggerable_traps"""
-        condition_map = {
-            ActivateCondition.TOGGLE: self.rule_engine.get_toggle_traps,
-            ActivateCondition.ATTACK: self.rule_engine.get_attack_traps,
-            ActivateCondition.SUMMON: self.rule_engine.get_toggle_traps
-        }
-        triggerable = condition_map[condition](**kwargs)
-        return triggerable
-
-        # TODO: fix this later
-        # for trap_id, target_id, context in triggerable:
-            # self.game_state.triggerable_traps[trap_id] = context
-            # self.event_logger.add_event(
-                # TrapTriggerEvent(trap_id, target_id))
-
-        # return len(triggerable) > 0
-
-    def get_triggerable_traps(self) -> list:
-        """Return list of trap IDs that are currently triggerable."""
-        return list(self.game_state.triggerable_traps.keys())
-
-    def has_triggerable_traps(self) -> bool:
-        """Check if there are any triggerable traps waiting for activation."""
-        return len(self.game_state.triggerable_traps) > 0
-
-    # TODO: this function jjust doesnt get used at all
-    # def activate_trap(self, trap_id: str) -> bool:
-        # """Activate a specific trap that is marked as triggerable.
-
-        # Args:
-            # trap_id: ID of the trap to activate
-
-        # Returns:
-            # True if trap was successfully activated, False otherwise
-        # """
-        # if trap_id not in self.game_state.triggerable_traps:
-            # self.logger.warning(
-                # f"[TRAP] Attempted to activate non-triggerable trap {trap_id}")
-            # return False
-
-        # trap = self.game_state.get_card_by_id(trap_id)
-        # if not trap or trap.ctype != "trap":
-            # self.logger.warning(f"[TRAP] Trap {trap_id} not found or invalid")
-            # return False
-
-        # context = self.game_state.triggerable_traps[trap_id]
-        # self.game_state.activated_traps.add(trap_id)
-
-        # # Resolve the trap's effect based on its ability
-        # trigger_type = context.get("trigger_type")
-
-        # if trigger_type == "attack":
-            # attacker_id = context.get("attacker_id")
-            # result = self.resolve_trap(trap_id, attacker_id)
-        # elif trigger_type == "toggle":
-            # toggled_card_id = context.get("toggled_card_id")
-            # # Apply toggle trap effect
-            # result = self._resolve_toggle_trap(trap_id, toggled_card_id)
-        # elif trigger_type == "summon":
-            # summoned_card_id = context.get("summoned_card_id")
-            # # Apply summon trap effect
-            # result = self._resolve_summon_trap(trap_id, summoned_card_id)
-        # else:
-            # result = False
-
-        # # Remove from triggerable list
-        # del self.game_state.triggerable_traps[trap_id]
-
-        # self.logger.info(
-            # f"[TRAP] Trap {trap.name} activated (result: {result})")
-        # self.synchronize()
-        # return result
-
-    def skip_triggerable_traps(self) -> bool:
-        """Skip all remaining triggerable traps and clear the list."""
-        if not self.game_state.triggerable_traps:
-            return False
-
-        # Reset traps to face-down if they weren't activated
-        non_activated = [tid for tid in self.game_state.triggerable_traps.keys()
-                         if tid not in self.game_state.activated_traps]
-
-        for trap_id in non_activated:
-            trap = self.game_state.get_card_by_id(trap_id)
-            if trap:
-                trap.is_face_down = True  # Flip back to face-down
-
-        # Clear triggerable traps and activated traps for this phase
-        self.game_state.triggerable_traps.clear()
-        self.game_state.activated_traps.clear()
-
-        self.logger.info(f"[TRAP] Skipped {len(
-            non_activated)} triggerable traps")
-        self.synchronize()
-        return True
-
-    def _resolve_toggle_trap(self, trap_id: str, toggled_card_id: str) -> bool:
-        """Resolve a trap triggered by toggle."""
-        trap = self.game_state.get_card_by_id(trap_id)
-        toggled_card = self.game_state.get_card_by_id(toggled_card_id)
-
-        if not trap or not toggled_card:
-            return False
-
-        if trap.ability == "debuff_defend_toggle":
-            self.effect_tracker.add_effect(
-                EffectType.DEBUFF, toggled_card_id, "defend", trap.value, trap.duration, self.game_state
-            )
-            self.move_card_to_graveyard(trap_id)
-            self.logger.info(f"[TRAP] {trap.name} debuffed {
-                             toggled_card.name} DEF")
-            return True
-
-        return False
-
-    def _resolve_summon_trap(self, trap_id: str, summoned_card_id: str) -> bool:
-        """Resolve a trap triggered by summon."""
-        trap = self.game_state.get_card_by_id(trap_id)
-        summoned_card = self.game_state.get_card_by_id(summoned_card_id)
-
-        if not trap or not summoned_card:
-            return False
-
-        if trap.ability == "debuff_summon":
-            self.effect_tracker.add_effect(
-                EffectType.DEBUFF, summoned_card_id, "atk", trap.value, trap.duration, self.game_state
-            )
-            self.effect_tracker.add_effect(
-                EffectType.DEBUFF, summoned_card_id, "defend", trap.value, trap.duration, self.game_state
-            )
-            self.move_card_to_graveyard(trap_id)
-            self.logger.info(f"[TRAP] {trap.name} debuffed {
-                             summoned_card.name}")
-            return True
-
-        return False
+    # TODO: normalize the dependency logging thing later
+    def cast_spell(self, spell_id: str, target_id: str | None = None) -> bool:
+        success = self.spell_engine.cast_spell(spell_id, target_id)
+        if success:
+            self.synchronize()
+        return success
 
     def update_effects(self):
         """Update all active effects (call at end of each turn)"""
         self.effect_tracker.update_round(self.game_state)
 
+    # TODO: refactor the rest after, each would have its own manager instance
+    # TODO: should remove all the print for logging module instead
     def end_turn(self):
         """End current player's turn"""
-        current_player = self.turn_manager.get_current_player()
+        if self.turn_manager.is_trap_stage():
+            self.turn_manager.toggle_trap_stage(state=False)
+            self.trap_engine.resolve_traps()
+        else:
+            current_player = self.turn_manager.get_current_player()
 
-        for card in self.game_state.get_player_cards(current_player.id):
-            if card.ctype == "monster":
-                card.has_attack = False
+            for card in self.game_state.get_player_cards(current_player.id):
+                if card.ctype == "monster":
+                    card.has_attack = False
 
-        self.turn_manager.end_turn()
-        next_player = self.turn_manager.get_current_player()
+            self.turn_manager.end_turn()
+            next_player = self.turn_manager.get_current_player()
 
-        self.draw_card(next_player.id)
+            self.draw_card(next_player.id)
+
         self.synchronize()

@@ -49,10 +49,15 @@ class GameApp(ABC):
     def _setup_rendering(self):
         self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
         self.render_engine = RenderEngine(
-            self.field_matrix, self.screen, self.game_engine.game_state
+            field_matrix=self.field_matrix,
+            screen=self.screen,
+            event_logger=self.game_engine.event_logger,
+            game_state=self.game_engine.game_state
         )
         self.input_manager = InputManager(
-            self.field_matrix, self.game_engine, self.render_engine
+            self.field_matrix,
+            self.game_engine,
+            self.render_engine
         )
 
     def _setup_ui(self):

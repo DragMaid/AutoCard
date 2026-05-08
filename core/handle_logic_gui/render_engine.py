@@ -14,16 +14,28 @@ from gui.sprite_manager import SpriteManager
 
 
 class RenderEngine:
-    def __init__(self, field_matrix, screen, game_state, train_mode=False, player_idx=0):
+    def __init__(
+        self,
+        *,
+        field_matrix,
+        screen,
+        game_state,
+        event_logger,
+        train_mode=False,
+        player_idx=0
+    ):
         self.screen = screen
         self.field_matrix = field_matrix
         self.sprite_manager = SpriteManager()
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
         self.game_state = game_state
+        self.event_logger = event_logger
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
         self.sprite_lookup = {}
+
+        self.last_triggered_count = 0
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -31,31 +43,31 @@ class RenderEngine:
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges.clear()
 
-    # TODO: since im passing in game state anyway so remove these
-    def update(self, game_state, matrix, events):
-        self.handle_events(game_state, matrix, events)
-        self.register_cards(game_state, matrix)
-        self.update_triggerable_traps(game_state)
-        self.handle_merge(game_state)
+    def update(self):
+        self.handle_events()
+        self.register_cards()
+        self.handle_merge()
         self.process_pending_merges()
+        # NOTE: this is handled here so as not to rely on serialization process
+        self.handle_trap_activation()
 
-    def update_triggerable_traps(self, game_state):
-        """Update UI display for traps marked as triggerable."""
-        # Get all trap sprites on matrix
-        trap_sprites = {}
-        for card_id, sprite in self.sprite_manager.sprites.get("matrix", {}).items():
-            card = game_state.get_card_by_id(card_id)
-            if card and card.ctype == "trap" and isinstance(sprite, TrapCardGUI):
-                trap_sprites[card_id] = sprite
-        
-        # Update triggerable state for each trap
-        for trap_id, sprite in trap_sprites.items():
-            is_triggerable = trap_id in game_state.triggerable_traps
-            sprite.set_triggerable(is_triggerable)
+    def handle_trap_activation(self):
+        count = len(self.game_state.triggerable_traps.keys())
+        if count == self.last_triggered_count:
+            return
 
-    def handle_merge(self, game_state):
-        for player in game_state.players:
-            groups = game_state.get_mergeable_groups(player.id)
+        for trap_id in self.game_state.triggerable_traps.keys():
+            trap = self.game_state.get_card_by_id(trap_id)
+            owner = self.game_state.players_lookup[trap.owner_id]
+            if not owner.is_opponent:
+                trap.is_face_down = False
+                trap.triggerable = True
+
+        self.last_triggered_count = count
+
+    def handle_merge(self):
+        for player in self.game_state.players:
+            groups = self.game_state.get_mergeable_groups(player.id)
             extc = self.exisiting_colors[player.id]
 
             for key, group in groups.items():
@@ -79,14 +91,14 @@ class RenderEngine:
             for key in removed:
                 extc.pop(key, None)
 
-    def register_cards(self, game_state, matrix):
-        self.register_hand(game_state, matrix)
-        self.register_matrix(game_state, matrix,
+    def register_cards(self):
+        self.register_hand(self.game_state, self.field_matrix)
+        self.register_matrix(self.game_state, self.field_matrix,
                              self.animation_mgr.create_place_animation)
 
-    def handle_events(self, game_state, matrix, events):
+    def handle_events(self):
         try:
-            for event in events.get_events():
+            for event in self.event_logger.get_events():
                 et = type(event)
 
                 if et is AttackEvent:
@@ -114,8 +126,8 @@ class RenderEngine:
                     trap = self.sprite_manager.get_sprite(event.card_id)
                     if trap:
                         self.animation_mgr.create_trigger_animation(trap)
-                        matrix.areas["preview_card_table"].set_card(
-                            trap, game_state)
+                        self.field_matrix.areas["preview_card_table"].set_card(
+                            trap, self.game_state)
 
                 elif et is ToggleEvent:
                     card = self.sprite_manager.get_sprite(event.card_id)
@@ -131,7 +143,7 @@ class RenderEngine:
                 elif et is MergeEvent:
                     self.pending_merges.append(event)
 
-            events.clear_events()
+            self.event_logger.clear_events()
         except Exception as e:
             print(f"[ERROR] handle_events failed: {e}")
 
@@ -269,11 +281,6 @@ class RenderEngine:
             else:
                 sprite.is_face_down = False
                 sprite._render_card_with_text()
-
-                # Flip opponent cards
-                # if self.render_adapter.should_flip_card_image(owner_idx):
-                # sprite.card_surface = pygame.transform.flip(
-                # sprite.card_surface, False, True)
                 sprite.update()
 
             return sprite

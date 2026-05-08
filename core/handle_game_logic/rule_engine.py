@@ -1,4 +1,5 @@
 from core.handle_game_logic.turn_manager import TurnManager
+from core.cards.trap_card import ActivateCondition
 from core.game_info.game_state import GameState
 from typing import Tuple, List
 import logging
@@ -336,12 +337,8 @@ class RuleEngine:
 
             # Traps that trigger on attack
             if card.ability in ["debuff_enemy_atk", "debuff_enemy_def", "dodge_attack", "reflect_attack"]:
-                context = {
-                    "trigger_type": "attack",
-                    "attacker_id": attacker_id,
-                    "defender_id": defender_id
-                }
-                triggerable.append((card.id, attacker_id, context))
+                triggerable.append(
+                    (card.id, attacker_id, ActivateCondition.ATTACK))
 
         return triggerable
 
@@ -370,11 +367,8 @@ class RuleEngine:
 
                 # Traps that trigger on summon
                 if card.ability == "debuff_summon":
-                    context = {
-                        "trigger_type": "summon",
-                        "summoned_card_id": summoned_card_id
-                    }
-                    triggerable.append((card.id, summoned_card_id, context))
+                    triggerable.append(
+                        (card.id, summoned_card_id, ActivateCondition.SUMMON))
 
         return triggerable
 
@@ -407,10 +401,7 @@ class RuleEngine:
 
                 # Traps that trigger on toggle to defense
                 if card.ability == "debuff_defend_toggle":
-                    context = {
-                        "trigger_type": "toggle",
-                        "toggled_card_id": toggled_card_id
-                    }
-                    triggerable.append((card.id, toggled_card_id, context))
+                    triggerable.append(
+                        (card.id, toggled_card_id, ActivateCondition.TOGGLE))
 
         return triggerable

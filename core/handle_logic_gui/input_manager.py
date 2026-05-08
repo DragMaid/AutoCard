@@ -17,7 +17,8 @@ class InputManager:
                 # Check for trap activation first
                 self._handle_left_click(event.pos)
                 self._handle_left_click_arrow(event.pos)
-                self.handle_click_card(event.pos)
+                self._handle_click_card(event.pos)
+                self._handle_trap_activation(event.pos)
             elif event.button == 3:  # right click → toggle
                 self._handle_right_click(event.pos)
 
@@ -36,19 +37,20 @@ class InputManager:
 
             self._handle_release_arrow(event.pos)
 
-    # TODO: this doesnt do anything yet
-    # def _handle_trap_activation(self, pos):
-        # """Check if a trap activation button was clicked. Returns True if activated."""
-        # # Check all trap sprites on matrix
-        # for card_id, sprite in self.render_engine.sprite_manager.sprites.get("matrix", {}).items():
-            # from gui.cards_gui.trap_card import TrapCardGUI
-            # if isinstance(sprite, TrapCardGUI) and sprite.activate_button_rect:
-                # if sprite.activate_button_rect.collidepoint(pos):
-                    # # Activate the trap
-                    # sprite.on_activate(self.game_engine)
-                    # return True
-
-        # return False
+    def _handle_trap_activation(self, pos):
+        """Check if a trap activation button was clicked. Returns True if activated."""
+        for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
+            from gui.cards_gui.trap_card import TrapCardGUI
+            if isinstance(card_ui, TrapCardGUI) and card_ui.activate_button_rect:
+                if card_ui.activate_button_rect.collidepoint(pos):
+                    card_ui.activated = not card_ui.activated
+                    card_id = card_ui.logic_card.id
+                    if card_ui.activated:
+                        self.game_engine.game_state.activated_traps.add(
+                            card_id)
+                    else:
+                        self.game_engine.game_state.activated_traps.remove(
+                            card_id)
 
     def _handle_left_click(self, pos):
         # Check hands from top-most first
@@ -70,7 +72,6 @@ class InputManager:
     def _handle_release_arrow(self, pos):
         if self.drag_arrow and self.drag_arrow.dragging:
             self.drag_arrow.dragging = False
-            success = False
             # Checking for cards in field matrix
             for row in self.game_engine.game_state.field_matrix:
                 for card_id in row:
@@ -88,7 +89,7 @@ class InputManager:
                     if card_info.owner_id != self.drag_arrow.targets[0].owner_id:
                         self.drag_arrow.end_pos = card.rect.center
                         self.drag_arrow.targets[1] = card_info
-                        success = self.game_engine.attack(
+                        _ = self.game_engine.attack(
                             self.game_engine.turn_manager.get_current_player().id,
                             self.game_engine.turn_manager.get_next_player().id,
                             self.drag_arrow.targets[0].id,
@@ -171,7 +172,7 @@ class InputManager:
 
                     return
 
-    def handle_click_card(self, pos):
+    def _handle_click_card(self, pos):
         for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
             if card_ui.rect.collidepoint(pos):
                 self.matrix.areas["preview_card_table"].set_card(

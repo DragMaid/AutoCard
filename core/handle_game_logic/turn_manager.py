@@ -3,6 +3,7 @@ class TurnManager:
         self.game_state = game_state
         self.effect_tracker = effect_tracker
         self.current_player_index = 0
+        self._is_trap_stage = False
         self.turn_count = 1
 
     def serialize(self):
@@ -14,7 +15,6 @@ class TurnManager:
     def deserialize(self, content):
         self.current_player_index = content["current_player_index"]
         self.turn_count = content["turn_count"]
-        print(self.turn_count)
 
     def get_current_player(self):
         return self.game_state.players[self.current_player_index]
@@ -24,6 +24,12 @@ class TurnManager:
 
     def get_next_player_index(self):
         return (self.current_player_index + 1) % len(self.game_state.players)
+
+    def is_trap_stage(self):
+        return self._is_trap_stage
+
+    def toggle_trap_stage(self, state=None):
+        self._is_trap_stage = state if state else not self._is_trap_stage
 
     def end_turn(self):
         current_player = self.get_current_player()
