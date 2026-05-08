@@ -98,11 +98,6 @@ class GameApp(ABC):
             (p for p in self.game_engine.game_state.players if not p.is_opponent), None
         )
 
-    def _is_local_turn(self) -> bool:
-        return not self.game_engine.turn_manager.get_current_player().is_opponent
-
-    # --------------------------------------------------------- main loop
-
     def step(self, dt) -> bool:
         self.dt = dt
         if not self._handle_events():
@@ -138,7 +133,7 @@ class GameApp(ABC):
         return True
 
     def _handle_gameplay_events(self) -> bool:
-        is_local = self._is_local_turn()
+        is_local = self.game_engine.is_local_turn()
         self.hud.set_local_turn(is_local)
 
         for event in pygame.event.get():
@@ -163,7 +158,8 @@ class GameApp(ABC):
             return
         self.game_over = True
         local_player = self._get_local_player()
-        result = "VICTORY" if (local_player and local_player.life_points > 0) else "DEFEAT"
+        result = "VICTORY" if (
+            local_player and local_player.life_points > 0) else "DEFEAT"
         self.game_over_overlay.show(result)
 
     def _draw(self):

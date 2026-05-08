@@ -9,12 +9,19 @@ class TurnManager:
     def serialize(self):
         return {
             "current_player_index": self.current_player_index,
-            "turn_count": self.turn_count
+            "turn_count": self.turn_count,
+            "is_trap_stage": self._is_trap_stage
         }
 
     def deserialize(self, content):
         self.current_player_index = content["current_player_index"]
         self.turn_count = content["turn_count"]
+        self._is_trap_stage = content["is_trap_stage"]
+
+    def get_trapper(self):
+        if not self.is_trap_stage():
+            return None
+        return self.get_next_player()
 
     def get_current_player(self):
         return self.game_state.players[self.current_player_index]

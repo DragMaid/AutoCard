@@ -14,6 +14,7 @@ from core.game_info.events import EventLogger, AttackEvent, ToggleEvent, MergeEv
 from core.utils import disable_print, setup_logger
 from core.handle_game_logic.trap_engine import TrapEngine
 from core.handle_game_logic.spell_engine import SpellEngine
+from .utils import log_action
 
 
 class GameEngine:
@@ -29,11 +30,7 @@ class GameEngine:
         self.draw_system = DrawSystem()
         self.event_logger = EventLogger()
 
-        self.trap_engine = TrapEngine(
-            self.game_state,
-            self.event_logger,
-            self.rule_engine
-        )
+        self.trap_engine = TrapEngine(self)
         self.spell_engine = SpellEngine(self)
 
         self.players = players
@@ -50,7 +47,7 @@ class GameEngine:
         self.start_hand_count = 5
         self.socket_io = socket_io
 
-        # --- Control verbosity ---
+        # Control verbosity
         if not verbose:
             disable_print()
 
@@ -59,9 +56,6 @@ class GameEngine:
             timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
             log_path = f"logs/game_run_{timestamp}.log"
         self.logger = setup_logger(log_path=log_path, console=True)
-
-        # Action counter for tracking
-        self.action_counter = 0
 
     def synchronize(self):
         if self.socket_io:
@@ -78,7 +72,6 @@ class GameEngine:
             "effect_tracker": self.effect_tracker.serialize(),
             "event_logger": self.event_logger.serialize(),
             "game_state": self.game_state.serialize(),
-            "action_counter": self.action_counter,
             "start_hand_count": self.start_hand_count,
             "turn_manager": self.turn_manager.serialize()
         }
@@ -87,7 +80,6 @@ class GameEngine:
         self.effect_tracker.deserialize(content["effect_tracker"])
         self.event_logger.deserialize(content["event_logger"])
         self.game_state.deserialize(content["game_state"])
-        self.action_counter = content["action_counter"]
         self.start_hand_count = content["start_hand_count"]
         self.turn_manager.deserialize(content["turn_manager"])
         self.players = self.game_state.players
@@ -96,34 +88,10 @@ class GameEngine:
         self.effect_tracker.clear_all_effects(self.game_state)
         self.event_logger.clear_events()
         self.game_state.reset()
-        self.action_counter = 0
         for player in self.players:
             player.reset()
 
-    def _log_action(self, action_type: str, player_id: str, details: dict, success: bool):
-        """Central logging method for all game actions"""
-        self.action_counter += 1
-        status = "SUCCESS" if success else "FAILED"
-        log_msg = f"[Action #{self.action_counter}] [{
-            status}] {action_type} by {player_id}"
-
-        # Add relevant details
-        detail_parts = []
-        for key, value in details.items():
-            detail_parts.append(f"{key}={value}")
-
-        if detail_parts:
-            log_msg += f" | {', '.join(detail_parts)}"
-
-        if success:
-            print(log_msg)
-        else:
-            print(f"❌ {log_msg}")
-
     def start_game(self):
-        print("="*60)
-        print("GAME STARTED")
-        print("="*60)
         self.give_init_cards(self.start_hand_count)
 
     def give_init_cards(self, number: int):
@@ -141,7 +109,7 @@ class GameEngine:
                 self.game_state.entity_lookup[card.id] = card
                 self.game_state.player_info[player_id]["held_cards"].add(
                     card.id)
-                self._log_action("DRAW", player_id, {
+                log_action("DRAW", player_id, {
                     "card": card.name,
                     "type": card.ctype,
                     "hand_size": len(self.game_state.player_info[player_id]["held_cards"])
@@ -167,23 +135,23 @@ class GameEngine:
                 ToggleEvent(card_id=card.id, mode=new_mode))
             self.game_state.player_info[owner_id]["has_toggled"] = True
 
-            self.synchronize()
             # TODO: allow the usage of this
             # TODO: this was a shitty way to do it, please fix this
             # TODO: the thing is to make it shows only for correct user
             if self.trap_engine.check_traps(ActivateCondition.TOGGLE, toggled_card_id=card_id):
                 self.turn_manager.toggle_trap_stage(state=True)
-                self.synchronize()
 
-            self._log_action("TOGGLE", owner_id, {
+            log_action("TOGGLE", owner_id, {
                 "card": card.name,
                 "position": card.pos_in_matrix,
                 "from": old_mode,
                 "to": new_mode
             }, True)
+
+            self.synchronize()
             return True
 
-        self._log_action("TOGGLE", owner_id, {
+        log_action("TOGGLE", owner_id, {
             "card": card.name,
             "reason": "Already toggled this turn or invalid card type"
         }, False)
@@ -210,7 +178,7 @@ class GameEngine:
                 if card_id not in self.game_state.player_info[player_id]["held_cards"].cards:
                     reasons.append("Card not in hand")
 
-            self._log_action("SUMMON", player_id, {
+            log_action("SUMMON", player_id, {
                 "card": card.name,
                 "type": card.ctype,
                 "target_cell": cell,
@@ -221,7 +189,7 @@ class GameEngine:
         if cell is None:
             cell = self.game_state.get_random_empty_slot(player_id)
             if cell is None:
-                self._log_action("SUMMON", player_id, {
+                log_action("SUMMON", player_id, {
                     "card": card.name,
                     "reason": "No empty slots available"
                 }, False)
@@ -249,12 +217,14 @@ class GameEngine:
                 "level": card.level_star
             })
 
-        self._log_action("SUMMON", player_id, details, True)
+        log_action("SUMMON", player_id, details, True)
 
         # TODO: fix this and leave the activation to the other first
         # TODO: the summon one is easy, the toggle one is easy, but the attack one is hard
         # TODO: add an indicator for the target also
         # self.check_summon_trap(card_id)
+        if self.trap_engine.check_traps(ActivateCondition.SUMMON, summoned_card_id=card_id):
+            self.turn_manager.toggle_trap_stage(state=True)
 
         self.synchronize()
         return True
@@ -290,7 +260,7 @@ class GameEngine:
                 if target_card:
                     target_name = target_card.name
 
-            self._log_action("ATTACK", attacker_id, {
+            log_action("ATTACK", attacker_id, {
                 "attacker_card": card.name,
                 "target": target_name,
                 "reason": ", ".join(reasons) if reasons else "Rule check failed"
@@ -298,10 +268,11 @@ class GameEngine:
             return False
 
         # TODO: this was a shitty way to do it, please fix this
+        # TODO: move the _log_action to utils
         # Check for trap triggers before resolving battle
         # if self.check_attack_trap(card_id, defender_id):
             # target_card = self.game_state.get_card_by_id(target_id)
-            # self._log_action("ATTACK", attacker_id, {
+            # log_action("ATTACK", attacker_id, {
             # "attacker_card": card.name,
             # "target": target_card.name if target_card else target_id,
             # "result": "Negated/Reflected by trap"
@@ -309,8 +280,31 @@ class GameEngine:
             # self.synchronize()
             # return True
 
-        self.resolve_battle(attacker_id, defender_id,
-                            card_id, target_id, target_is_player)
+        # if no trap trigger then process it internally else let the opponent do it
+        if not self.trap_engine.check_traps(
+            ActivateCondition.ATTACK,
+            attacker_id=card_id,  # the one doing attacking is this one
+            defender_id=defender_id
+        ):
+            self.resolve_battle(
+                attacker_id=attacker_id,
+                defender_id=defender_id,
+                card_id=card_id,
+                target_id=target_id,
+                target_is_player=target_is_player
+            )
+        else:
+            self.turn_manager.toggle_trap_stage(state=True)
+            self.game_state.attack_queue.append({
+                "attacker_id": attacker_id,
+                "defender_id": defender_id,
+                "card_id": card_id,
+                "target_id": target_id,
+                "target_is_player": target_is_player
+            })
+
+        # TODO: just let the other person resolve the attack
+        # TODO: what we can do is just put this a queue thats waiting to be executed after trap resolve is done
         self.synchronize()
         return True
 
@@ -335,6 +329,7 @@ class GameEngine:
         if not card:
             return
 
+        # The attack event is triggered here
         self.event_logger.add_event(AttackEvent(
             card_id=card.id, target_id=target_id, target_is_player=target_is_player))
 
@@ -382,13 +377,13 @@ class GameEngine:
                 else:
                     battle_details["result"] = "Attack tied defense (no effect)"
 
-            self._log_action("ATTACK", attacker_id, battle_details, True)
+            log_action("ATTACK", attacker_id, battle_details, True)
         else:  # direct attack to player
             target_player = self.game_state.players_lookup[target_id]
             damage = card.atk
             target_player.life_points = max(
                 target_player.life_points - damage, 0)
-            self._log_action("ATTACK", attacker_id, {
+            log_action("ATTACK", attacker_id, {
                 "attacker_card": f"{card.name} (ATK:{card.atk})",
                 "target": f"Player {target_player.name}",
                 "damage": damage,
@@ -419,7 +414,7 @@ class GameEngine:
             if own_card.owner_id != player_id or target_card.owner_id != player_id:
                 reasons.append("Not your cards")
 
-            self._log_action("UPGRADE", player_id, {
+            log_action("UPGRADE", player_id, {
                 "card1": f"{own_card.name} (Lv{own_card.level_star})",
                 "card2": f"{target_card.name} (Lv{target_card.level_star})",
                 "reason": ", ".join(reasons) if reasons else "Rule check failed"
@@ -439,7 +434,7 @@ class GameEngine:
             player_id, own_card.type, new_level)
 
         if upgraded_monster is None:
-            self._log_action("UPGRADE", player_id, {
+            log_action("UPGRADE", player_id, {
                 "type": own_card.type,
                 "from_level": old_level,
                 "to_level": new_level,
@@ -455,7 +450,7 @@ class GameEngine:
             upgraded_monster.is_placed = True
             upgraded_monster.pos_in_matrix = upgrade_position
 
-            self._log_action("UPGRADE", player_id, {
+            log_action("UPGRADE", player_id, {
                 "from": f"{own_card.name} + {target_card.name}",
                 "to": f"{upgraded_monster.name} (Lv{new_level})",
                 "position": upgrade_position,
@@ -473,10 +468,9 @@ class GameEngine:
         return False
 
     def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True) -> bool:
-        success, log = self.trap_engine.set_trap(trap_id, position, check)
+        success = self.trap_engine.set_trap(trap_id, position, check)
         if success:
             self.synchronize()
-        self._log_action(**log)
         return success
 
     # TODO: normalize the dependency logging thing later
@@ -494,9 +488,18 @@ class GameEngine:
     # TODO: should remove all the print for logging module instead
     def end_turn(self):
         """End current player's turn"""
+        # TODO: must also allow the user to pass only when its their trap turn
+        # TODO: the problem is this one where its re-writing everything
+        if not self.is_local_turn():
+            return
+
         if self.turn_manager.is_trap_stage():
-            self.turn_manager.toggle_trap_stage(state=False)
+            # only let the player activating traps end the turn
+            # TODO: add an automatic timeout
             self.trap_engine.resolve_traps()
+            for attack in self.game_state.attack_queue:
+                self.resolve_battle(**attack)
+            self.turn_manager.toggle_trap_stage(state=False)
         else:
             current_player = self.turn_manager.get_current_player()
 
@@ -510,3 +513,17 @@ class GameEngine:
             self.draw_card(next_player.id)
 
         self.synchronize()
+
+    # This take trap into account, does not contribute for real turn
+    def is_local_turn(self) -> bool:
+        trapper = self.turn_manager.get_trapper()
+        current = self.turn_manager.get_current_player()
+        for p in self.players:
+            if not p.is_opponent:
+                local = p
+                break
+
+        if trapper:
+            return trapper.id == local.id
+
+        return current.id == local.id

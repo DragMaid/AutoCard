@@ -15,14 +15,6 @@ class TrapCardGUI(CardGUI):
     def set_triggerable(self, value: bool):
         self.triggerable = value
 
-    def on_activate(self, game_engine=None):
-        """Set the activated state of the trap card."""
-        self.activated = True
-
-    def on_set(self, game_engine):
-        game_engine.set_trap(self.logic_card.id)
-        # Trap stays face-down until triggered
-
     def on_drop(self, matrix, game_engine):
         cell = matrix.get_slot_at_pos(self.rect.center)
         success = False
@@ -38,8 +30,6 @@ class TrapCardGUI(CardGUI):
         return success
 
     def draw(self, surface):
-        super().draw(surface)
-
         if self.triggerable:
             # Draw an "Activate" button above or on the card
             btn_w, btn_h = self.rect.width, 20
@@ -59,3 +49,5 @@ class TrapCardGUI(CardGUI):
             text_rect = text_surf.get_rect(
                 center=self.activate_button_rect.center)
             surface.blit(text_surf, text_rect)
+
+        super().draw(surface)

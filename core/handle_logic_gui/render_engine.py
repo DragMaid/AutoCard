@@ -21,7 +21,8 @@ class RenderEngine:
         screen,
         game_state,
         event_logger,
-        train_mode=False,
+        # TODO: change this later
+        train_mode=True,
         player_idx=0
     ):
         self.screen = screen
@@ -60,8 +61,10 @@ class RenderEngine:
             trap = self.game_state.get_card_by_id(trap_id)
             owner = self.game_state.players_lookup[trap.owner_id]
             if not owner.is_opponent:
-                trap.is_face_down = False
-                trap.triggerable = True
+                sprite = self.sprite_manager.get_sprite(trap_id)
+                sprite.is_face_down = False
+                sprite.triggerable = True
+                print(sprite.triggerable)
 
         self.last_triggered_count = count
 

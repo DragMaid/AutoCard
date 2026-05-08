@@ -12,6 +12,11 @@ class InputManager:
         self.render_engine = render_engine
 
     def handle_event(self, event):
+        if self.game_engine.turn_manager.is_trap_stage():
+            # Only let the trapper play when activating traps
+            if not self.game_engine.is_local_turn():
+                return
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # left click → start drag or activate trap
                 # Check for trap activation first

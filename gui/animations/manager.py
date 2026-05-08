@@ -15,7 +15,8 @@ from gui.audio_manager import AudioManager
 
 
 class AnimationManager:
-    def __init__(self, game_state, train_mode=False):
+    # TODO: set this back later
+    def __init__(self, game_state, train_mode=True):
         self.queues = defaultdict(AnimationQueue)
         self.animating = defaultdict(set)
         self.train_mode = train_mode
