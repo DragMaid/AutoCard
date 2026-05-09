@@ -10,6 +10,7 @@ from core.game_info.events import (
     AttackEvent, TrapTriggerEvent, ToggleEvent,
     SpellActiveEvent, MergeEvent
 )
+from gui.arrow import DragArrow
 from gui.sprite_manager import SpriteManager
 
 
@@ -51,6 +52,18 @@ class RenderEngine:
         self.register_cards()
         self.handle_merge()
         self.process_pending_merges()
+        self.handle_attack_queue()
+
+    def handle_attack_queue(self):
+        self.attack_indicator = None
+        for attack in self.game_state.attack_queue:
+            attack_indicator = DragArrow(255, 0, 0)
+            source_id, target_id = attack["card_id"], attack["target_id"]
+            source_ui = self.sprite_manager.get_sprite(source_id)
+            target_ui = self.sprite_manager.get_sprite(target_id)
+            attack_indicator.start_pos = source_ui.rect.center
+            attack_indicator.end_pos = target_ui.rect.center
+            self.attack_indicators.append(attack_indicator)
 
     def handle_merge(self):
         for player in self.game_state.players:
@@ -83,6 +96,7 @@ class RenderEngine:
         self.register_matrix(self.game_state, self.field_matrix,
                              self.animation_mgr.create_place_animation)
 
+    # TODO: refactor this to policy based
     def handle_events(self):
         try:
             for event in self.event_logger.get_events():
@@ -294,3 +308,7 @@ class RenderEngine:
         for group in self.sprite_manager.sprites.values():
             for sprite in group.values():
                 sprite.draw(self.screen)
+
+        if self.attack_indicator:
+            for arrow in self.attack_indicator:
+                arrow.draw(self.screen)
