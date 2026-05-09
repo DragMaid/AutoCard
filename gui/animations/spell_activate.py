@@ -29,23 +29,23 @@ class SpellAnimation(Animation):
             self.card.scale_factor_y = 1 + 0.3 * p
             self.card.angle = 15 * math.sin(p * math.pi * 2)
 
-        # Phase 2: spell burst (0.3 → 0.6)
-        elif t < 0.6:
+        # Phase 2: spell burst trigger (at 0.3)
+        if t >= 0.3:
             if not self.effect_spawned:
                 EffectManager.spawn("spell-glow", self.start_pos)
                 AudioManager.play_sound("assets/sounds/spell-activate.mp3")
                 self.effect_spawned = True
 
-            # Maintain the pop state
-            self.card.offset_y = -20
-            self.card.scale_factor_x = 1.3
-            self.card.scale_factor_y = 1.3
-            self.card.angle = 0
-
         # Phase 3: settle back (0.6 → 1.0)
-        else:
+        if t >= 0.6:
             p = self._ease_in_out((t - 0.6) / 0.4)
             self.card.offset_y = -20 * (1 - p)
             self.card.scale_factor_x = 1 + 0.3 * (1 - p)
             self.card.scale_factor_y = 1 + 0.3 * (1 - p)
+            self.card.angle = 0
+        elif t >= 0.3:
+            # Maintain the pop state during burst phase before settling
+            self.card.offset_y = -20
+            self.card.scale_factor_x = 1.3
+            self.card.scale_factor_y = 1.3
             self.card.angle = 0

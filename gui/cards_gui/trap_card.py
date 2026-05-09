@@ -1,4 +1,5 @@
 import pygame
+from gui.audio_manager import AudioManager
 from gui.cards_gui.card_gui import CardGUI
 from core.cards.trap_card import TrapCard as LogicTrapCard
 from gui.cache import get_font
@@ -55,6 +56,7 @@ class TrapCardGUI(CardGUI):
 
             font = get_font(14)
             text_str = "ACTIVATED" if self.activated else "ACTIVATE"
+            AudioManager.play_sound("assets/sounds/button-press.mp3")
             text_surf = font.render(text_str, True, (255, 255, 255))
             text_rect = text_surf.get_rect(
                 center=self.activate_button_rect.center)
