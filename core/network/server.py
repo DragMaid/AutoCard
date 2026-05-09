@@ -69,11 +69,7 @@ class SocketServerGame(GameApp):
         self._out_queue.put(("synchronize", self.game_engine.serialize()))
 
     def _tick_rendering(self):
-        self.render_engine.update(
-            self.game_engine.game_state,
-            self.field_matrix,
-            self.game_engine.event_logger,
-        )
+        self.render_engine.update()
         self.render_engine.animation_mgr.update(self.dt)
         EffectManager.update()
 

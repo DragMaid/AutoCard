@@ -1,4 +1,5 @@
 from core.handle_game_logic.turn_manager import TurnManager
+from core.cards.trap_card import ActivateCondition
 from core.game_info.game_state import GameState
 from typing import Tuple, List
 import logging
@@ -313,8 +314,95 @@ class RuleEngine:
                                           card.pos_in_matrix} but field has {field_card.name if field_card else 'None'}")
 
         if violations:
-            self.logger.warning(f"[RULE] ⚠️ Game rule violations detected:")
+            self.logger.warning("[RULE] ⚠️ Game rule violations detected:")
             for violation in violations:
                 self.logger.warning(f"  - {violation}")
 
         return violations
+
+    def get_attack_traps(self, attacker_id: str, defender_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by an attack.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'attack'
+        - attacker_id: the attacking card's owner
+        - target_id: the defending card/player
+        """
+        defender_cards = self.game_state.get_player_cards(defender_id)
+        triggerable = []
+
+        for card in defender_cards:
+            # Bypass if the trap is already triggered or card is not a trap
+            if card.ctype != "trap" or card.is_trigger:
+                continue
+
+            # Traps that trigger on attack
+            if card.ability in ["debuff_enemy_atk", "debuff_enemy_def", "dodge_attack", "reflect_attack"]:
+                triggerable.append(
+                    (card.id, attacker_id, ActivateCondition.ATTACK))
+
+        return triggerable
+
+    def get_summon_traps(self, summoned_card_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by a card summon.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'summon'
+        - summoned_card_id: the card that was summoned
+        """
+        summoned_card = self.game_state.get_card_by_id(summoned_card_id)
+        if not summoned_card or summoned_card.ctype != "monster":
+            return []
+
+        triggerable = []
+        opponents_ids = [
+            pid for pid in self.game_state.player_info.keys()
+            if pid != summoned_card.owner_id
+        ]
+
+        for opponent_id in opponents_ids:
+            opponent_cards = self.game_state.get_player_cards(opponent_id)
+            for card in opponent_cards:
+                if card.ctype != "trap" or card.is_trigger:
+                    continue
+
+                # Traps that trigger on summon
+                if card.ability == "debuff_summon":
+                    triggerable.append(
+                        (card.id, summoned_card_id, ActivateCondition.SUMMON))
+
+        return triggerable
+
+    def get_toggle_traps(self, toggled_card_id: str) -> List[Tuple[str, dict]]:
+        """Identify traps that can be triggered by a card toggle.
+
+        Returns list of (trap_id, context_dict) tuples where context includes:
+        - trigger_type: 'toggle'
+        - toggled_card_id: the card that was toggled
+        """
+        toggled_card = self.game_state.get_card_by_id(toggled_card_id)
+        if not toggled_card or toggled_card.ctype != "monster":
+            return []
+
+        # Only trigger if toggled to defense mode
+        if toggled_card.mode != "defense":
+            return []
+
+        triggerable = []
+        opponents_ids = [
+            pid for pid in self.game_state.player_info.keys()
+            if pid != toggled_card.owner_id
+        ]
+
+        for opponent_id in opponents_ids:
+            opponent_cards = self.game_state.get_player_cards(opponent_id)
+            for card in opponent_cards:
+                if card.ctype != "trap" or card.is_trigger:
+                    continue
+
+                # Traps that trigger on toggle to defense
+                if card.ability == "debuff_defend_toggle":
+                    triggerable.append(
+                        (card.id, toggled_card_id, ActivateCondition.TOGGLE))
+
+        return triggerable

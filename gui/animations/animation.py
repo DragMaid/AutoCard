@@ -1,7 +1,4 @@
 class Animation:
-    # TODO: Setting this here is kinda embarassing
-    audio = True
-
     def __init__(self, locks, duration):
         self.locks = locks  # set of sprites this animation controls
         self.duration = duration

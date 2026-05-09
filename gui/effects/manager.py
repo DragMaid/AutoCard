@@ -8,7 +8,6 @@ from .player_hit import HitPlayerEffect
 
 class EffectManager:
     effects_group = pygame.sprite.Group()
-    train_mode = False
 
     def __init__(self, train_mode=False):
         self.train_mode = train_mode

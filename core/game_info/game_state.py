@@ -4,6 +4,7 @@ from core.player import Player
 from core.cards.card import Card
 from core.cards.monster_card import MonsterCard
 from gui.gui_info.hand import CollectionInfo
+from core.cards.trap_card import ActivateCondition
 import logging
 
 ModifyMode = Literal["add", "remove"]
@@ -56,6 +57,16 @@ class GameState:
         # Track which cards each player has on the field
         self._player_cards: dict[str, List[str]] = {
             player.id: [] for player in self.players}
+
+        # Track traps that can be triggered this phase (trap_id -> trigger context)
+        # Context includes: {'trigger_type': 'attack'|'summon'|'toggle', 'attacker_id': str, 'defender_id': str}
+        self.triggerable_traps: dict[str, dict] = {}
+
+        # Track which traps the player has chosen to activate in current phase
+        self.activated_traps: set[str] = set()
+
+        # Attack queue which wait for any trap resolve to run before processing
+        self.attack_queue: list[dict] = []
 
     def is_game_over(self) -> bool:
         """Check if any player's life points reached 0 and mark the game as over."""
@@ -284,6 +295,7 @@ class GameState:
             del p["original_life_points"]
             del p["max_life_points"]
             players.append(p)
+
         content["players"] = players
         content["player_info"] = self.player_info
 
@@ -309,6 +321,16 @@ class GameState:
         content["max_cards"] = self.max_cards
         content["rows"] = self.rows
         content["cols"] = self.cols
+
+        content["triggerable_traps"] = self.triggerable_traps
+        for v in content["triggerable_traps"].values():
+            raw = v["trigger_type"]
+            v["trigger_type"] = (
+                raw if isinstance(raw, str)
+                else raw.value
+            )
+        content["activated_traps"] = list(self.activated_traps)
+        content["attack_queue"] = self.attack_queue
 
         return content
 
@@ -340,6 +362,7 @@ class GameState:
         self.rows = content["rows"]
         self.cols = content["cols"]
 
+        # NOTE: Deserializing card must be done after the players
         self.entity_lookup = {k: self._deserialize_card(
             v) for k, v in content["entity_lookup"].items()}
 
@@ -356,6 +379,13 @@ class GameState:
         self.field_matrix_ownership = self._deserialize_2d_matrix(
             content["field_matrix_ownership"])
         self._player_cards = content["player_cards"]
+        self.triggerable_traps = content.get("triggerable_traps", {})
+
+        for v in self.triggerable_traps.values():
+            v["trigger_type"] = ActivateCondition(v["trigger_type"])
+
+        self.activated_traps = set(content.get("activated_traps", []))
+        self.attack_queue = content.get("attack_queue", [])
 
     @staticmethod
     def _deserialize_card(card_dict):
@@ -369,9 +399,12 @@ class GameState:
             "trap": TrapCard
         }
 
-        ctype = card_dict.pop("ctype")
-        card_dict["is_face_down"] = not card_dict["is_face_down"]
-        card_dict["pos_in_matrix"] = 0
+        card_dict["is_opponent"] = not card_dict["is_opponent"]
+        ctype = card_dict["ctype"]
+        if card_dict['is_opponent']:
+            card_dict["is_face_down"] = ctype == "trap" or not isinstance(card_dict["pos_in_matrix"], list)
+        else:
+            card_dict["is_face_down"] = ctype == "trap" and isinstance(card_dict["pos_in_matrix"], list)
         card = card_map[ctype](**card_dict)
         return card
 

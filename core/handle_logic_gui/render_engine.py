@@ -1,4 +1,3 @@
-import pygame
 from collections import defaultdict
 from gui.cards_gui.monster_card import MonsterCardGUI
 from gui.cards_gui.spell_card import SpellCardGUI
@@ -13,17 +12,32 @@ from core.game_info.events import (
 from gui.sprite_manager import SpriteManager
 
 
+# TODO: remove all the AI written slops with weird icons
 class RenderEngine:
-    def __init__(self, field_matrix, screen, game_state, train_mode=False, player_idx=0):
+    def __init__(
+        self,
+        *,
+        field_matrix,
+        screen,
+        game_state,
+        event_logger,
+        turn_manager,
+        train_mode=False,
+        player_idx=0
+    ):
         self.screen = screen
         self.field_matrix = field_matrix
         self.sprite_manager = SpriteManager()
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
         self.game_state = game_state
+        self.turn_manager = turn_manager
+        self.event_logger = event_logger
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
         self.sprite_lookup = {}
+
+        self.last_triggered_count = 0
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -31,16 +45,15 @@ class RenderEngine:
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges.clear()
 
-    # TODO: since im passing in game state anyway so remove these
-    def update(self, game_state, matrix, events):
-        self.handle_events(game_state, matrix, events)
-        self.register_cards(game_state, matrix)
-        self.handle_merge(game_state)
+    def update(self):
+        self.handle_events()
+        self.register_cards()
+        self.handle_merge()
         self.process_pending_merges()
 
-    def handle_merge(self, game_state):
-        for player in game_state.players:
-            groups = game_state.get_mergeable_groups(player.id)
+    def handle_merge(self):
+        for player in self.game_state.players:
+            groups = self.game_state.get_mergeable_groups(player.id)
             extc = self.exisiting_colors[player.id]
 
             for key, group in groups.items():
@@ -64,14 +77,14 @@ class RenderEngine:
             for key in removed:
                 extc.pop(key, None)
 
-    def register_cards(self, game_state, matrix):
-        self.register_hand(game_state, matrix)
-        self.register_matrix(game_state, matrix,
+    def register_cards(self):
+        self.register_hand(self.game_state, self.field_matrix)
+        self.register_matrix(self.game_state, self.field_matrix,
                              self.animation_mgr.create_place_animation)
 
-    def handle_events(self, game_state, matrix, events):
+    def handle_events(self):
         try:
-            for event in events.get_events():
+            for event in self.event_logger.get_events():
                 et = type(event)
 
                 if et is AttackEvent:
@@ -99,8 +112,8 @@ class RenderEngine:
                     trap = self.sprite_manager.get_sprite(event.card_id)
                     if trap:
                         self.animation_mgr.create_trigger_animation(trap)
-                        matrix.areas["preview_card_table"].set_card(
-                            trap, game_state)
+                        self.field_matrix.areas["preview_card_table"].set_card(
+                            trap, self.game_state)
 
                 elif et is ToggleEvent:
                     card = self.sprite_manager.get_sprite(event.card_id)
@@ -116,7 +129,7 @@ class RenderEngine:
                 elif et is MergeEvent:
                     self.pending_merges.append(event)
 
-            events.clear_events()
+            self.event_logger.clear_events()
         except Exception as e:
             print(f"[ERROR] handle_events failed: {e}")
 
@@ -164,6 +177,16 @@ class RenderEngine:
             if card.id in to_add:
                 sprite = create_sprite(card)
                 self.sprite_manager.add_sprite(card, sprite, zone)
+            # TODO: this not a very smart way to handle it, make gui card hold card_id instead
+            else:
+                # Update the logic card reference for existing sprites
+                sprite = sprite_dict.get(card.id)
+                if sprite:
+                    # Handle both raw CardGUI and CardStatOverlay (which delegates to _card)
+                    if hasattr(sprite, "logic_card"):
+                        sprite.logic_card = card
+                    elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
+                        sprite._card.logic_card = card
 
         if align_fn and (to_add or to_remove):
             align_fn()
@@ -200,7 +223,7 @@ class RenderEngine:
             raise
 
         if flip:
-            card_gui.flip()
+            card_gui.flip = True
 
         return card_gui
 
@@ -214,7 +237,9 @@ class RenderEngine:
                     current_cards.append(card)
 
         def make_hand_sprite(card):
+            # NOTE: the gui card will sync display with state of the logic card
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
             return sprite
 
@@ -237,30 +262,11 @@ class RenderEngine:
 
         def make_matrix_sprite(card):
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = card.ctype == "trap"
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
-
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
-
             sprite.placed_pos = sprite.rect.center
-
-            if isinstance(sprite, TrapCardGUI):
-                if sprite.is_face_down:
-                    sprite.card_surface = pygame.transform.smoothscale(
-                        sprite.image_face_down.copy(), sprite.display_size)
-                else:
-                    sprite._render_card_with_text()
-                sprite.update()
-            else:
-                sprite.is_face_down = False
-                sprite._render_card_with_text()
-
-                # Flip opponent cards
-                # if self.render_adapter.should_flip_card_image(owner_idx):
-                # sprite.card_surface = pygame.transform.flip(
-                # sprite.card_surface, False, True)
-                sprite.update()
-
             return sprite
 
         self.sync_sprites(

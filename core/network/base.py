@@ -9,7 +9,7 @@ from gui.gui_info.matrix_field import Matrix
 from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
-from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay
+from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
 
 # TODO: move this to config
 SCREEN_SIZE = (1280, 720)
@@ -49,10 +49,16 @@ class GameApp(ABC):
     def _setup_rendering(self):
         self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
         self.render_engine = RenderEngine(
-            self.field_matrix, self.screen, self.game_engine.game_state
+            field_matrix=self.field_matrix,
+            screen=self.screen,
+            event_logger=self.game_engine.event_logger,
+            turn_manager=self.game_engine.turn_manager,
+            game_state=self.game_engine.game_state
         )
         self.input_manager = InputManager(
-            self.field_matrix, self.game_engine, self.render_engine
+            self.field_matrix,
+            self.game_engine,
+            self.render_engine
         )
 
     def _setup_ui(self):
@@ -70,6 +76,7 @@ class GameApp(ABC):
             SCREEN_SIZE,
             on_continue=self._on_return_to_menu,
         )
+        self.trap_overlay = TrapStageOverlay(SCREEN_SIZE)
 
     def _on_surrender_requested(self):
         self.surrender_overlay.show()
@@ -92,11 +99,6 @@ class GameApp(ABC):
         return next(
             (p for p in self.game_engine.game_state.players if not p.is_opponent), None
         )
-
-    def _is_local_turn(self) -> bool:
-        return not self.game_engine.turn_manager.get_current_player().is_opponent
-
-    # --------------------------------------------------------- main loop
 
     def step(self, dt) -> bool:
         self.dt = dt
@@ -133,8 +135,14 @@ class GameApp(ABC):
         return True
 
     def _handle_gameplay_events(self) -> bool:
-        is_local = self._is_local_turn()
+        is_local = self.game_engine.is_local_turn()
         self.hud.set_local_turn(is_local)
+
+        # Show trap overlay if it's the opponent's turn to activate traps
+        if self.game_engine.turn_manager.is_trap_stage() and not is_local:
+            self.trap_overlay.show()
+        else:
+            self.trap_overlay.hide()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -158,7 +166,8 @@ class GameApp(ABC):
             return
         self.game_over = True
         local_player = self._get_local_player()
-        result = "VICTORY" if (local_player and local_player.life_points > 0) else "DEFEAT"
+        result = "VICTORY" if (
+            local_player and local_player.life_points > 0) else "DEFEAT"
         self.game_over_overlay.show(result)
 
     def _draw(self):
@@ -169,6 +178,7 @@ class GameApp(ABC):
         self.render_engine.draw()
         EffectManager.draw(self.screen)
         self.hud.draw(self.screen)
+        self.trap_overlay.draw(self.screen)
         self.surrender_overlay.draw(self.screen)
         self.game_over_overlay.draw(self.screen)
         pygame.display.flip()

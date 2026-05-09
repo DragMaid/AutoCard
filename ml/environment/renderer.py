@@ -40,7 +40,12 @@ class Renderer:
         """Initialize or update field_matrix and render_engine for the current engine."""
         self.field_matrix = Matrix(self.screen, self.engine.game_state)
         self.render_engine = RenderEngine(
-            self.field_matrix, self.screen, self.engine.game_state, train_mode=self.train_mode
+            field_matrix=self.field_matrix,
+            screen=self.screen,
+            game_state=self.engine.game_state,
+            event_logger=self.engine.event_logger,
+            turn_manager=self.engine.turn_manager,
+            train_mode=self.train_mode
         )
 
     def render(self, components=[]):
@@ -59,11 +64,7 @@ class Renderer:
 
         # Draw animations via render_engine
         if hasattr(self, "render_engine"):
-            self.render_engine.update(
-                self.engine.game_state,
-                self.field_matrix,
-                self.engine.event_logger
-            )
+            self.render_engine.update()
             self.render_engine.animation_mgr.update(self.dt)
             self.render_engine.draw()
 

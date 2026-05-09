@@ -1,15 +1,16 @@
+import pygame
 from gui.cards_gui.card_gui import CardGUI
 from core.cards.trap_card import TrapCard as LogicTrapCard
+from gui.cache import get_font
 
 
 class TrapCardGUI(CardGUI):
     def __init__(self, trap_info: LogicTrapCard, *args, **kwargs):
-        super().__init__(trap_info, *args, **kwargs)
         self.is_face_down = True
-
-    def on_set(self, game_engine):
-        game_engine.set_trap(self.logic_card.id)
-        # Trap stays face-down until triggered
+        self.triggerable = False
+        self.activated = False
+        self.activate_button_rect = None
+        super().__init__(trap_info, *args, **kwargs)
 
     def on_drop(self, matrix, game_engine):
         cell = matrix.get_slot_at_pos(self.rect.center)
@@ -25,14 +26,36 @@ class TrapCardGUI(CardGUI):
         self.is_selected = False
         return success
 
-    # def on_trigger(self, game_engine):
-        # self.is_face_down = False
-        # self.logic_card.reveal()
+    def update(self):
+        # Update our triggerable state from the logic card
+        self.triggerable = self.logic_card.triggerable and not self.logic_card.is_opponent
 
-        # # Update preview panel
-        # preview_area = game_engine.render_engine.matrix.areas["preview_card_table"]
-        # preview_area.set_card(self)
+        # If the card is on the field (pos_in_matrix is set)
+        if self.logic_card.pos_in_matrix is not None:
+            # When triggerable, the trap should be revealed (not face down)
+            if self.triggerable:
+                self.logic_card.is_face_down = False
 
-        # # Resolve trap effect
-        # game_engine.resolve_trap(self.logic_card)
-        # self.kill()  # remove from field
+        super().update()
+
+    def draw(self, surface):
+        super().draw(surface)
+        if self.triggerable:
+            # Draw an "Activate" button above or on the card
+            btn_w, btn_h = self.rect.width, 30
+            self.activate_button_rect = pygame.Rect(
+                self.rect.x, self.rect.y - btn_h - 10, btn_w, btn_h)
+
+            # Button color changes based on activated state
+            bg_color = (40, 167, 69) if self.activated else (220, 53, 69)
+            pygame.draw.rect(surface, bg_color,
+                             self.activate_button_rect, border_radius=8)
+            pygame.draw.rect(surface, (255, 255, 255),
+                             self.activate_button_rect, 2, border_radius=8)
+
+            font = get_font(14)
+            text_str = "ACTIVATED" if self.activated else "ACTIVATE"
+            text_surf = font.render(text_str, True, (255, 255, 255))
+            text_rect = text_surf.get_rect(
+                center=self.activate_button_rect.center)
+            surface.blit(text_surf, text_rect)
