@@ -21,8 +21,7 @@ class AnimationManager:
         self.train_mode = train_mode
         self.game_state = game_state
         EffectManager.set_train_mode(train_mode)
-        # TODO: change this later
-        AudioManager.set_train_mode(True)
+        AudioManager.set_train_mode(train_mode)
 
         if train_mode:
             Animation.audio = False

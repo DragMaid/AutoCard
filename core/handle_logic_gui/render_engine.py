@@ -177,6 +177,16 @@ class RenderEngine:
             if card.id in to_add:
                 sprite = create_sprite(card)
                 self.sprite_manager.add_sprite(card, sprite, zone)
+            # TODO: this not a very smart way to handle it, make gui card hold card_id instead
+            else:
+                # Update the logic card reference for existing sprites
+                sprite = sprite_dict.get(card.id)
+                if sprite:
+                    # Handle both raw CardGUI and CardStatOverlay (which delegates to _card)
+                    if hasattr(sprite, "logic_card"):
+                        sprite.logic_card = card
+                    elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
+                        sprite._card.logic_card = card
 
         if align_fn and (to_add or to_remove):
             align_fn()

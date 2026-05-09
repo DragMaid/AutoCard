@@ -257,19 +257,6 @@ class GameEngine:
             }, False)
             return False
 
-        # TODO: this was a shitty way to do it, please fix this
-        # TODO: move the _log_action to utils
-        # Check for trap triggers before resolving battle
-        # if self.check_attack_trap(card_id, defender_id):
-            # target_card = self.game_state.get_card_by_id(target_id)
-            # log_action("ATTACK", attacker_id, {
-            # "attacker_card": card.name,
-            # "target": target_card.name if target_card else target_id,
-            # "result": "Negated/Reflected by trap"
-            # }, True)
-            # self.synchronize()
-            # return True
-
         # if no trap trigger then process it internally else let the opponent do it
         if not self.trap_engine.check_traps(
             ActivateCondition.ATTACK,
@@ -293,8 +280,6 @@ class GameEngine:
                 "target_is_player": target_is_player
             })
 
-        # TODO: just let the other person resolve the attack
-        # TODO: what we can do is just put this a queue thats waiting to be executed after trap resolve is done
         self.synchronize()
         return True
 

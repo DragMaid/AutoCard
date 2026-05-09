@@ -7,7 +7,6 @@ from gui.cache import get_font
 class TrapCardGUI(CardGUI):
     def __init__(self, trap_info: LogicTrapCard, *args, **kwargs):
         self.is_face_down = True
-        self.last_triggerable = False
         self.triggerable = False
         self.activated = False
         self.activate_button_rect = None
@@ -28,12 +27,16 @@ class TrapCardGUI(CardGUI):
         return success
 
     def update(self):
-        super().update()
-        # Only show the activation button to real owner
+        # Update our triggerable state from the logic card
         self.triggerable = self.logic_card.triggerable and not self.logic_card.is_opponent
-        if self.triggerable != self.last_triggerable:
-            self.logic_card.is_face_down = not self.triggerable
-            self.last_triggerable = self.triggerable
+
+        # If the card is on the field (pos_in_matrix is set)
+        if self.logic_card.pos_in_matrix is not None:
+            # When triggerable, the trap should be revealed (not face down)
+            if self.triggerable:
+                self.logic_card.is_face_down = False
+
+        super().update()
 
     def draw(self, surface):
         super().draw(surface)
