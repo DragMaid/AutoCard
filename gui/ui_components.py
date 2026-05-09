@@ -1,5 +1,6 @@
 import pygame
 from gui.cache import get_font
+from gui.audio_manager import AudioManager
 
 
 class UIComponent:
@@ -41,6 +42,7 @@ class Button(UIComponent):
         super().handle_event(event)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.is_hovered:
+                AudioManager.play_sound("assets/sounds/button-press.mp3")
                 if self.callback:
                     self.callback()
                 return True
