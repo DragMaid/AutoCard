@@ -1,6 +1,7 @@
 import pygame
 from gui.arrow import DragArrow
 from core.cards.monster_card import MonsterCard
+from gui.audio_manager import AudioManager
 
 
 class InputManager:
@@ -47,7 +48,8 @@ class InputManager:
         for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
             from gui.cards_gui.trap_card import TrapCardGUI
             if isinstance(card_ui, TrapCardGUI) and card_ui.activate_button_rect:
-                if card_ui.activate_button_rect.collidepoint(pos):
+                if card_ui.activate_button_rect.collidepoint(pos) and card_ui.triggerable:
+                    AudioManager.play_sound("assets/sounds/button-press.mp3")
                     card_ui.activated = not card_ui.activated
                     card_id = card_ui.logic_card.id
                     if card_ui.activated:

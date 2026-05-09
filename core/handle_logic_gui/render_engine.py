@@ -4,11 +4,13 @@ from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
 from gui.cards_gui.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
+from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
 from core.game_info.events import (
     AttackEvent, TrapTriggerEvent, ToggleEvent,
     SpellActiveEvent, MergeEvent
 )
+from gui.arrow import DragArrow
 from gui.sprite_manager import SpriteManager
 
 
@@ -38,6 +40,7 @@ class RenderEngine:
         self.sprite_lookup = {}
 
         self.last_triggered_count = 0
+        self.attack_indicators = []
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -50,6 +53,27 @@ class RenderEngine:
         self.register_cards()
         self.handle_merge()
         self.process_pending_merges()
+        self.handle_attack_queue()
+
+    def handle_attack_queue(self):
+        self.attack_indicators.clear()
+        for attack in self.game_state.attack_queue:
+            attack_indicator = DragArrow(color=(255, 0, 0))
+            source_id, target_id = attack["card_id"], attack["target_id"]
+
+            if attack["target_is_player"]:
+                target_ui = next(
+                    (h for h in getattr(self.field_matrix, "hands", [])
+                     if getattr(h, "player_id") == target_id),
+                    None
+                )
+            else:
+                target_ui = self.sprite_manager.get_sprite(target_id)
+
+            source_ui = self.sprite_manager.get_sprite(source_id)
+            attack_indicator.start_pos = source_ui.rect.center
+            attack_indicator.end_pos = target_ui.rect.center
+            self.attack_indicators.append(attack_indicator)
 
     def handle_merge(self):
         for player in self.game_state.players:
@@ -82,6 +106,7 @@ class RenderEngine:
         self.register_matrix(self.game_state, self.field_matrix,
                              self.animation_mgr.create_place_animation)
 
+    # TODO: refactor this to policy based
     def handle_events(self):
         try:
             for event in self.event_logger.get_events():
@@ -188,6 +213,11 @@ class RenderEngine:
                     elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
                         sprite._card.logic_card = card
 
+                    # Sync visual state if not animating
+                    if not self.animation_mgr.is_animating(sprite, ToggleRotateAnimation):
+                        if hasattr(card, "mode"):
+                            sprite.angle = 90 if card.mode == "defense" else 0
+
         if align_fn and (to_add or to_remove):
             align_fn()
 
@@ -264,6 +294,10 @@ class RenderEngine:
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             card.is_face_down = card.ctype == "trap"
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
+
+            if hasattr(card, "mode") and card.mode == "defense":
+                sprite.angle = 90
+
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
             sprite.placed_pos = sprite.rect.center
@@ -284,3 +318,6 @@ class RenderEngine:
         for group in self.sprite_manager.sprites.values():
             for sprite in group.values():
                 sprite.draw(self.screen)
+
+        for arrow in self.attack_indicators:
+            arrow.draw(self.screen)

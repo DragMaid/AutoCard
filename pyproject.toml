@@ -11,6 +11,7 @@ dependencies = [
     "mlflow>=3.11.1",
     "numpy>=2.4.4",
     "pygame>=2.6.1",
+    "pytest>=9.0.3",
     "python-socketio>=5.16.1",
     "torch>=2.11.0",
     "websocket-client>=1.9.0",

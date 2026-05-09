@@ -280,7 +280,8 @@ class GameEngine:
         card = self.game_state.get_card_by_id(card_id)
         if not card:
             return
-        self.game_state.modify_field("remove", card, card.pos_in_matrix)
+        if card.pos_in_matrix:
+            self.game_state.modify_field("remove", card, card.pos_in_matrix)
         self.game_state.player_info[card.owner_id]["graveyard_cards"].add(
             card_id)
         print(f"  → {card.name} moved to {card.owner_id}'s graveyard")
@@ -398,7 +399,7 @@ class GameEngine:
         self.move_card_to_graveyard(target_card_id)
 
         # Create the upgraded monster
-        upgraded_monster = self.draw_syste.monster_factory.load_by_type_and_level(
+        upgraded_monster = self.draw_system.monster_factory.load_by_type_and_level(
             player_id, own_card.type, new_level)
 
         if upgraded_monster is None:
@@ -462,9 +463,11 @@ class GameEngine:
         if self.turn_manager.is_trap_stage():
             # only let the player activating traps end the turn
             # TODO: add an automatic timeout
-            self.trap_engine.resolve_traps()
-            for attack in self.game_state.attack_queue:
-                self.resolve_battle(**attack)
+            cancel_resolve = self.trap_engine.resolve_traps()
+            if not cancel_resolve:
+                for attack in self.game_state.attack_queue:
+                    self.resolve_battle(**attack)
+            self.game_state.attack_queue.clear()
             self.turn_manager.toggle_trap_stage(state=False)
         else:
             current_player = self.turn_manager.get_current_player()

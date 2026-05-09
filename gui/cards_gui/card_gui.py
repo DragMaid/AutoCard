@@ -39,6 +39,14 @@ class CardGUI(Sprite, Draggable):
         self.show_text = False
         self.flip = False
 
+        # Animation attributes
+        self.angle = 0
+        self.scale_factor_x = 1.0
+        self.scale_factor_y = 1.0
+        self.alpha = 255
+        self.offset_y = 0
+        self._last_offset_y = 0
+
         self.annotated_image = self._render_card_with_text()
         self.update()
 
@@ -80,7 +88,8 @@ class CardGUI(Sprite, Draggable):
         else:
             description = f"Description: {description}"
         if description:
-            self._render_wrapped_text(annotated_image, description, inner_textbox)
+            self._render_wrapped_text(
+                annotated_image, description, inner_textbox)
 
         # Draw name above textbox (with horizontal padding)
         name = getattr(self.logic_card, "name", "Unknown")
@@ -157,19 +166,36 @@ class CardGUI(Sprite, Draggable):
 
     def update(self):
         if self.logic_card.is_face_down:
-            self.card_surface = pygame.transform.smoothscale(
+            surface = pygame.transform.smoothscale(
                 self.image_face_down, self.display_size
             )
         else:
             # use the already-rendered card with text
-            self.card_surface = self.annotated_image.copy()
+            surface = self.annotated_image.copy()
 
         if self.flip:
-            self.card_surface = pygame.transform.flip(
-                self.card_surface, False, True)
+            surface = pygame.transform.flip(
+                surface, False, True)
 
-        self.image = self.card_surface
-        self.rect = self.image.get_rect(center=self.rect.center)
+        # Apply animations
+        if self.scale_factor_x != 1.0 or self.scale_factor_y != 1.0:
+            new_w = int(self.display_size[0] * self.scale_factor_x)
+            new_h = int(self.display_size[1] * self.scale_factor_y)
+            surface = pygame.transform.smoothscale(surface, (new_w, new_h))
+
+        if self.angle != 0:
+            surface = pygame.transform.rotate(surface, -self.angle)
+
+        if self.alpha != 255:
+            surface.set_alpha(self.alpha)
+
+        self.image = surface
+        # Remove last offset from center to prevent accumulation
+        cx, cy = self.rect.center
+        cy -= self._last_offset_y
+        self.rect = self.image.get_rect(center=(cx, cy))
+        self.rect.y += self.offset_y
+        self._last_offset_y = self.offset_y
 
         if self.is_selected:
             rect(self.image, self.highlight_color, self.image.get_rect(), 2)

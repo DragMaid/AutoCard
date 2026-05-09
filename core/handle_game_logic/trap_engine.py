@@ -134,15 +134,15 @@ class TrapEngine:
         target = self.game_engine.game_state.get_card_by_id(target_id)
 
         if not trap or not target:
-            return False
+            return False, "Targetted trap or card does not exists"
 
         for policy in policies:
             if policy.can_handle(trap.ability):
                 result, effect_desc = policy.resolve(
                     self.game_engine, trap, target)
-                return result
+                return result, effect_desc
 
-        return False
+        return False, "No policy can resolve this scenario"
 
     def _resolve_attack_trap(self, trap_id: str, attacker_id: str) -> bool:
         trap = self.game_engine.game_state.get_card_by_id(trap_id)
@@ -176,10 +176,20 @@ class TrapEngine:
         return len(self.game_engine.game_state.triggerable_traps) > 0
 
     def resolve_traps(self):
+        cancel_resolve = False
         for card_id in list(self.game_engine.game_state.activated_traps):
             target_id, trigger_type = self.game_engine.game_state.triggerable_traps[card_id].values(
             )
-            self.condition_resolve_map[trigger_type](card_id, target_id)
+            status, log = self.condition_resolve_map[trigger_type](
+                card_id, target_id)
+            cancel_resolve = cancel_resolve or status
+            trap = self.game_engine.game_state.get_card_by_id(card_id)
+            log_action(**{
+                "action_type": "RESOLVE_TRAP",
+                "player_id": trap.owner_id,
+                "success": True,
+                "details": {"description": log}
+            })
             del self.game_engine.game_state.triggerable_traps[card_id]
 
         for card_id in self.game_engine.game_state.triggerable_traps:
@@ -188,11 +198,13 @@ class TrapEngine:
 
         self.game_engine.game_state.triggerable_traps.clear()
         self.game_engine.game_state.activated_traps.clear()
+        return cancel_resolve
 
     def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True) -> bool:
         """Set a trap card face-down on the field"""
         trap = self.game_engine.game_state.get_card_by_id(trap_id)
-        log = {"action_type": "SET_TRAP", "player_id": trap.owner_id, "success": False}
+        log = {"action_type": "SET_TRAP",
+               "player_id": trap.owner_id, "success": False}
         if not trap or trap.ctype != "trap":
             log["details"] = {
                 "trap": trap.name,

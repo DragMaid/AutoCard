@@ -1,9 +1,9 @@
+from collections import defaultdict
+
+
 class SpriteManager:
     def __init__(self):
-        self.sprites = {
-            "hand": {},
-            "matrix": {},
-        }
+        self.sprites = defaultdict(dict)
         self._sprites = {}
 
     def add_sprite(self, card, sprite, zone):
