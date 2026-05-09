@@ -173,7 +173,7 @@ class TrapEngine:
         return len(self.game_engine.game_state.triggerable_traps) > 0
 
     def resolve_traps(self):
-        for card_id in self.game_engine.game_state.activated_traps:
+        for card_id in list(self.game_engine.game_state.activated_traps):
             target_id, trigger_type = self.game_engine.game_state.triggerable_traps[card_id].values(
             )
             self.condition_resolve_map[trigger_type](card_id, target_id)
@@ -181,9 +181,11 @@ class TrapEngine:
 
         for card_id in self.game_engine.game_state.triggerable_traps:
             trap = self.game_engine.game_state.get_card_by_id(card_id)
-            trap.is_face_down = True
-            trap.triggerable = False
+            if trap:
+                trap.is_face_down = True
+                trap.triggerable = False
 
+        self.game_engine.game_state.triggerable_traps.clear()
         self.game_engine.game_state.activated_traps.clear()
 
     def set_trap(self, trap_id: str, position: Tuple[int, int] | None, check=True) -> bool:

@@ -58,14 +58,31 @@ class RenderEngine:
         if count == self.last_triggered_count:
             return
 
-        for trap_id in self.game_state.triggerable_traps.keys():
-            trap = self.game_state.get_card_by_id(trap_id)
-            owner = self.game_state.players_lookup[trap.owner_id]
-            if not owner.is_opponent:
-                sprite = self.sprite_manager.get_sprite(trap_id)
-                sprite.is_face_down = False
-                sprite.triggerable = True
-                print(sprite.triggerable)
+        # Synchronize all trap sprites in the matrix with their current logic state
+        for sprite in self.sprite_manager.sprites["matrix"].values():
+            if isinstance(sprite, TrapCardGUI):
+                logic_trap = sprite.logic_card
+
+                # Check if this trap is currently triggerable for the local player
+                is_triggerable_now = logic_trap.id in self.game_state.triggerable_traps
+                owner = self.game_state.players_lookup[logic_trap.owner_id]
+
+                # A trap should be face-up if it's NOT face-down in logic
+                # OR if it's triggerable for the player (revealed for activation decision)
+                should_be_face_down = logic_trap.is_face_down and not (
+                    is_triggerable_now and not owner.is_opponent)
+
+                if sprite.is_face_down != should_be_face_down:
+                    sprite.is_face_down = should_be_face_down
+                    if sprite.is_face_down:
+                        sprite.card_surface = pygame.transform.smoothscale(
+                            sprite.image_face_down.copy(), sprite.display_size)
+                    else:
+                        sprite._render_card_with_text()
+                    sprite.update()
+
+                # Update the triggerable visual state (shows the Activate button)
+                sprite.triggerable = is_triggerable_now and not owner.is_opponent
 
         self.last_triggered_count = count
 
