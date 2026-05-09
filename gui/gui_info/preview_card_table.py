@@ -27,12 +27,11 @@ class CardPreview:
             pos=self.rect.topleft,
             size=(self.rect.width, self.rect.height)
         )
-        self.card_gui.image = self.card_gui.annotated_image
 
     def draw(self, screen):
         if self.card_gui:
             self.card_gui.rect.center = self.rect.center
-            self.card_gui.draw(screen)
+            screen.blit(self.card_gui.annotated_image, self.card_gui.rect)
 
         else:
             screen.blit(self.image, self.rect)

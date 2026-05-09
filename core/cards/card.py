@@ -14,6 +14,7 @@ class Card:
             owner_id: str,
             is_placed: bool = False,
             is_face_down: bool = False,
+            is_opponent: bool = False,
             id=None,
             pos_in_matrix: Optional[Tuple[int, int]] = None
     ):
@@ -26,3 +27,4 @@ class Card:
         self.is_placed = is_placed
         self.is_face_down = is_face_down
         self.pos_in_matrix = pos_in_matrix
+        self.is_opponent = is_opponent

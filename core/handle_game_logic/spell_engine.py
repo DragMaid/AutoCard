@@ -111,7 +111,7 @@ SPELL_POLICIES: dict[str, SpellPolicy] = {
     "buff_attack": BuffAttackPolicy(),
     "buff_defense": BuffDefensePolicy(),
     "destroy_trap": DestroyTrapPolicy(),
-    "call_of_brave": CallOfBravePolicy(),
+    "summon_monster_from_hand": CallOfBravePolicy(),
 }
 
 

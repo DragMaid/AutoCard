@@ -33,28 +33,20 @@ class CardGUI(Sprite, Draggable):
         self.desc_font = get_font(max(6, int(12 * self.scale_y)))
 
         self.card_surface = None
-        self._render_card_with_text()
-        self.annotated_image = self.card_surface
 
         self.image_face_down = pygame.image.load("assets/card-back.png")
         self.is_face_down = False
         self.show_text = False
+        self.flip = False
 
-    def flip(self):
-        self.is_face_down = True
-        self.card_surface = self.image_face_down
-        self.card_surface = pygame.transform.smoothscale(
-            self.card_surface, self.display_size)
-        self.card_surface = pygame.transform.flip(
-            self.card_surface, False, True)
-
+        self.annotated_image = self._render_card_with_text()
         self.update()
 
     def _render_card_with_text(self, padding=4):
         w, h = self.display_size
         # padding = h * padding
-        self.card_surface = pygame.transform.smoothscale(
-            self.original_image, (w, h))
+        annotated_image = pygame.transform.smoothscale(
+            self.original_image, self.display_size).copy()
 
         # Textbox dimensions relative to card size
         textbox_width = int(w * 62 / self.BASE_SIZE[0])
@@ -88,7 +80,7 @@ class CardGUI(Sprite, Draggable):
         else:
             description = f"Description: {description}"
         if description:
-            self._render_wrapped_text(description, inner_textbox)
+            self._render_wrapped_text(annotated_image, description, inner_textbox)
 
         # Draw name above textbox (with horizontal padding)
         name = getattr(self.logic_card, "name", "Unknown")
@@ -112,10 +104,11 @@ class CardGUI(Sprite, Draggable):
         shadow_rect = shadow_surface.get_rect(
             centerx=w // 2 + 1, bottom=name_rect.bottom + 1
         )
-        self.card_surface.blit(shadow_surface, shadow_rect)
-        self.card_surface.blit(name_surface, name_rect)
+        annotated_image.blit(shadow_surface, shadow_rect)
+        annotated_image.blit(name_surface, name_rect)
+        return annotated_image
 
-    def _render_wrapped_text(self, text, rect):
+    def _render_wrapped_text(self, annotated_image, text, rect):
         """Render description inside textbox dynamically"""
         paragraphs = text.splitlines()
         font = self.desc_font
@@ -159,16 +152,30 @@ class CardGUI(Sprite, Draggable):
         y_offset = rect.top
         for line in lines[:max_lines]:
             text_surface = font.render(line, True, (0, 0, 0))
-            self.card_surface.blit(text_surface, (rect.left + 1, y_offset))
+            annotated_image.blit(text_surface, (rect.left + 1, y_offset))
             y_offset += font.get_height()
 
     def update(self):
-        self.image = self.card_surface.copy()
+        if self.logic_card.is_face_down:
+            self.card_surface = pygame.transform.smoothscale(
+                self.image_face_down, self.display_size
+            )
+        else:
+            # use the already-rendered card with text
+            self.card_surface = self.annotated_image.copy()
+
+        if self.flip:
+            self.card_surface = pygame.transform.flip(
+                self.card_surface, False, True)
+
+        self.image = self.card_surface
         self.rect = self.image.get_rect(center=self.rect.center)
+
         if self.is_selected:
             rect(self.image, self.highlight_color, self.image.get_rect(), 2)
 
     def draw(self, surface):
+        self.update()
         surface.blit(self.image, self.rect)
         if self.highlight:
             pygame.draw.rect(surface, self.highlight_color, self.rect, 5)
@@ -184,7 +191,8 @@ class CardGUI(Sprite, Draggable):
         success = False
         if cell and self.logic_card.owner_id:
             if game_engine.game_state.field_matrix_ownership[cell[0]][cell[1]] == self.logic_card.owner_id:
-                success = game_engine.summon_card(self.logic_card.owner_id, self.logic_card.id, cell)
+                success = game_engine.summon_card(
+                    self.logic_card.owner_id, self.logic_card.id, cell)
                 if success:
                     self.is_draggable = False
         self.is_selected = False

@@ -79,7 +79,7 @@ class CardRegistry:
             "name": prototype["name"],
             "description": prototype.get("description", ""),
             "owner_id": owner_id,
-            "image_path": prototype.get("_image_path")
+            "image_path": prototype.get("_image_path"),
         }
 
         if card_type == "monster":

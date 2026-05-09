@@ -41,14 +41,8 @@ class SocketServerGame(GameApp):
             key, value = next(iter(msg.items()))
 
             if key == "connected":
-                # TODO: remove the debug function after
-                from core.handle_game_logic.utils import draw_specific_card
                 self.connected_clients += 1
                 self.game_engine.start_game()
-
-                # draw_specific_card(self.game_engine, self.player1.id, "Weaken Summon", "trap")
-                draw_specific_card(self.game_engine, self.player1.id, "Crippling Curse", "trap")
-
                 self.game_started = True
                 self.game_engine.synchronize = self._emit_sync
                 self.game_engine.synchronize()

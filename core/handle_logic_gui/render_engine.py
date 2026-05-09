@@ -1,4 +1,3 @@
-import pygame
 from collections import defaultdict
 from gui.cards_gui.monster_card import MonsterCardGUI
 from gui.cards_gui.spell_card import SpellCardGUI
@@ -22,8 +21,8 @@ class RenderEngine:
         screen,
         game_state,
         event_logger,
-        # TODO: change this later
-        train_mode=True,
+        turn_manager,
+        train_mode=False,
         player_idx=0
     ):
         self.screen = screen
@@ -32,6 +31,7 @@ class RenderEngine:
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
         self.game_state = game_state
+        self.turn_manager = turn_manager
         self.event_logger = event_logger
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
@@ -50,24 +50,6 @@ class RenderEngine:
         self.register_cards()
         self.handle_merge()
         self.process_pending_merges()
-        # NOTE: this is handled here so as not to rely on serialization process
-        self.handle_trap_activation()
-
-    def handle_trap_activation(self):
-        count = len(self.game_state.triggerable_traps.keys())
-        if count == self.last_triggered_count:
-            return
-
-        for trap_id in self.game_state.triggerable_traps.keys():
-            trap = self.game_state.get_card_by_id(trap_id)
-            owner = self.game_state.players_lookup[trap.owner_id]
-            if not owner.is_opponent:
-                sprite = self.sprite_manager.get_sprite(trap_id)
-                sprite.is_face_down = False
-                sprite.triggerable = True
-                print(sprite.triggerable)
-
-        self.last_triggered_count = count
 
     def handle_merge(self):
         for player in self.game_state.players:
@@ -195,6 +177,16 @@ class RenderEngine:
             if card.id in to_add:
                 sprite = create_sprite(card)
                 self.sprite_manager.add_sprite(card, sprite, zone)
+            # TODO: this not a very smart way to handle it, make gui card hold card_id instead
+            else:
+                # Update the logic card reference for existing sprites
+                sprite = sprite_dict.get(card.id)
+                if sprite:
+                    # Handle both raw CardGUI and CardStatOverlay (which delegates to _card)
+                    if hasattr(sprite, "logic_card"):
+                        sprite.logic_card = card
+                    elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
+                        sprite._card.logic_card = card
 
         if align_fn and (to_add or to_remove):
             align_fn()
@@ -231,7 +223,7 @@ class RenderEngine:
             raise
 
         if flip:
-            card_gui.flip()
+            card_gui.flip = True
 
         return card_gui
 
@@ -245,7 +237,9 @@ class RenderEngine:
                     current_cards.append(card)
 
         def make_hand_sprite(card):
+            # NOTE: the gui card will sync display with state of the logic card
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
             return sprite
 
@@ -268,25 +262,11 @@ class RenderEngine:
 
         def make_matrix_sprite(card):
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = card.ctype == "trap"
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
-
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
-
             sprite.placed_pos = sprite.rect.center
-
-            if isinstance(sprite, TrapCardGUI):
-                if sprite.is_face_down:
-                    sprite.card_surface = pygame.transform.smoothscale(
-                        sprite.image_face_down.copy(), sprite.display_size)
-                else:
-                    sprite._render_card_with_text()
-                sprite.update()
-            else:
-                sprite.is_face_down = False
-                sprite._render_card_with_text()
-                sprite.update()
-
             return sprite
 
         self.sync_sprites(
