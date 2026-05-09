@@ -332,7 +332,8 @@ class RuleEngine:
         triggerable = []
 
         for card in defender_cards:
-            if card.ctype != "trap" or card.is_face_down:
+            # Bypass if the trap is already triggered or card is not a trap
+            if card.ctype != "trap" or card.is_trigger:
                 continue
 
             # Traps that trigger on attack
@@ -362,7 +363,7 @@ class RuleEngine:
         for opponent_id in opponents_ids:
             opponent_cards = self.game_state.get_player_cards(opponent_id)
             for card in opponent_cards:
-                if card.ctype != "trap" or card.is_face_down:
+                if card.ctype != "trap" or card.is_trigger:
                     continue
 
                 # Traps that trigger on summon
@@ -396,7 +397,7 @@ class RuleEngine:
         for opponent_id in opponents_ids:
             opponent_cards = self.game_state.get_player_cards(opponent_id)
             for card in opponent_cards:
-                if card.ctype != "trap" or card.is_face_down:
+                if card.ctype != "trap" or card.is_trigger:
                     continue
 
                 # Traps that trigger on toggle to defense

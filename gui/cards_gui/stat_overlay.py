@@ -27,6 +27,10 @@ class CardStatOverlay:
         self._card.logic_card = self.game_state.get_card_by_id(card_id)
         self._card.draw(surface)
 
+        # Do not draw the stat overlay if card is faced down and belongs to the opponent
+        if self._card.logic_card.is_face_down and self._card.logic_card.is_opponent:
+            return
+
         # Then draw the ATK/DEF overlay
         atk = getattr(self._card.logic_card, "atk", 0)
         defe = getattr(self._card.logic_card, "defend", 0)
