@@ -22,7 +22,7 @@ class PlaceAnimation(Animation):
         else:
             squash_t = (t - 0.95) / 0.05
             scale_y = 1.0 - 0.2 * math.sin(squash_t * math.pi)
-        self.sprite.scale_y = scale_y
+        self.sprite.scale_factor_y = scale_y
         if not self.impact_done and t >= 0.95:
             self.impact_done = True
             EffectManager.spawn("slam", self.end_pos)

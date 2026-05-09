@@ -60,19 +60,8 @@ class AttackAnimation(Animation):
                 self.midpoint, p * 0.6)
 
             # Spin the cards toward their final angle
-            current_a1 = self.start_angle1 + \
-                (self.final_angle1 - self.start_angle1) * p
-            current_a2 = self.start_angle2 + \
-                (self.final_angle2 - self.start_angle2) * p
-
-            self.card1.image = pygame.transform.rotate(
-                self.card1.card_surface, -current_a1)
-            self.card2.image = pygame.transform.rotate(
-                self.card2.card_surface, -current_a2)
-            self.card1.rect = self.card1.image.get_rect(
-                center=self.card1.rect.center)
-            self.card2.rect = self.card2.image.get_rect(
-                center=self.card2.rect.center)
+            self.card1.angle = self.start_angle1 + (self.final_angle1 - self.start_angle1) * p
+            self.card2.angle = self.start_angle2 + (self.final_angle2 - self.start_angle2) * p
 
         else:
             # Bounce back phase
@@ -83,35 +72,28 @@ class AttackAnimation(Animation):
             if not self.impact_done:
                 EffectManager.spawn("slam", self.midpoint)
                 AudioManager.play_sound("assets/sounds/sword-clash.mp3")
-
-                # Add squash/stretch impact while maintaining rotation
-                scaled1 = pygame.transform.scale(
-                    self.card1.card_surface,
-                    (int(self.card1.card_surface.get_width() * 1.1),
-                     int(self.card1.card_surface.get_height() * 0.9))
-                )
-                self.card1.image = pygame.transform.rotate(
-                    scaled1, -self.final_angle1)
-
-                scaled2 = pygame.transform.scale(
-                    self.card2.card_surface,
-                    (int(self.card2.card_surface.get_width() * 1.1),
-                     int(self.card2.card_surface.get_height() * 0.9))
-                )
-                self.card2.image = pygame.transform.rotate(
-                    scaled2, -self.final_angle2)
-
-                self.card1.rect = self.card1.image.get_rect(
-                    center=self.card1.rect.center)
-                self.card2.rect = self.card2.image.get_rect(
-                    center=self.card2.rect.center)
+                
+                # Apply impact squash
+                self.card1.scale_factor_x = 1.1
+                self.card1.scale_factor_y = 0.9
+                self.card2.scale_factor_x = 1.1
+                self.card2.scale_factor_y = 0.9
+                
+                self.card1.angle = self.final_angle1
+                self.card2.angle = self.final_angle2
                 self.impact_done = True
+            
+            # Fade out impact squash
+            self.card1.scale_factor_x = 1.1 - 0.1 * p
+            self.card1.scale_factor_y = 0.9 + 0.1 * p
+            self.card2.scale_factor_x = 1.1 - 0.1 * p
+            self.card2.scale_factor_y = 0.9 + 0.1 * p
 
         if t >= 1:
             # Reset state to original rotation and position
-            self.card1.image = pygame.transform.rotate(
-                self.card1.card_surface, -self.start_angle1)
-            self.card2.image = pygame.transform.rotate(
-                self.card2.card_surface, -self.start_angle2)
-            self.card1.rect = self.card1.image.get_rect(center=self.start_pos1)
-            self.card2.rect = self.card2.image.get_rect(center=self.start_pos2)
+            self.card1.angle = self.start_angle1
+            self.card2.angle = self.start_angle2
+            self.card1.rect.center = self.start_pos1
+            self.card2.rect.center = self.start_pos2
+            self.card1.scale_factor_x = self.card1.scale_factor_y = 1.0
+            self.card2.scale_factor_x = self.card2.scale_factor_y = 1.0

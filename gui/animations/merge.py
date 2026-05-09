@@ -22,7 +22,7 @@ class MergeAnimation(Animation):
         self.impact_done = False
 
         # Hide result until merge finishes
-        self.result_card.image.set_alpha(0)
+        self.result_card.alpha = 0
 
     @staticmethod
     def _ease_in_out(x: float) -> float:
@@ -41,8 +41,8 @@ class MergeAnimation(Animation):
 
         # Fade out old cards
         alpha = int(255 * (1 - p))
-        self.card1.image.set_alpha(alpha)
-        self.card2.image.set_alpha(alpha)
+        self.card1.alpha = alpha
+        self.card2.alpha = alpha
 
         # Trigger merge effect once near end
         if not self.impact_done and t >= 0.8:
@@ -52,6 +52,6 @@ class MergeAnimation(Animation):
 
         # Finish: hide old cards and show result card at its slot
         if t >= 1:
-            self.result_card.image.set_alpha(255)
+            self.result_card.alpha = 255
             if self.on_finish:
                 self.on_finish(self.result_card)

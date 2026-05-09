@@ -31,6 +31,12 @@ class AnimationManager:
         return any(len(q) > 0 for q in self.queues.values()) or \
             any(len(s) > 0 for s in self.animating.values())
 
+    def is_animating(self, sprite, anim_type=None):
+        """Returns if the given sprite is currently animating (optionally of a specific type)."""
+        if anim_type:
+            return anim_type in self.animating.get(sprite, set())
+        return len(self.animating.get(sprite, set())) > 0
+
     def _duration(self, value):
         """Return 0 duration if train_mode is True, else the given value."""
         return 0 if self.train_mode else value

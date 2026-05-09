@@ -9,7 +9,6 @@ class AttackPlayerAnimation(Animation):
     def __init__(self, card, game_area, game_state, duration=0.6, on_finish=None):
         super().__init__({card}, duration)
         self.card = card
-        self.original_image = card.image.copy()
         self.start_pos = pygame.Vector2(card.rect.center)
         self.end_pos = pygame.Vector2(game_area.rect.center)
         self.game_area = game_area
@@ -23,8 +22,8 @@ class AttackPlayerAnimation(Animation):
         self.final_angle = self._signed_angle(
             self.end_pos - self.start_pos, direction)
 
-        # Start from upright orientation
-        self.start_angle = 0
+        # Start from current orientation
+        self.start_angle = card.angle
 
     @staticmethod
     def _signed_angle(vec, facing):
@@ -51,10 +50,7 @@ class AttackPlayerAnimation(Animation):
             self.card.rect.center = self.start_pos.lerp(self.end_pos, p * 0.7)
 
             # Rotate toward final angle
-            current_angle = self.start_angle + \
-                (self.final_angle - self.start_angle) * p
-            self.card.image = pygame.transform.rotate(
-                self.original_image, -current_angle)
+            self.card.angle = self.start_angle + (self.final_angle - self.start_angle) * p
 
         else:
             # Return phase
@@ -67,17 +63,19 @@ class AttackPlayerAnimation(Animation):
                 AudioManager.play_sound("assets/sounds/player-hurt.mp3")
 
                 # Squash/stretch impact
-                self.card.image = pygame.transform.scale(
-                    self.original_image,
-                    (int(self.card.rect.width * 1.1),
-                     int(self.card.rect.height * 0.9))
-                )
+                self.card.scale_factor_x = 1.1
+                self.card.scale_factor_y = 0.9
                 self.impact_done = True
+            
+            # Fade out squash
+            self.card.scale_factor_x = 1.1 - 0.1 * p
+            self.card.scale_factor_y = 0.9 + 0.1 * p
 
         if t >= 1:
             # Reset state
-            self.card.image = self.original_image
+            self.card.angle = self.start_angle
             self.card.rect.center = self.start_pos
+            self.card.scale_factor_x = self.card.scale_factor_y = 1.0
 
             if self.on_finish:
                 self.on_finish(self.card)

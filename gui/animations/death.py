@@ -8,8 +8,7 @@ class DeathAnimation(Animation):
         self.on_finish = on_finish
 
     def _apply(self, t):
-        alpha = 255 * (1 - t)
-        self.sprite.image.set_alpha(alpha)
+        self.sprite.alpha = 255 * (1 - t)
 
     def update(self, dt):
         super().update(dt)

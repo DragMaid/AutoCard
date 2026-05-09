@@ -398,7 +398,7 @@ class GameEngine:
         self.move_card_to_graveyard(target_card_id)
 
         # Create the upgraded monster
-        upgraded_monster = self.draw_syste.monster_factory.load_by_type_and_level(
+        upgraded_monster = self.draw_system.monster_factory.load_by_type_and_level(
             player_id, own_card.type, new_level)
 
         if upgraded_monster is None:
