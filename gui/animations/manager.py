@@ -15,14 +15,14 @@ from gui.audio_manager import AudioManager
 
 
 class AnimationManager:
-    # TODO: set this back later
-    def __init__(self, game_state, train_mode=True):
+    def __init__(self, game_state, train_mode=False):
         self.queues = defaultdict(AnimationQueue)
         self.animating = defaultdict(set)
         self.train_mode = train_mode
         self.game_state = game_state
         EffectManager.set_train_mode(train_mode)
-        AudioManager.set_train_mode(train_mode)
+        # TODO: change this later
+        AudioManager.set_train_mode(True)
 
         if train_mode:
             Animation.audio = False

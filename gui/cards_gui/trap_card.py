@@ -6,14 +6,12 @@ from gui.cache import get_font
 
 class TrapCardGUI(CardGUI):
     def __init__(self, trap_info: LogicTrapCard, *args, **kwargs):
-        super().__init__(trap_info, *args, **kwargs)
         self.is_face_down = True
+        self.last_triggerable = False
         self.triggerable = False
         self.activated = False
         self.activate_button_rect = None
-
-    def set_triggerable(self, value: bool):
-        self.triggerable = value
+        super().__init__(trap_info, *args, **kwargs)
 
     def on_drop(self, matrix, game_engine):
         cell = matrix.get_slot_at_pos(self.rect.center)
@@ -29,7 +27,16 @@ class TrapCardGUI(CardGUI):
         self.is_selected = False
         return success
 
+    def update(self):
+        super().update()
+        # Only show the activation button to real owner
+        self.triggerable = self.logic_card.triggerable and not self.logic_card.is_opponent
+        if self.triggerable != self.last_triggerable:
+            self.logic_card.is_face_down = not self.triggerable
+            self.last_triggerable = self.triggerable
+
     def draw(self, surface):
+        super().draw(surface)
         if self.triggerable:
             # Draw an "Activate" button above or on the card
             btn_w, btn_h = self.rect.width, 30
@@ -49,5 +56,3 @@ class TrapCardGUI(CardGUI):
             text_rect = text_surf.get_rect(
                 center=self.activate_button_rect.center)
             surface.blit(text_surf, text_rect)
-
-        super().draw(surface)

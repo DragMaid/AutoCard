@@ -3,9 +3,6 @@ from typing import Tuple, List
 from core.cards.trap_card import ActivateCondition
 from core.factory.draw_system import DrawSystem
 from core.player import Player
-from core.factory.monster_factory import MonsterFactory
-from core.factory.spell_factory import SpellFactory
-from core.factory.trap_factory import TrapFactory
 from core.game_info.game_state import GameState
 from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager
@@ -14,7 +11,7 @@ from core.game_info.events import EventLogger, AttackEvent, ToggleEvent, MergeEv
 from core.utils import disable_print, setup_logger
 from core.handle_game_logic.trap_engine import TrapEngine
 from core.handle_game_logic.spell_engine import SpellEngine
-from .utils import log_action
+from .utils import log_action, is_local_turn
 
 
 class GameEngine:
@@ -34,15 +31,6 @@ class GameEngine:
         self.spell_engine = SpellEngine(self)
 
         self.players = players
-
-        self.monster_factory = MonsterFactory()
-        self.monster_factory.build()
-
-        self.spell_factory = SpellFactory()
-        self.spell_factory.build()
-
-        self.trap_factory = TrapFactory()
-        self.trap_factory.build()
 
         self.start_hand_count = 5
         self.socket_io = socket_io
@@ -105,6 +93,8 @@ class GameEngine:
 
         if can_draw:
             card = self.draw_system.rate_card_draw(player_id)
+            # TODO: move this to draw system later, injecting for now
+            card.is_opponent = self.game_state.players_lookup[player_id].is_opponent
             if card:
                 self.game_state.entity_lookup[card.id] = card
                 self.game_state.player_info[player_id]["held_cards"].add(
@@ -430,7 +420,7 @@ class GameEngine:
         self.move_card_to_graveyard(target_card_id)
 
         # Create the upgraded monster
-        upgraded_monster = self.monster_factory.load_by_type_and_level(
+        upgraded_monster = self.draw_syste.monster_factory.load_by_type_and_level(
             player_id, own_card.type, new_level)
 
         if upgraded_monster is None:
@@ -514,16 +504,5 @@ class GameEngine:
 
         self.synchronize()
 
-    # This take trap into account, does not contribute for real turn
-    def is_local_turn(self) -> bool:
-        trapper = self.turn_manager.get_trapper()
-        current = self.turn_manager.get_current_player()
-        for p in self.players:
-            if not p.is_opponent:
-                local = p
-                break
-
-        if trapper:
-            return trapper.id == local.id
-
-        return current.id == local.id
+    def is_local_turn(self):
+        return is_local_turn(self.turn_manager, self.players)

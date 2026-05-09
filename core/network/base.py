@@ -52,6 +52,7 @@ class GameApp(ABC):
             field_matrix=self.field_matrix,
             screen=self.screen,
             event_logger=self.game_engine.event_logger,
+            turn_manager=self.game_engine.turn_manager,
             game_state=self.game_engine.game_state
         )
         self.input_manager = InputManager(

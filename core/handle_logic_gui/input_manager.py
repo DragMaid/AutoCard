@@ -13,6 +13,7 @@ class InputManager:
 
     def handle_event(self, event):
         if self.game_engine.turn_manager.is_trap_stage():
+            # TODO: move these to a util function
             # Only let the trapper play when activating traps
             if not self.game_engine.is_local_turn():
                 return

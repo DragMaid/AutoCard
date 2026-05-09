@@ -33,28 +33,20 @@ class CardGUI(Sprite, Draggable):
         self.desc_font = get_font(max(6, int(12 * self.scale_y)))
 
         self.card_surface = None
-        self._render_card_with_text()
-        self.annotated_image = self.card_surface
 
         self.image_face_down = pygame.image.load("assets/card-back.png")
         self.is_face_down = False
         self.show_text = False
-
-    def flip(self):
-        self.is_face_down = True
-        self.card_surface = self.image_face_down
-        self.card_surface = pygame.transform.smoothscale(
-            self.card_surface, self.display_size)
-        self.card_surface = pygame.transform.flip(
-            self.card_surface, False, True)
+        self.flip = False
 
         self.update()
+        self.annotated_image = self.card_surface
 
     def _render_card_with_text(self, padding=4):
         w, h = self.display_size
         # padding = h * padding
         self.card_surface = pygame.transform.smoothscale(
-            self.original_image, (w, h))
+            self.original_image, self.display_size)
 
         # Textbox dimensions relative to card size
         textbox_width = int(w * 62 / self.BASE_SIZE[0])
@@ -163,12 +155,23 @@ class CardGUI(Sprite, Draggable):
             y_offset += font.get_height()
 
     def update(self):
+        self.card_surface = self.image_face_down if self.logic_card.is_face_down else self.original_image
+        self.card_surface = pygame.transform.smoothscale(
+            self.card_surface, self.display_size)
+
+        if self.flip:
+            self.card_surface = pygame.transform.flip(
+                self.card_surface, False, True)
+
         self.image = self.card_surface.copy()
         self.rect = self.image.get_rect(center=self.rect.center)
         if self.is_selected:
             rect(self.image, self.highlight_color, self.image.get_rect(), 2)
 
+        self._render_card_with_text()
+
     def draw(self, surface):
+        self.update()
         surface.blit(self.image, self.rect)
         if self.highlight:
             pygame.draw.rect(surface, self.highlight_color, self.rect, 5)
@@ -184,7 +187,8 @@ class CardGUI(Sprite, Draggable):
         success = False
         if cell and self.logic_card.owner_id:
             if game_engine.game_state.field_matrix_ownership[cell[0]][cell[1]] == self.logic_card.owner_id:
-                success = game_engine.summon_card(self.logic_card.owner_id, self.logic_card.id, cell)
+                success = game_engine.summon_card(
+                    self.logic_card.owner_id, self.logic_card.id, cell)
                 if success:
                     self.is_draggable = False
         self.is_selected = False

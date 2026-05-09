@@ -362,6 +362,7 @@ class GameState:
         self.rows = content["rows"]
         self.cols = content["cols"]
 
+        # NOTE: Deserializing card must be done after the players
         self.entity_lookup = {k: self._deserialize_card(
             v) for k, v in content["entity_lookup"].items()}
 
@@ -398,9 +399,12 @@ class GameState:
             "trap": TrapCard
         }
 
-        ctype = card_dict.pop("ctype")
-        card_dict["is_face_down"] = not card_dict["is_face_down"]
-        card_dict["pos_in_matrix"] = 0
+        card_dict["is_opponent"] = not card_dict["is_opponent"]
+        ctype = card_dict["ctype"]
+        if card_dict['is_opponent']:
+            card_dict["is_face_down"] = ctype == "trap" or not isinstance(card_dict["pos_in_matrix"], list)
+        else:
+            card_dict["is_face_down"] = ctype == "trap" and isinstance(card_dict["pos_in_matrix"], list)
         card = card_map[ctype](**card_dict)
         return card
 

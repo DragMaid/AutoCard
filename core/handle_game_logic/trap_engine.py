@@ -164,6 +164,9 @@ class TrapEngine:
         for trap_id, target_id, trigger_type in triggerable:
             self.game_engine.game_state.triggerable_traps[trap_id] = {
                 "target_id": target_id, "trigger_type": trigger_type}
+
+            trap = self.game_engine.game_state.get_card_by_id(trap_id)
+            trap.triggerable = True
         return len(triggerable) > 0
 
     def get_triggerable_traps(self) -> list:
@@ -181,9 +184,7 @@ class TrapEngine:
 
         for card_id in self.game_engine.game_state.triggerable_traps:
             trap = self.game_engine.game_state.get_card_by_id(card_id)
-            if trap:
-                trap.is_face_down = True
-                trap.triggerable = False
+            trap.triggerable = False
 
         self.game_engine.game_state.triggerable_traps.clear()
         self.game_engine.game_state.activated_traps.clear()

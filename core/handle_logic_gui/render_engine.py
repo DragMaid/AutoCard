@@ -1,4 +1,3 @@
-import pygame
 from collections import defaultdict
 from gui.cards_gui.monster_card import MonsterCardGUI
 from gui.cards_gui.spell_card import SpellCardGUI
@@ -22,8 +21,8 @@ class RenderEngine:
         screen,
         game_state,
         event_logger,
-        # TODO: change this later
-        train_mode=True,
+        turn_manager,
+        train_mode=False,
         player_idx=0
     ):
         self.screen = screen
@@ -32,6 +31,7 @@ class RenderEngine:
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
         self.game_state = game_state
+        self.turn_manager = turn_manager
         self.event_logger = event_logger
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
@@ -50,41 +50,6 @@ class RenderEngine:
         self.register_cards()
         self.handle_merge()
         self.process_pending_merges()
-        # NOTE: this is handled here so as not to rely on serialization process
-        self.handle_trap_activation()
-
-    def handle_trap_activation(self):
-        count = len(self.game_state.triggerable_traps.keys())
-        if count == self.last_triggered_count:
-            return
-
-        # Synchronize all trap sprites in the matrix with their current logic state
-        for sprite in self.sprite_manager.sprites["matrix"].values():
-            if isinstance(sprite, TrapCardGUI):
-                logic_trap = sprite.logic_card
-
-                # Check if this trap is currently triggerable for the local player
-                is_triggerable_now = logic_trap.id in self.game_state.triggerable_traps
-                owner = self.game_state.players_lookup[logic_trap.owner_id]
-
-                # A trap should be face-up if it's NOT face-down in logic
-                # OR if it's triggerable for the player (revealed for activation decision)
-                should_be_face_down = logic_trap.is_face_down and not (
-                    is_triggerable_now and not owner.is_opponent)
-
-                if sprite.is_face_down != should_be_face_down:
-                    sprite.is_face_down = should_be_face_down
-                    if sprite.is_face_down:
-                        sprite.card_surface = pygame.transform.smoothscale(
-                            sprite.image_face_down.copy(), sprite.display_size)
-                    else:
-                        sprite._render_card_with_text()
-                    sprite.update()
-
-                # Update the triggerable visual state (shows the Activate button)
-                sprite.triggerable = is_triggerable_now and not owner.is_opponent
-
-        self.last_triggered_count = count
 
     def handle_merge(self):
         for player in self.game_state.players:
@@ -248,7 +213,7 @@ class RenderEngine:
             raise
 
         if flip:
-            card_gui.flip()
+            card_gui.flip = True
 
         return card_gui
 
@@ -262,7 +227,9 @@ class RenderEngine:
                     current_cards.append(card)
 
         def make_hand_sprite(card):
+            # NOTE: the gui card will sync display with state of the logic card
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
             return sprite
 
@@ -285,25 +252,11 @@ class RenderEngine:
 
         def make_matrix_sprite(card):
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
+            card.is_face_down = card.ctype == "trap"
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
-
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
-
             sprite.placed_pos = sprite.rect.center
-
-            if isinstance(sprite, TrapCardGUI):
-                if sprite.is_face_down:
-                    sprite.card_surface = pygame.transform.smoothscale(
-                        sprite.image_face_down.copy(), sprite.display_size)
-                else:
-                    sprite._render_card_with_text()
-                sprite.update()
-            else:
-                sprite.is_face_down = False
-                sprite._render_card_with_text()
-                sprite.update()
-
             return sprite
 
         self.sync_sprites(

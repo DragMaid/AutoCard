@@ -44,6 +44,7 @@ class Renderer:
             screen=self.screen,
             game_state=self.engine.game_state,
             event_logger=self.engine.event_logger,
+            turn_manager=self.engine.turn_manager,
             train_mode=self.train_mode
         )
 
