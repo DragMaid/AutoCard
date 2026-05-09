@@ -4,6 +4,7 @@ from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
 from gui.cards_gui.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
+from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
 from core.game_info.events import (
     AttackEvent, TrapTriggerEvent, ToggleEvent,
@@ -188,6 +189,11 @@ class RenderEngine:
                     elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
                         sprite._card.logic_card = card
 
+                    # Sync visual state if not animating
+                    if not self.animation_mgr.is_animating(sprite, ToggleRotateAnimation):
+                        if hasattr(card, "mode"):
+                            sprite.angle = 90 if card.mode == "defense" else 0
+
         if align_fn and (to_add or to_remove):
             align_fn()
 
@@ -264,6 +270,10 @@ class RenderEngine:
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             card.is_face_down = card.ctype == "trap"
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
+
+            if hasattr(card, "mode") and card.mode == "defense":
+                sprite.angle = 90
+
             row, col = card.pos_in_matrix
             sprite.rect.center = matrix.get_slot_rect(row, col).center
             sprite.placed_pos = sprite.rect.center
