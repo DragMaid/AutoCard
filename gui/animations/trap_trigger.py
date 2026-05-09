@@ -22,11 +22,11 @@ class TrapTriggerAnimation(Animation):
             p = t / 0.3
             # shrink to 0 then expand
             scale_y = abs(math.cos(p * math.pi))
-            
+
             # Midpoint of flip: change face-down state
             if p >= 0.5:
                 self.card.logic_card.is_face_down = False
-                
+
             self.card.scale_factor_y = max(0.01, scale_y)
 
         elif t < 0.6:
@@ -41,7 +41,9 @@ class TrapTriggerAnimation(Animation):
         else:
             # Shake phase
             p = (t - 0.6) / 0.4
-            offset_x = math.sin(p * 20 * math.pi) * 5 * (1 - p)  # decaying shake
-            self.card.rect.center = (self.start_pos.x + offset_x, self.start_pos.y)
+            offset_x = math.sin(p * 20 * math.pi) * 5 * \
+                (1 - p)  # decaying shake
+            self.card.rect.center = (
+                self.start_pos.x + offset_x, self.start_pos.y)
             # Ensure scale is reset
             self.card.scale_factor_y = 1.0
