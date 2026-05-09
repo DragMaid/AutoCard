@@ -88,7 +88,8 @@ class CardGUI(Sprite, Draggable):
         else:
             description = f"Description: {description}"
         if description:
-            self._render_wrapped_text(annotated_image, description, inner_textbox)
+            self._render_wrapped_text(
+                annotated_image, description, inner_textbox)
 
         # Draw name above textbox (with horizontal padding)
         name = getattr(self.logic_card, "name", "Unknown")

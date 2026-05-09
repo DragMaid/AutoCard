@@ -1,4 +1,3 @@
-import pygame
 from .animation import Animation
 
 
@@ -28,7 +27,8 @@ class ToggleRotateAnimation(Animation):
 
     def _apply(self, t):
         p = self._ease_in_out(t)
-        self.sprite.angle = self.start_angle + (self.end_angle - self.start_angle) * p
+        self.sprite.angle = self.start_angle + \
+            (self.end_angle - self.start_angle) * p
 
         # Trigger sound/callback slightly before end
         if t >= 0.8 and not self.callback_done:

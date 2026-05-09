@@ -50,7 +50,8 @@ class AttackPlayerAnimation(Animation):
             self.card.rect.center = self.start_pos.lerp(self.end_pos, p * 0.7)
 
             # Rotate toward final angle
-            self.card.angle = self.start_angle + (self.final_angle - self.start_angle) * p
+            self.card.angle = self.start_angle + \
+                (self.final_angle - self.start_angle) * p
 
         else:
             # Return phase
@@ -66,7 +67,7 @@ class AttackPlayerAnimation(Animation):
                 self.card.scale_factor_x = 1.1
                 self.card.scale_factor_y = 0.9
                 self.impact_done = True
-            
+
             # Fade out squash
             self.card.scale_factor_x = 1.1 - 0.1 * p
             self.card.scale_factor_y = 0.9 + 0.1 * p

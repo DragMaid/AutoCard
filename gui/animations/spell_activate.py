@@ -35,7 +35,7 @@ class SpellAnimation(Animation):
                 EffectManager.spawn("spell-glow", self.start_pos)
                 AudioManager.play_sound("assets/sounds/spell-activate.mp3")
                 self.effect_spawned = True
-            
+
             # Maintain the pop state
             self.card.offset_y = -20
             self.card.scale_factor_x = 1.3

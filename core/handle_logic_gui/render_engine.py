@@ -40,6 +40,7 @@ class RenderEngine:
         self.sprite_lookup = {}
 
         self.last_triggered_count = 0
+        self.attack_indicators = []
 
     def reset(self):
         for value in self.sprite_manager.sprites.values():
@@ -55,12 +56,21 @@ class RenderEngine:
         self.handle_attack_queue()
 
     def handle_attack_queue(self):
-        self.attack_indicator = None
+        self.attack_indicators.clear()
         for attack in self.game_state.attack_queue:
-            attack_indicator = DragArrow(255, 0, 0)
+            attack_indicator = DragArrow(color=(255, 0, 0))
             source_id, target_id = attack["card_id"], attack["target_id"]
+
+            if attack["target_is_player"]:
+                target_ui = next(
+                    (h for h in getattr(self.field_matrix, "hands", [])
+                     if getattr(h, "player_id") == target_id),
+                    None
+                )
+            else:
+                target_ui = self.sprite_manager.get_sprite(target_id)
+
             source_ui = self.sprite_manager.get_sprite(source_id)
-            target_ui = self.sprite_manager.get_sprite(target_id)
             attack_indicator.start_pos = source_ui.rect.center
             attack_indicator.end_pos = target_ui.rect.center
             self.attack_indicators.append(attack_indicator)
@@ -309,6 +319,5 @@ class RenderEngine:
             for sprite in group.values():
                 sprite.draw(self.screen)
 
-        if self.attack_indicator:
-            for arrow in self.attack_indicator:
-                arrow.draw(self.screen)
+        for arrow in self.attack_indicators:
+            arrow.draw(self.screen)

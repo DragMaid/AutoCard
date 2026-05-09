@@ -29,8 +29,10 @@ class AttackAnimation(Animation):
             self.start_pos1 - self.start_pos2, direction2)
 
         # Base angles from card mode (defense = 90 deg)
-        self.start_angle1 = 90 if getattr(card1.logic_card, "mode", "attack") == "defense" else 0
-        self.start_angle2 = 90 if getattr(card2.logic_card, "mode", "attack") == "defense" else 0
+        self.start_angle1 = 90 if getattr(
+            card1.logic_card, "mode", "attack") == "defense" else 0
+        self.start_angle2 = 90 if getattr(
+            card2.logic_card, "mode", "attack") == "defense" else 0
 
     @staticmethod
     def _signed_angle(vec, facing):
@@ -60,8 +62,10 @@ class AttackAnimation(Animation):
                 self.midpoint, p * 0.6)
 
             # Spin the cards toward their final angle
-            self.card1.angle = self.start_angle1 + (self.final_angle1 - self.start_angle1) * p
-            self.card2.angle = self.start_angle2 + (self.final_angle2 - self.start_angle2) * p
+            self.card1.angle = self.start_angle1 + \
+                (self.final_angle1 - self.start_angle1) * p
+            self.card2.angle = self.start_angle2 + \
+                (self.final_angle2 - self.start_angle2) * p
 
         else:
             # Bounce back phase
@@ -72,17 +76,17 @@ class AttackAnimation(Animation):
             if not self.impact_done:
                 EffectManager.spawn("slam", self.midpoint)
                 AudioManager.play_sound("assets/sounds/sword-clash.mp3")
-                
+
                 # Apply impact squash
                 self.card1.scale_factor_x = 1.1
                 self.card1.scale_factor_y = 0.9
                 self.card2.scale_factor_x = 1.1
                 self.card2.scale_factor_y = 0.9
-                
+
                 self.card1.angle = self.final_angle1
                 self.card2.angle = self.final_angle2
                 self.impact_done = True
-            
+
             # Fade out impact squash
             self.card1.scale_factor_x = 1.1 - 0.1 * p
             self.card1.scale_factor_y = 0.9 + 0.1 * p
