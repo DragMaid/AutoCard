@@ -29,7 +29,7 @@ class TrapCardGUI(CardGUI):
         # Update the triggerable button
         btn_w, btn_h = self.rect.width, 30
         activate_button_rect = pygame.Rect(
-            self.rect.x, self.rect.y - btn_h - 10, btn_w, btn_h)
+            self.rect.x, self.rect.y + self.rect.height - btn_h - 10, btn_w, btn_h)
         bg_color = (40, 167, 69) if self.activated else (220, 53, 69)
         text_str = "ACTIVATED" if self.activated else "ACTIVATE"
         if not hasattr(self, "activate_button"):

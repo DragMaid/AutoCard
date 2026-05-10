@@ -98,6 +98,10 @@ class AnimationManager:
         self.add_animation(TrapTriggerAnimation(
             card, duration=self._duration(duration)))
 
+    def create_triggerable_animation(self, card, duration=0.8):
+        self.add_animation(TrapTriggerableAnimation(
+            card, duration=self._duration(duration)))
+
     def create_merge_animation(self, card1, card2, result_card, duration=1):
         self.add_animation(MergeAnimation(
             card1, card2, result_card,

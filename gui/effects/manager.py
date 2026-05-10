@@ -26,6 +26,8 @@ class EffectManager:
             cls.effects_group.add(ImpactEffect(arg))
         elif effect_type == "trap-glow":
             cls.effects_group.add(TrapGlowEffect(arg))
+        elif effect_type == "trap-pulse":
+            cls.effects_group.add(TrapPulseEffect(arg))
         elif effect_type == "spell-glow":
             cls.effects_group.add(SpellGlowEffect(arg))
         elif effect_type == "merge":
