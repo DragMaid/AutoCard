@@ -26,13 +26,24 @@ class UIComponent:
 
 
 class Button(UIComponent):
-    def __init__(self, rect, text, font_size=32, color=(50, 50, 50), hover_color=(80, 80, 80), text_color=(255, 255, 255), callback=None):
+    def __init__(
+        self,
+        rect,
+        text,
+        font_size=32,
+        color=(50, 50, 50),
+        hover_color=(80, 80, 80),
+        text_color=(255, 255, 255),
+        border_radius=5,
+        callback=None
+    ):
         super().__init__(rect)
         self.text = text
         self.font = get_font(font_size)
         self.color = color
         self.hover_color = hover_color
         self.text_color = text_color
+        self.border_radius = border_radius
         self.callback = callback
         self.enabled = True
 
@@ -58,9 +69,10 @@ class Button(UIComponent):
             border_color = (60, 60, 60)
             text_color = (100, 100, 100)
 
-        pygame.draw.rect(screen, color, self.rect, border_radius=5)
-        pygame.draw.rect(screen, border_color,
-                         self.rect, 2, border_radius=5)
+        pygame.draw.rect(screen, color, self.rect,
+                         border_radius=self.border_radius)
+        pygame.draw.rect(screen, border_color, self.rect, 2,
+                         border_radius=self.border_radius)
 
         text_surf = self.font.render(self.text, True, text_color)
         text_rect = text_surf.get_rect(center=self.rect.center)
@@ -127,8 +139,8 @@ class InputBox(UIComponent):
 
         if text_rect.width > self.rect.width - 20:
             # Create a subsurface for clipping
-            clip_rect = pygame.Rect(
-                0, 0, self.rect.width - 20, self.rect.height)
+            # clip_rect = pygame.Rect(
+                # 0, 0, self.rect.width - 20, self.rect.height)
             temp_surf = pygame.Surface(
                 (text_rect.width, text_rect.height), pygame.SRCALPHA)
             temp_surf.blit(text_surf, (0, 0))

@@ -276,8 +276,6 @@ class GameState:
         mergeable_count = sum(
             1 for group in groups.values() if len(group) >= 2)
         if mergeable_count > 0:
-            logger.debug(f"[RULE] Found {
-                         mergeable_count} mergeable groups for {player_id}:")
             for (pid, mtype, level), cards in groups.items():
                 if len(cards) >= 2:
                     card_names = ", ".join([c.name for c in cards])

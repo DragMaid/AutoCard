@@ -24,7 +24,7 @@ class InputManager:
                 self._handle_left_click(event.pos)
                 self._handle_left_click_arrow(event.pos)
                 self._handle_click_card(event.pos)
-                self._handle_trap_activation(event.pos)
+                self._handle_trap_activation(event)
             elif event.button == 3:  # right click → toggle
                 self._handle_right_click(event.pos)
 
@@ -33,6 +33,8 @@ class InputManager:
                 self.dragging_card.on_drag(event.pos)
             elif self.drag_arrow and self.drag_arrow.dragging:
                 self.drag_arrow.end_pos = event.pos
+
+            self._handle_trap_activation(event)
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self.dragging_card:
@@ -43,21 +45,25 @@ class InputManager:
 
             self._handle_release_arrow(event.pos)
 
-    def _handle_trap_activation(self, pos):
+    def _handle_trap_activation(self, event):
         """Check if a trap activation button was clicked. Returns True if activated."""
-        for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
-            from gui.cards_gui.trap_card import TrapCardGUI
-            if isinstance(card_ui, TrapCardGUI) and card_ui.activate_button_rect:
-                if card_ui.activate_button_rect.collidepoint(pos) and card_ui.triggerable:
-                    AudioManager.play_sound("assets/sounds/button-press.mp3")
-                    card_ui.activated = not card_ui.activated
-                    card_id = card_ui.logic_card.id
-                    if card_ui.activated:
-                        self.game_engine.game_state.activated_traps.add(
-                            card_id)
-                    else:
-                        self.game_engine.game_state.activated_traps.remove(
-                            card_id)
+        for trap_id in self.game_engine.game_state.triggerable_traps.keys():
+            trap_ui = self.render_engine.sprite_manager.get_sprite(trap_id)
+            if not trap_ui:
+                continue
+
+            activate_btn = getattr(trap_ui, "activate_button", None)
+            if not activate_btn or not trap_ui.triggerable:
+                continue
+
+            pressed = activate_btn.handle_event(event)
+            if not pressed:
+                continue
+
+            trap_ui.activated = not trap_ui.activated
+            self.game_engine.toggle_trap_activation(trap_id, activated=trap_ui.activated)
+            return True
+        return False
 
     def _handle_left_click(self, pos):
         # Check hands from top-most first

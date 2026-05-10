@@ -286,6 +286,15 @@ class GameEngine:
             card_id)
         print(f"  → {card.name} moved to {card.owner_id}'s graveyard")
 
+    def toggle_trap_activation(self, trap_id, activated=False):
+        # TODO: this check doesnt make sense but will fix later
+        owner_id = self.game_state.get_card_by_id(trap_id).owner_id
+        if self.rule_engine.can_activate(owner_id, trap_id):
+            if activated:
+                self.game_state.activated_traps.add(trap_id)
+            else:
+                self.game_state.activated_traps.remove(trap_id)
+
     def resolve_battle(self,
                        attacker_id: str,
                        defender_id: str,

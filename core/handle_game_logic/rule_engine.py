@@ -34,6 +34,30 @@ class RuleEngine:
 
         return True
 
+    def can_activate(self,
+                     player_id: str,
+                     trap_id: str) -> bool:
+        trapper = self.turn_manager.get_trapper()
+        card = self.game_state.get_card_by_id(trap_id)
+
+        if trapper.id != player_id:
+            self.logger.debug(f"[RULE] {player_id} cannot activate {
+                              card.name} since its not their trap turn")
+            return False
+
+        if trap_id not in list(self.game_state.triggerable_traps.keys()):
+            self.logger.debug(f"[RULE] {player_id} cannot activate {
+                              card.name}: card not currently triggerable")
+            return False
+
+        if card.owner_id != player_id:
+            self.logger.debug(f"[RULE] {player_id} cannot activate {
+                              card.name}: card not does not belong to the player")
+            return False
+
+        self.logger.debug(f"[RULE] ✓ {player_id} can activate {card.name}")
+        return True
+
     def can_summon(self,
                    player_id: str,
                    card_id: str,

@@ -1,5 +1,4 @@
 from collections import defaultdict
-from .animation import Animation
 from .attack import AttackAnimation
 from .death import DeathAnimation
 from .place import PlaceAnimation
@@ -22,9 +21,6 @@ class AnimationManager:
         self.game_state = game_state
         EffectManager.set_train_mode(train_mode)
         AudioManager.set_train_mode(train_mode)
-
-        if train_mode:
-            Animation.audio = False
 
     def is_running(self):
         """Returns if any animation is pending or animating."""
