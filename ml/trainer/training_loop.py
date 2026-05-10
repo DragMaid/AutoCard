@@ -14,7 +14,7 @@ class TrainingLoop:
     Orchestrates the main training loop for multi-agent RL.
     """
 
-    MAX_STEPS_PER_EPISODE = 1000
+    MAX_STEPS_PER_EPISODE = 100
 
     def __init__(
         self,
@@ -67,6 +67,7 @@ class TrainingLoop:
 
     def _execute_step(self, states: List, epsilon: float):
         """Execute a single training step for all agents."""
+        # Decide whether to use the best policy based decision or to explore (random)
         best_response = random.random() >= self.cfg.ETA
 
         # Select actions for all agents
@@ -116,6 +117,7 @@ class TrainingLoop:
                 best_response
             )
 
+            # TODO: the pdqn is kinda redundant, remove it later
             # Select continuous parameters if using PDQN
             cont_params = agent.select_continuous_params(state)
             selected_params[agent_idx] = cont_params

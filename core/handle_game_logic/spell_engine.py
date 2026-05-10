@@ -97,7 +97,14 @@ class DestroyTrapPolicy(SpellPolicy):
 
 class CallOfBravePolicy(SpellPolicy):
     def can_execute(self, engine, spell, target_id):
-        return True
+        # Only allow the usage if the player has already summoned a monster this turn
+        able = not engine.game_state.player_info[spell.owner_id]['has_summoned_monster']
+        if not able:
+            log_action("CAST_SPELL", spell.owner_id, {
+                "spell": spell.name,
+                "reason": "User need to summon first before using this card"
+            }, False)
+        return able
 
     def execute(self, engine, spell, target_id, details):
         engine.game_state.player_info[spell.owner_id]['has_summoned_monster'] = False

@@ -19,6 +19,32 @@ class ActionHandler:
         return True
 
 
+class ActivateHandler(ActionHandler):
+    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
+        """Activate a triggerable trap"""
+        if not params:
+            self.logger.debug(
+                "[HANDLER] Trap activation failed: No parameters")
+            return False
+
+        gs = env.engine.game_state
+
+        my_traps = [c for c in gs.get_player_cards(player.id) if c.ctype == "trap"]
+
+        opp_id = gs.get_opponent_id(player.id)
+        opp_monsters = [c for c in gs.get_player_cards(opp_id) if c.ctype == "monster"]
+
+        # TODO: should check the encoding first hand
+        # idx = params.get(
+
+        # TODO: the thing is to also end turn right after this so
+        # TODO: change all the debug to fail to detect faster
+        if not triggerables:
+            self.logger.debug(
+                "[HANDLER] Trap activation failed: No triggerables detected")
+            return False
+
+
 class SummonHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
         """Summon a monster from hand to field."""
@@ -28,7 +54,8 @@ class SummonHandler(ActionHandler):
 
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        monsters = [gs.get_card_by_id(cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "monster"]
+        monsters = [gs.get_card_by_id(
+            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "monster"]
 
         if not monsters:
             self.logger.debug("[HANDLER] Summon failed: No monsters in hand")
@@ -43,7 +70,8 @@ class SummonHandler(ActionHandler):
             return False
 
         # Attempt to summon
-        success = env.engine.summon_card(player.id, card.id, cell=None, check=False)
+        success = env.engine.summon_card(
+            player.id, card.id, cell=None, check=False)
 
         if success:
             self.logger.debug(f"[HANDLER] ✓ Summoned {card.name}")
@@ -103,7 +131,8 @@ class AttackHandler(ActionHandler):
             return False
 
         # Attempt attack
-        success = env.engine.attack(player.id, opp_id, attacker.id, target_id, target_is_player)
+        success = env.engine.attack(
+            player.id, opp_id, attacker.id, target_id, target_is_player)
 
         if success:
             self.logger.debug(
@@ -123,7 +152,8 @@ class CastSpellHandler(ActionHandler):
 
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        spells = [gs.get_card_by_id(cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "spell"]
+        spells = [gs.get_card_by_id(
+            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "spell"]
 
         if not spells:
             self.logger.debug(
@@ -186,7 +216,8 @@ class SetTrapHandler(ActionHandler):
 
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        traps = [gs.get_card_by_id(cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "trap"]
+        traps = [gs.get_card_by_id(
+            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "trap"]
 
         if not traps:
             self.logger.debug("[HANDLER] Set trap failed: No traps in hand")

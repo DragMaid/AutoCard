@@ -84,7 +84,6 @@ class GameEnv:
         if self.render:
             self.renderer = Renderer(engine=self.engine)
 
-    # -------------------- properties --------------------
     @property
     def param_dim(self) -> int:
         """Maximum number of parameters required for any action."""
@@ -101,7 +100,6 @@ class GameEnv:
         p1 = self.engine.game_state.players[0]
         return len(self._get_state(p1))
 
-    # -------------------- engine lifecycle --------------------
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
         """Start a new game and return initial states for both players.
 
@@ -125,8 +123,6 @@ class GameEnv:
             self.renderer.reset()
 
         return self._get_state(p1), self._get_state(p2)
-
-    # -------------------- step loop --------------------
 
     def step(self, actions: Optional[Dict[str, action_type]] = None):
         """Execute a full round where each player takes multiple actions.
@@ -172,6 +168,7 @@ class GameEnv:
             if done:
                 break
 
+            # TODO: fix this flow for in between trap activation
             # Make sure that the player always end their turn
             if self.engine.turn_manager.get_current_player() == player:
                 self.engine.end_turn()
@@ -238,7 +235,6 @@ class GameEnv:
 
         return total_turn_reward, actions_taken, done
 
-    # -------------------- action wiring --------------------
     def _init_handlers_and_resolvers(self) -> None:
         self._action_handlers: Dict[str, ActionHandler] = {
             "summon": SummonHandler(),
@@ -382,7 +378,6 @@ class GameEnv:
 
         return breakdown.total, done, success
 
-    # -------------------- state encoding --------------------
     def _get_state(self, player: Player) -> np.ndarray:
         """Return a flat state vector for a given player.
 
@@ -395,12 +390,18 @@ class GameEnv:
 
     @staticmethod
     def _encode_player_features(player: Player) -> np.ndarray:
+        """Normalize the player healthbar"""
         return np.array([player.life_points / player.max_life_points], dtype=np.float32)
 
+    # TODO: re-consider this design later
+    # TODO: there's way to many weird constants, fix this 
     def _encode_hand(self, player: Player) -> np.ndarray:
         gs = self.engine.game_state
         hand_card_ids = gs.player_info[player.id]["held_cards"].cards
         max_hand = self.engine.rule_engine.max_hand_cards
+
+        # Create a temp placeholder
+        # TODO: fix this weird ass hard coded card feature
         hand_encoded = np.zeros(max_hand * CARD_FEATURES, dtype=np.float32)
         for i, card_id in enumerate(hand_card_ids[:max_hand]):
             card = gs.get_card_by_id(card_id)
@@ -412,8 +413,10 @@ class GameEnv:
                 self.reward_calculator.max_stats
             hand_encoded[base + 2] = getattr(card, "defense", 0) / \
                 self.reward_calculator.max_stats
+            # TODO: wtf is even this
             owner_flag = 0  # current player
             hand_encoded[base + 3] = owner_flag
+            # TODO: rewrite this into vector embeddings
             hand_encoded[base + 4] = ability_to_float(card)
             hand_encoded[base +
                          5] = 1 if card.is_face_down else 0
@@ -435,6 +438,7 @@ class GameEnv:
                         getattr(card, "defense", 0) /
                         self.reward_calculator.max_stats,
                         owner_flag,
+                        # TODO: same for this thing
                         ability_to_float(card),
                         1 if card.is_face_down else 0,
                     ])
@@ -442,7 +446,6 @@ class GameEnv:
                     board_encoded.extend([0.0] * CARD_FEATURES)
         return np.array(board_encoded, dtype=np.float32)
 
-    # -------------------- helpers --------------------
     def get_winner(self) -> Optional[int]:
         """Get the index of the winning player, or None if game is not over."""
         for idx, player in enumerate(self.engine.game_state.players):

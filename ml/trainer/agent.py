@@ -41,6 +41,7 @@ class Agent:
         # Average policy
         self.policy = AveragePolicy(state_dim, num_actions).to(self.cfg.DEVICE)
 
+        # TODO: this thing kinda do nothing tbh
         # PDQN components
         if use_pdqn:
             self._initialize_pdqn(state_dim, num_actions, param_dim)
@@ -246,9 +247,7 @@ class Agent:
             action_mask).unsqueeze(0).to(self.cfg.DEVICE)
 
         if best_response:
-            return self._select_with_dqn_masked(
-                tensor, mask_tensor, epsilon
-            )
+            return self._select_with_dqn_masked(tensor, mask_tensor, epsilon)
         else:
             return self._select_with_policy_masked(tensor, mask_tensor)
 

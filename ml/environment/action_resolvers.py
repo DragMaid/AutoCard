@@ -7,6 +7,35 @@ class LegalActionResolver:
         raise NotImplementedError
 
 
+class TrapActivateResolver(LegalActionResolver):
+    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+        gs = env.engine.game_state
+        if env.engine.turn_manager.is_trap_stage():
+            return [], {}
+
+        trap_ids = [c.id for c in gs.get_player_cards(player.id) if c.ctype == "trap"]
+        trap_map = {trap_ids[i]: i for i in range(len(trap_ids))}
+
+        opp_id = gs.get_opponent_id(player.id)
+        opp_monsters_ids = [c.id for c in gs.get_player_cards(opp_id) if c.ctype == "monster"]
+        opp_monster_map = {
+            opp_monsters_ids[i]: i for i in range(len(opp_monsters_ids))}
+
+        trap_targets: Dict[int, List[int]] = {}
+
+        for source_id, target_params in gs.triggerable_traps.items():
+            source_idx = trap_map[source_id]
+            target_idx = opp_monster_map[target_params["target_id"]]
+            # NOTE: I will just make one trap resolve for 1 target for now
+            trap_targets[source_idx] = target_idx
+
+        if not trap_targets:
+            return [], {}
+
+        trap_idxs = list(trap_targets.keys())
+        return ["activate_trap"], {"activate_trap": {"traps": trap_idxs, "targets": trap_targets}}
+
+
 class SummonResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
         gs = env.engine.game_state
@@ -112,7 +141,8 @@ class ToggleResolver(LegalActionResolver):
 
 class CombineResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
-        mergeable_groups = env.engine.game_state.get_mergeable_groups(player.id)
+        mergeable_groups = env.engine.game_state.get_mergeable_groups(
+            player.id)
         combine_pairs: List[Tuple[str, str]] = []
         for group in mergeable_groups.values():
             if len(group) >= 2:
