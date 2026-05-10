@@ -4,11 +4,12 @@ from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
 from gui.cards_gui.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
+from gui.animations.trap_triggerable import TrapTriggerableAnimation
 from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
 from core.game_info.events import (
     AttackEvent, TrapTriggerEvent, ToggleEvent,
-    SpellActiveEvent, MergeEvent
+    SpellActiveEvent, MergeEvent, TrapTriggerableEvent
 )
 from gui.arrow import DragArrow
 from gui.sprite_manager import SpriteManager
@@ -139,6 +140,11 @@ class RenderEngine:
                         self.animation_mgr.create_trigger_animation(trap)
                         self.field_matrix.areas["preview_card_table"].set_card(
                             trap, self.game_state)
+
+                elif et is TrapTriggerableEvent:
+                    trap = self.sprite_manager.get_sprite(event.card_id)
+                    if trap:
+                        self.animation_mgr.create_triggerable_animation(trap)
 
                 elif et is ToggleEvent:
                     card = self.sprite_manager.get_sprite(event.card_id)

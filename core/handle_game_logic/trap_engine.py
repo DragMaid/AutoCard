@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from core.game_info.effect_tracker import EffectType
-from core.game_info.events import TrapTriggerEvent
+from core.game_info.events import TrapTriggerEvent, TrapTriggerableEvent
 from core.cards.trap_card import ActivateCondition
 from typing import Tuple
 from .utils import log_action
@@ -171,6 +171,7 @@ class TrapEngine:
 
             trap = self.game_engine.game_state.get_card_by_id(trap_id)
             trap.triggerable = True
+            self.game_engine.event_logger.add_event(TrapTriggerableEvent(trap_id))
         return len(triggerable) > 0
 
     def get_triggerable_traps(self) -> list:
