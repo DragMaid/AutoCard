@@ -79,6 +79,8 @@ class DebuffDefendTogglePolicy(TrapPolicy):
         engine.effect_tracker.add_effect(
             EffectType.DEBUFF, toggled_card.id, "defend",
             trap.value, trap.duration, engine.game_state)
+        engine.event_logger.add_event(
+            TrapTriggerEvent(trap.id, toggled_card.id))
         engine.move_card_to_graveyard(trap.id)
         engine.logger.info(f"[TRAP] {trap.name} debuffed {
                            toggled_card.name} DEF")
@@ -94,6 +96,8 @@ class DebuffSummonPolicy(TrapPolicy):
             engine.effect_tracker.add_effect(
                 EffectType.DEBUFF, summoned_card.id, stat,
                 trap.value, trap.duration, engine.game_state)
+        engine.event_logger.add_event(
+            TrapTriggerEvent(trap.id, summoned_card.id))
         engine.move_card_to_graveyard(trap.id)
         engine.logger.info(f"[TRAP] {trap.name} debuffed {summoned_card.name}")
         return True, None
