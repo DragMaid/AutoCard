@@ -4,7 +4,6 @@ from gui.cards_gui.spell_card import SpellCardGUI
 from gui.cards_gui.trap_card import TrapCardGUI
 from gui.cards_gui.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
-from gui.animations.trap_triggerable import TrapTriggerableAnimation
 from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
 from core.game_info.events import (

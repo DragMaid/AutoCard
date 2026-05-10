@@ -4,6 +4,7 @@ from .trap_glow import TrapGlowEffect
 from .spell_glow import SpellGlowEffect
 from .merge import MergeEffect
 from .player_hit import HitPlayerEffect
+from .trap_pulse import TrapPulseEffect
 
 
 class EffectManager:

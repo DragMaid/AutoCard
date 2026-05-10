@@ -1,6 +1,7 @@
 import math
 import pygame
 from gui.effects.manager import EffectManager
+from gui.audio_manager import AudioManager
 from .animation import Animation
 
 
@@ -15,10 +16,11 @@ class TrapTriggerableAnimation(Animation):
         # Pulsing scale effect
         pulse = math.sin(t * math.pi) * 0.05
         self.card.scale_factor_y = 1.0 + pulse
-        
+
         if t >= 0.2 and not self.effect_spawned:
+            AudioManager.play_sound("assets/sounds/trap-triggerable.mp3")
             EffectManager.spawn("trap-pulse", self.start_pos)
             self.effect_spawned = True
-            
+
         if t >= 1.0:
             self.card.scale_factor_y = 1.0

@@ -5,6 +5,7 @@ from .place import PlaceAnimation
 from .move import MoveAnimation
 from .queue import AnimationQueue
 from .trap_trigger import TrapTriggerAnimation
+from .trap_triggerable import TrapTriggerableAnimation
 from .toggle import ToggleRotateAnimation
 from .spell_activate import SpellAnimation
 from .merge import MergeAnimation
