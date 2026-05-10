@@ -3,7 +3,7 @@ import logging
 
 def draw_specific_card(engine, player_id: str, name: str, ctype: str):
     if ctype == "monster":
-        card = engine.draw_syste.monster_factory.load(player_id, name)
+        card = engine.draw_system.monster_factory.load(player_id, name)
     elif ctype == "trap":
         card = engine.draw_system.trap_factory.load(player_id, name)
     elif ctype == "spell":
