@@ -1,3 +1,4 @@
+import logging
 from multiprocessing import Process, Queue
 from core.network.discovery import DiscoveryServer
 from gui.effects.manager import EffectManager
@@ -74,17 +75,18 @@ class SocketServerGame(GameApp):
         EffectManager.update()
 
     def cleanup(self):
-        print("Stopping SocketServerGame…")
+        logger = logging.getLogger("GameEngine")
+        logger.info("Stopping SocketServerGame…")
         try:
             self._discovery.stop()
         except Exception as e:
-            print(f"Discovery stop error: {e}")
+            logger.error(f"Discovery stop error: {e}")
         try:
             self._server_process.terminate()
             self._server_process.join(timeout=2)
             if self._server_process.is_alive():
-                print("Force-killing server process…")
+                logger.info("Force-killing server process…")
                 self._server_process.kill()
         except Exception as e:
-            print(f"Server process stop error: {e}")
+            logger.error(f"Server process stop error: {e}")
         self._out_queue.put(None)  # signal bridge thread to exit

@@ -1,10 +1,4 @@
 import logging
-import builtins
-
-
-def disable_print():
-    builtins.print = lambda *a, **k: None
-
 
 def setup_logger(log_path: str | None = None, console=True, level=logging.DEBUG):
     logger = logging.getLogger("GameEngine")
@@ -30,8 +24,5 @@ def setup_logger(log_path: str | None = None, console=True, level=logging.DEBUG)
             logger.addHandler(log_handler)
 
         logger.propagate = False
-
-    # Redirect built-in print() to logger.info()
-    builtins.print = lambda *a, **k: logger.info(" ".join(str(x) for x in a))
 
     return logger

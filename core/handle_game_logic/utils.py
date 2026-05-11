@@ -12,7 +12,7 @@ def draw_specific_card(engine, player_id: str, name: str, ctype: str):
         return
     engine.game_state.entity_lookup[card.id] = card
     engine.game_state.player_info[player_id]["held_cards"].add(card.id)
-    print(f"[DEBUG] {player_id} received specific card: {name}")
+    logging.getLogger("GameEngine").debug(f"[DEBUG] {player_id} received specific card: {name}")
 
 
 def log_action(action_type: str, player_id: str, details: dict, success: bool):

@@ -97,77 +97,6 @@ def soft_update(target, source, tau):
         t.data.copy_(t.data * (1.0 - tau) + s.data * tau)
 
 
-def pdqn_select_action_safe(pdqn,
-                            env,
-                            player_state,
-                            action_name,
-                            legal_params,
-                            epsilon=0.0,
-                            train=True):
-    """
-    Wrapper to select a discrete action and valid parameters safely.
-
-    pdqn: your PDQN model
-    env: GameEnv
-    player_state: numpy array (state_dim,)
-    action_name: string, one of env.ACTIONS
-    legal_params: dict from _get_legal_actions for this action
-    """
-    discrete_idx = env.ACTIONS.index(action_name)
-    param_dim = pdqn.param_dim
-
-    # get PDQN raw parameter
-    _, raw_params = pdqn.select_action(
-        player_state, epsilon=epsilon, train=train)
-    # assuming Gaussian outputs in [-1,1], scale if needed
-    raw_params = np.clip(raw_params, 0.0, 1.0)
-
-    if action_name == "combine":
-        # legal pairs: list of tuples [(i,j), ...]
-        pairs = legal_params.get("combine", {}).get("pairs", [])
-        if not pairs:
-            return discrete_idx, None  # fallback, no legal combine
-        # scale raw_params[0:2] to indices range (0..1 -> min-max indices)
-        raw_scaled = raw_params[:2] * len(pairs)
-        raw_scaled = np.clip(raw_scaled, 0, len(pairs)-1)
-        # pick nearest legal pair
-        pair_idx = int(round(raw_scaled[0]))
-        pair_idx = min(pair_idx, len(pairs)-1)
-        selected_param = pairs[pair_idx]
-        return discrete_idx, np.array(selected_param)
-
-    else:
-        # other actions: just return raw_params clipped to legal dimension
-        return discrete_idx, raw_params[:param_dim]
-
-
-def flatten_action_params(action_params, param_dim=2):
-    """
-    Convert structured dict of parameters to a flat numeric vector.
-    Example:
-        {"target_idx": 1, "card_idx": 2} -> np.array([1, 2])
-    """
-    if isinstance(action_params, dict):
-        flat = []
-        for v in action_params.values():
-            if isinstance(v, (list, tuple)):
-                flat.extend(v)
-            elif isinstance(v, (int, float)):
-                flat.append(v)
-            # ignore non-numeric or complex values
-        # pad / truncate to param_dim
-        flat = (flat + [0.0] * param_dim)[:param_dim]
-        return np.array(flat, dtype=np.float32)
-    elif isinstance(action_params, (list, np.ndarray)):
-        flat = np.array(action_params, dtype=np.float32)
-        if flat.shape[0] < param_dim:
-            flat = np.pad(flat, (0, param_dim - flat.shape[0]))
-        return flat[:param_dim]
-    else:
-        # fallback — empty vector
-        return np.zeros(param_dim, dtype=np.float32)
-
-
 def save_model(logging, models, policies, checkpoint_path):
     """
     Save all models to a single checkpoint file.
@@ -255,7 +184,7 @@ def load_single_agent(logging, agent_id: int, dqn_model, policy_model=None,
         logging: Logger instance
         agent_id: Which agent to load (0, 1, etc.)
         dqn_model: The DQN model to load weights into
-        policy_model: Optional policy model (for PDQN)
+        policy_model: Optional policy model
         device: Device to load to
         checkpoint_path: Path to checkpoint file
 

@@ -284,7 +284,7 @@ class GameEngine:
             self.game_state.modify_field("remove", card, card.pos_in_matrix)
         self.game_state.player_info[card.owner_id]["graveyard_cards"].add(
             card_id)
-        print(f"  → {card.name} moved to {card.owner_id}'s graveyard")
+        self.logger.info(f"  → {card.name} moved to {card.owner_id}'s graveyard")
 
     def toggle_trap_activation(self, trap_id, activated=False):
         # TODO: this check doesnt make sense but will fix later

@@ -10,6 +10,9 @@ BASE_PATH = Path(os.path.dirname(__file__)).parent
 class Config:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Action Space
+    NUM_ACTIONS = 461             # Fixed discrete action space size
+
     # Training duration
     MAX_FRAMES = 1_000_000        # total frames to train
     BATCH_SIZE = 64               # samples per update

@@ -1,6 +1,7 @@
 import socket
 import urllib.parse
 import socketio
+import logging
 
 
 def run_socketio_server(host, port, password, sub_queue, out_queue):
@@ -33,7 +34,8 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
         if password:
             client_pass = extract_password(environ)
             if client_pass != password:
-                print(f"Rejected connection from {sid}: bad password")
+                logging.getLogger("GameEngine").warning(
+                    f"Rejected connection from {sid}: bad password")
                 return False
         sub_queue.put({"connected": {}})
         return True
@@ -42,7 +44,7 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
     def disconnect(sid):
         sub_queue.put({"disconnected": {}})
 
-    print(f"Server listening on {host}:{port}")
+    logging.getLogger("GameEngine").info(f"Server listening on {host}:{port}")
     run_simple(host, port, app, threaded=True, use_reloader=False)
 
 
@@ -68,7 +70,8 @@ def resolve_to_localhost_if_self(host: str) -> str:
         except Exception:
             pass
         if host in local_ips:
-            print(f"Redirecting {host} → localhost")
+            logging.getLogger("GameEngine").info(
+                f"Redirecting {host} → localhost")
             return "localhost"
     except Exception:
         pass

@@ -10,26 +10,23 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from ml.storage import ReplayBuffer, ReservoirBuffer
-from ml.models import DuelingDQN, PDQN, AveragePolicy
+from ml.models import DuelingDQN, AveragePolicy
 from ml.trainer.buffer_manager import BufferManager
 from ml.utils import update_target
 
 
 class Agent:
     """
-    RL agent with DQN, policy network, and optional PDQN.
+    RL agent with DQN and average policy network.
     """
 
     def __init__(
             self,
             state_dim: int,
             num_actions: int,
-            param_dim: int,
-            config,
-            use_pdqn: bool = True
+            config
     ):
         self.cfg = config
-        self.use_pdqn = use_pdqn
         self.num_actions = num_actions
 
         # Core networks
@@ -41,11 +38,6 @@ class Agent:
         # Average policy
         self.policy = AveragePolicy(state_dim, num_actions).to(self.cfg.DEVICE)
 
-        # TODO: this thing kinda do nothing tbh
-        # PDQN components
-        if use_pdqn:
-            self._initialize_pdqn(state_dim, num_actions, param_dim)
-
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
         self.reservoir = ReservoirBuffer(self.cfg.BUFFER_SIZE)
@@ -54,36 +46,12 @@ class Agent:
 
         self.buffer_manager = BufferManager(
             self,
-            self.cfg,
-            param_dim if use_pdqn else 0
+            self.cfg
         )
 
         # Metrics
         self.rl_losses: List[float] = []
         self.sl_losses: List[float] = []
-
-    def _initialize_pdqn(
-            self,
-            state_dim: int,
-            num_actions: int,
-            param_dim: int
-    ):
-        """Initialize PDQN components."""
-        self.pdqn = PDQN(state_dim, num_actions, param_dim).to(self.cfg.DEVICE)
-        self.param_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
-
-        self.pdqn_critic_opt = optim.Adam(
-            self.pdqn.critic.parameters(),
-            lr=1e-4
-        )
-        self.pdqn_actor_opt = optim.Adam(
-            self.pdqn.actor.parameters(),
-            lr=1e-4
-        )
-        self.pdqn_alpha_opt = optim.Adam(
-            [self.pdqn.log_alpha],
-            lr=1e-4
-        )
 
     def select_action(
             self,
@@ -98,19 +66,6 @@ class Agent:
             return self.dqn.act(tensor, epsilon)
         return self.policy.act(tensor)
 
-    def select_continuous_params(self, state):
-        """Select continuous parameters using PDQN actor."""
-        if not self.use_pdqn:
-            return None
-
-        state_tensor = torch.FloatTensor(
-            state).unsqueeze(0).to(self.cfg.DEVICE)
-
-        with torch.no_grad():
-            cont_params, _, _ = self.pdqn.actor.sample(state_tensor)
-
-        return cont_params.squeeze(0).cpu().numpy()
-
     def update_networks(self):
         """Update all networks if sufficient data available."""
         if not self._can_update():
@@ -119,25 +74,14 @@ class Agent:
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
 
-        if self.use_pdqn and hasattr(self, "pqdn"):
-            torch.nn.utils.clip_grad_norm_(
-                self.pqdn.parameters(), max_norm=1.0)
-
         self._check_and_reset_weights(self.policy, "policy")
         self._check_and_reset_weights(self.dqn, "dqn")
-
-        if self.use_pdqn and hasattr(self, "pqdn"):
-            self._check_and_reset_weights(self.pdqn.actor, "pdqn.actor")
-            self._check_and_reset_weights(self.pdqn.critic, "pdqn.critic")
 
         rl_loss = self._update_rl_network()
         sl_loss = self._update_sl_network()
 
         self.rl_losses.append(rl_loss.item())
         self.sl_losses.append(sl_loss.item())
-
-        if self.use_pdqn:
-            self._update_pdqn_network()
 
     @staticmethod
     def _check_and_reset_weights(model, model_name="model"):
@@ -206,18 +150,6 @@ class Agent:
 
         return loss
 
-    def _update_pdqn_network(self):
-        """Update PDQN networks."""
-        self.pdqn.update(
-            self.param_buffer,
-            critic_optimizer=self.pdqn_critic_opt,
-            actor_optimizer=self.pdqn_actor_opt,
-            alpha_optimizer=self.pdqn_alpha_opt,
-            batch_size=self.cfg.BATCH_SIZE,
-            gamma=self.cfg.GAMMA,
-            tau=self.cfg.TAU
-        )
-
     def update_target_network(self):
         """Copy weights from DQN to target DQN."""
         update_target(self.dqn, self.target_dqn)
@@ -272,15 +204,10 @@ class Agent:
             return masked_q[0].argmax().item()
 
     def _select_with_policy_masked(self, state_tensor: torch.Tensor, mask_tensor: torch.Tensor) -> int:
-        """Policy selection with masking and detailed debug logging."""
+        """Policy selection with masking."""
         try:
             # Step 1: Forward pass
             probs = self.policy(state_tensor)
-
-            # --- DEBUG LOGS ---
-            # logging.info(f"Policy output shape: {probs.shape}, dtype: {probs.dtype}")
-            # logging.info(f"Mask shape: {mask_tensor.shape}, dtype: {mask_tensor.dtype}")
-            # logging.info(f"Mask sum (valid actions): {mask_tensor.sum().item()}")
 
             # Step 2: Validate shapes
             if probs.dim() != 2:
@@ -300,7 +227,6 @@ class Agent:
             # Step 4: Apply masking
             masked_probs = probs[0] * mask_tensor[0]
             prob_sum = masked_probs.sum().item()
-            # logging.info(f"Sum of masked probs: {prob_sum:.6f}")
 
             # Step 5: Handle invalid / degenerate cases
             if mask_tensor.sum().item() == 0:
@@ -319,13 +245,10 @@ class Agent:
             masked_probs = torch.clamp(masked_probs, min=1e-10)
             masked_probs = masked_probs / masked_probs.sum()
 
-            # --- DEBUG LOGS ---
-            # logging.info(f"Final prob dist: min={masked_probs.min().item():.6f}, max={masked_probs.max().item():.6f}, sum={masked_probs.sum().item():.6f}")
-
             action = torch.multinomial(masked_probs, 1).item()
-            # logging.info(f"Selected action: {action}")
             return action
 
         except Exception as e:
             logging.exception(f"Exception in _select_with_policy_masked: {e}")
             return 0
+

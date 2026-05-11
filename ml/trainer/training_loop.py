@@ -4,7 +4,6 @@ import logging
 from typing import List, Dict
 
 from ml.trainer.agent import Agent
-from ml.trainer.action_mapper import ActionMapper
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
@@ -20,13 +19,11 @@ class TrainingLoop:
         self,
         env,
         agents: List[Agent],
-        action_mapper: ActionMapper,
         episode_manager: EpisodeManager,
         config
     ):
         self.env = env
         self.agents = agents
-        self.action_mapper = action_mapper
         self.episode_manager = episode_manager
         self.cfg = config
 
@@ -71,11 +68,11 @@ class TrainingLoop:
         best_response = random.random() >= self.cfg.ETA
 
         # Select actions for all agents
-        actions, selected_params = self._select_all_actions(
+        env_actions = self._select_all_actions(
             self.agents, states, epsilon, best_response)
 
         # Step environment
-        next_states, rewards, done, info = self.env.step(actions)
+        next_states, rewards, done, info = self.env.step(env_actions)
 
         # Record winner if episode done
         if done:
@@ -84,12 +81,11 @@ class TrainingLoop:
         # Store transitions for all agents
         self._store_transitions(
             states,
-            actions,
+            env_actions,
             rewards,
             next_states,
             done,
-            best_response,
-            selected_params
+            best_response
         )
 
         return next_states, done
@@ -103,38 +99,24 @@ class TrainingLoop:
     ) -> Dict:
         """Select actions for all agents."""
         env_actions = {}
-        selected_params = {}
 
         for agent_idx, (agent, state) in enumerate(zip(agents, states)):
             # Get current action mask from environment
-            mask, legal_params = self.env.get_legal_actions(agent_idx)
+            mask, _ = self.env.get_legal_actions(agent_idx)
 
-            # Select discrete action
-            discrete_action = agent.select_action_with_mask(
+            # Select discrete action ID
+            action_id = agent.select_action_with_mask(
                 state,
                 mask,
                 epsilon,
                 best_response
             )
 
-            # TODO: the pdqn is kinda redundant, remove it later
-            # Select continuous parameters if using PDQN
-            cont_params = agent.select_continuous_params(state)
-            selected_params[agent_idx] = cont_params
-
-            # Map to environment action
-            action_idx, param_dict = self.action_mapper.map(
-                agent_idx,
-                discrete_action,
-                cont_params,
-                legal_params
-            )
-
             # Store for environment (1-indexed players)
             player_id = str(agent_idx + 1)
-            env_actions[player_id] = [(int(action_idx), param_dict)]
+            env_actions[player_id] = [(int(action_id), None)]
 
-        return env_actions, selected_params
+        return env_actions
 
     def _store_transitions(
         self,
@@ -143,31 +125,26 @@ class TrainingLoop:
         rewards: List,
         next_states: List,
         done: bool,
-        best_response: bool,
-        selected_params: List,
+        best_response: bool
     ):
         """Store transitions in agent buffers."""
         for agent_idx, agent in enumerate(self.agents):
             # Extract action info for this agent
             player_id = str(agent_idx + 1)
-            action_idx, _ = actions[player_id][0]
-
-            # Get continuous params if PDQN
-            cont_params = selected_params.get(agent_idx)
+            action_id, _ = actions[player_id][0]
 
             # Add to buffer manager
             agent.buffer_manager.append_transition(
                 states[agent_idx],
-                action_idx,
+                action_id,
                 rewards[agent_idx],
                 next_states[agent_idx],
-                done,
-                cont_params
+                done
             )
 
             # Add to reservoir if not best response
             if not best_response:
-                agent.reservoir.push(states[agent_idx], action_idx)
+                agent.reservoir.push(states[agent_idx], action_id)
 
             # Track episode reward
             self.episode_manager.add_reward(agent_idx, rewards[agent_idx])

@@ -1,4 +1,3 @@
-from .utils import safe_index
 from core.player import Player
 from typing import Optional, Dict
 import logging
@@ -21,52 +20,45 @@ class ActionHandler:
 
 class ActivateHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Activate a triggerable trap"""
+        """Activate a triggerable trap in a specific slot."""
         if not params:
-            self.logger.debug(
-                "[HANDLER] Trap activation failed: No parameters")
+            return False
+
+        slot_idx = params.get("trap")
+        if slot_idx is None:
+            return False
+
+        card_id = env._get_card_id_at_slot(player.id, slot_idx)
+        if not card_id:
             return False
 
         gs = env.engine.game_state
+        if card_id in gs.triggerable_traps:
+            # We use toggle_trap_activation to mark it for resolution
+            env.engine.toggle_trap_activation(card_id, activated=True)
+            self.logger.debug(f"[HANDLER] ✓ Activated trap at slot {slot_idx}")
+            return True
 
-        my_traps = [c for c in gs.get_player_cards(player.id) if c.ctype == "trap"]
-
-        opp_id = gs.get_opponent_id(player.id)
-        opp_monsters = [c for c in gs.get_player_cards(opp_id) if c.ctype == "monster"]
-
-        # TODO: should check the encoding first hand
-        # idx = params.get(
-
-        # TODO: the thing is to also end turn right after this so
-        # TODO: change all the debug to fail to detect faster
-        if not triggerables:
-            self.logger.debug(
-                "[HANDLER] Trap activation failed: No triggerables detected")
-            return False
+        return False
 
 
 class SummonHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Summon a monster from hand to field."""
+        """Summon a monster from a hand slot."""
         if not params:
-            self.logger.debug("[HANDLER] Summon failed: No parameters")
             return False
 
+        hand_idx = params.get("monster", 0)
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        monsters = [gs.get_card_by_id(
-            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "monster"]
 
-        if not monsters:
-            self.logger.debug("[HANDLER] Summon failed: No monsters in hand")
+        if hand_idx >= len(player_hand_ids):
             return False
 
-        idx = params.get("monster", 0)
-        card = safe_index(monsters, idx)
+        card_id = player_hand_ids[hand_idx]
+        card = gs.get_card_by_id(card_id)
 
-        if not card:
-            self.logger.debug(
-                f"[HANDLER] Summon failed: Invalid monster index {idx}")
+        if not card or card.ctype != "monster":
             return False
 
         # Attempt to summon
@@ -75,59 +67,37 @@ class SummonHandler(ActionHandler):
 
         if success:
             self.logger.debug(f"[HANDLER] ✓ Summoned {card.name}")
-        else:
-            self.logger.debug(f"[HANDLER] ✗ Failed to summon {card.name}")
-
         return success
 
 
 class AttackHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Perform an attack with a monster."""
+        """Perform an attack from an attacker slot to a target slot."""
         if not params:
-            self.logger.debug("[HANDLER] Attack failed: No parameters")
             return False
 
         gs = env.engine.game_state
+        attacker_slot = params.get("attacker", 0)
+        target_slot = params.get("target", 0)
+
+        attacker_id = env._get_card_id_at_slot(player.id, attacker_slot)
+        attacker = gs.get_card_by_id(attacker_id)
+
+        if not attacker or attacker.ctype != "monster":
+            return False
+
         opp_id = gs.get_opponent_id(player.id)
-
-        # Get available attackers
-        my_monsters = [
-            c for c in gs.get_player_cards(player.id)
-            if c.ctype == "monster" and c.mode == "attack" and not c.has_attack
-        ]
-
-        if not my_monsters:
-            self.logger.debug(
-                "[HANDLER] Attack failed: No available attackers")
-            return False
-
-        attacker_idx = params.get("attacker", 0)
-        attacker = safe_index(my_monsters, attacker_idx)
-
-        if not attacker:
-            self.logger.debug(
-                f"[HANDLER] Attack failed: Invalid attacker index {attacker_idx}")
-            return False
-
-        # Get available targets
-        opp_monsters = gs.get_cards_typed(opp_id, "monster")
-        target_idx = params.get("target", 0)
-
         target_id = None
         target_is_player = False
 
-        if opp_monsters:
-            target = safe_index(opp_monsters, target_idx)
-            if target:
-                target_id = target.id
-        else:
-            # Direct attack on player
+        if target_slot == 10:
+            # Direct attack
             target_id = opp_id
             target_is_player = True
+        else:
+            target_id = env._get_card_id_at_slot(opp_id, target_slot)
 
         if not target_id:
-            self.logger.debug("[HANDLER] Attack failed: Invalid target")
             return False
 
         # Attempt attack
@@ -137,98 +107,62 @@ class AttackHandler(ActionHandler):
         if success:
             self.logger.debug(
                 f"[HANDLER] ✓ {attacker.name} attacked {target_id}")
-        else:
-            self.logger.debug("[HANDLER] ✗ Attack failed")
-
         return success
 
 
 class CastSpellHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Cast a spell card."""
+        """Cast a spell from a hand slot on a target slot."""
         if not params:
-            self.logger.debug("[HANDLER] Cast spell failed: No parameters")
             return False
+
+        hand_idx = params.get("spell", 0)
+        target_val = params.get("target", 0)  # 0=None, 1-10=Own, 11-20=Opp
 
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        spells = [gs.get_card_by_id(
-            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "spell"]
 
-        if not spells:
-            self.logger.debug(
-                "[HANDLER] Cast spell failed: No spells in hand")
+        if hand_idx >= len(player_hand_ids):
             return False
 
-        spell_idx = params.get("spell", 0)
-        spell_card = safe_index(spells, spell_idx)
+        card_id = player_hand_ids[hand_idx]
+        spell_card = gs.get_card_by_id(card_id)
 
-        if not spell_card:
-            self.logger.debug(
-                f"[HANDLER] Cast spell failed: Invalid spell index {spell_idx}")
+        if not spell_card or spell_card.ctype != "spell":
             return False
 
-        opp_id = gs.get_opponent_id(player.id)
         target_id = None
-
-        # Determine valid targets based on spell ability
-        if spell_card.ability in ("buff_attack", "buff_defense"):
-            targets = gs.get_cards_typed(player.id, "monster")
-            if targets:
-                target_idx = params.get("target", 0)
-                target = safe_index(targets, target_idx)
-                if target:
-                    target_id = target.id
-
-        elif spell_card.ability == "destroy_trap":
-            targets = gs.get_cards_typed(opp_id, "trap")
-            if targets:
-                target_idx = params.get("target", 0)
-                target = safe_index(targets, target_idx)
-                if target:
-                    target_id = target.id
-
-        elif spell_card.ability == "draw_two_cards":
-            # No target needed
-            pass
-
-        elif spell_card.ability == "summon_monster_from_hand":
-            # No target needed
-            pass
+        if 1 <= target_val <= 10:
+            target_id = env._get_card_id_at_slot(player.id, target_val - 1)
+        elif 11 <= target_val <= 20:
+            opp_id = gs.get_opponent_id(player.id)
+            target_id = env._get_card_id_at_slot(opp_id, target_val - 11)
 
         # Attempt to cast spell
         success = env.engine.cast_spell(spell_card.id, target_id)
 
         if success:
             self.logger.debug(f"[HANDLER] ✓ Cast {spell_card.name}")
-        else:
-            self.logger.debug(f"[HANDLER] ✗ Failed to cast {spell_card.name}")
-
         return success
 
 
 class SetTrapHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Set a trap card face-down."""
+        """Set a trap from a hand slot."""
         if not params:
-            self.logger.debug("[HANDLER] Set trap failed: No parameters")
             return False
 
+        hand_idx = params.get("trap", 0)
         gs = env.engine.game_state
         player_hand_ids = gs.player_info[player.id]["held_cards"].cards
-        traps = [gs.get_card_by_id(
-            cid) for cid in player_hand_ids if gs.get_card_by_id(cid).ctype == "trap"]
 
-        if not traps:
-            self.logger.debug("[HANDLER] Set trap failed: No traps in hand")
+        if hand_idx >= len(player_hand_ids):
             return False
 
-        trap_idx = params.get("trap", 0)
-        trap_card = safe_index(traps, trap_idx)
+        card_id = player_hand_ids[hand_idx]
+        trap_card = gs.get_card_by_id(card_id)
 
-        if not trap_card:
-            self.logger.debug(
-                f"[HANDLER] Set trap failed: Invalid trap index {trap_idx}")
+        if not trap_card or trap_card.ctype != "trap":
             return False
 
         # Attempt to set trap
@@ -236,94 +170,54 @@ class SetTrapHandler(ActionHandler):
 
         if success:
             self.logger.debug(f"[HANDLER] ✓ Set trap {trap_card.name}")
-        else:
-            self.logger.debug(
-                f"[HANDLER] ✗ Failed to set trap {trap_card.name}")
-
         return success
 
 
 class ToggleHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Toggle a monster's position (attack/defense)."""
+        """Toggle a monster in a specific slot."""
         if not params:
-            self.logger.debug("[HANDLER] Toggle failed: No parameters")
             return False
 
+        slot_idx = params.get("toggle", 0)
+        card_id = env._get_card_id_at_slot(player.id, slot_idx)
         gs = env.engine.game_state
-        my_monsters = gs.get_cards_typed(player.id, "monster")
+        card = gs.get_card_by_id(card_id)
 
-        if not my_monsters:
-            self.logger.debug("[HANDLER] Toggle failed: No monsters on field")
+        if not card or card.ctype != "monster":
             return False
 
-        toggle_idx = params.get("toggle", 0)
-        card = safe_index(my_monsters, toggle_idx)
-
-        if not card:
-            self.logger.debug(
-                f"[HANDLER] Toggle failed: Invalid monster index {toggle_idx}")
-            return False
-
-        # Store old mode for logging
         old_mode = card.mode
-
-        # Attempt to toggle
         env.engine.toggle_card(card.id)
-
-        # Check if toggle was successful
         success = card.mode != old_mode
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Toggled {card.name} from {
-                              old_mode} to {card.mode}")
-        else:
-            self.logger.debug(f"[HANDLER] ✗ Failed to toggle {card.name}")
-
+            self.logger.debug(f"[HANDLER] ✓ Toggled {
+                              card.name} to {card.mode}")
         return success
 
 
 class CombineHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Combine two monsters to create a higher-level monster."""
+        """Combine two monsters in specific slots."""
         if not params:
-            self.logger.debug("[HANDLER] Combine failed: No parameters")
             return False
 
-        # Get pair from params (support multiple key names for compatibility)
-        pair = params.get("pair") or params.get(
-            "pairs") or params.get("pair_indices")
-
-        if not pair or len(pair) != 2:
-            self.logger.debug(f"[HANDLER] Combine failed: Invalid pair {pair}")
+        pair_slots = params.get("pair")
+        if not pair_slots or len(pair_slots) != 2:
             return False
 
-        gs = env.engine.game_state
+        card1_id = env._get_card_id_at_slot(player.id, pair_slots[0])
+        card2_id = env._get_card_id_at_slot(player.id, pair_slots[1])
 
-        # Get cards by ID
-        card1 = gs.get_card_by_id(pair[0])
-        card2 = gs.get_card_by_id(pair[1])
-
-        if not card1 or not card2:
-            self.logger.debug(
-                f"[HANDLER] Combine failed: Cards not found (IDs: {pair})")
-            return False
-
-        if card1.ctype != "monster" or card2.ctype != "monster":
-            self.logger.debug(
-                "[HANDLER] Combine failed: Cards are not monsters")
+        if not card1_id or not card2_id:
             return False
 
         # Attempt to upgrade
-        success = env.engine.upgrade_monster(player.id, card1.id, card2.id)
+        success = env.engine.upgrade_monster(player.id, card1_id, card2_id)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Combined {
-                              card1.name} + {card2.name}")
-        else:
-            self.logger.debug(f"[HANDLER] ✗ Failed to combine {
-                              card1.name} + {card2.name}")
-
+            self.logger.debug(f"[HANDLER] ✓ Combined slots {pair_slots}")
         return success
 
 

@@ -3,7 +3,8 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from ml.trainer.agent import Agent
-from ml.trainer.action_mapper import ActionMapper
+# TODO: remove this if not used
+# from ml.trainer.action_codec import ActionCodec
 from core.player import Player
 
 
@@ -40,12 +41,8 @@ class AIOpponent:
         self.agent = Agent(
             state_dim=env.state_dim,
             num_actions=env.num_actions,
-            param_dim=env.param_dim,
             config=config
         )
-
-        # Initialize action mapper
-        self.action_mapper = ActionMapper(env)
 
         # Load trained weights
         self._load_checkpoint(checkpoint_path, agent_id)
@@ -72,10 +69,12 @@ class AIOpponent:
                     f"No checkpoint.pth found in {checkpoint_path}")
         else:
             # Assume it's a file path
-            checkpoint_file = checkpoint_path
+            checkpoint_file = checkpoint_path / "checkpoint.pth"
             if not checkpoint_file.exists():
-                raise FileNotFoundError(
-                    f"Checkpoint file not found: {checkpoint_file}")
+                checkpoint_file = checkpoint_path
+                if not checkpoint_file.exists():
+                    raise FileNotFoundError(
+                        f"Checkpoint file not found: {checkpoint_file}")
 
         # Load the single checkpoint file
         checkpoint = torch.load(checkpoint_file, map_location=self.device)
@@ -89,7 +88,7 @@ class AIOpponent:
         self.agent.dqn.load_state_dict(checkpoint[model_key])
         self.logger.info(f"Loaded {model_key} from {checkpoint_file}")
 
-        # Load policy network if using PDQN
+        # Load policy network
         policy_key = f"agent_{agent_id}_policy"
         if policy_key in checkpoint and hasattr(self.agent, 'policy') and self.agent.policy is not None:
             self.agent.policy.load_state_dict(checkpoint[policy_key])
@@ -113,35 +112,24 @@ class AIOpponent:
             deterministic: If True, always pick best action (no exploration)
 
         Returns:
-            Tuple of (action_idx, param_dict) ready for env.step()
+            Tuple of (action_id, None) ready for env.step()
         """
         # Get current state
         state = self.env._get_state(player)
 
         # Get legal actions
-        mask, legal_params = self.env.get_legal_actions(player_idx)
+        mask, _ = self.env.get_legal_actions(player_idx)
 
         # Select action (greedy if deterministic)
         epsilon = 0.0 if deterministic else 0.1
-        discrete_action = self.agent.select_action_with_mask(
+        action_id = self.agent.select_action_with_mask(
             state, mask, epsilon, best_response=True
         )
 
-        with torch.no_grad():
-            cont_params = self.agent.select_continuous_params(state)
-
-        # Map to environment action
-        action_idx, param_dict = self.action_mapper.map(
-            player_idx,
-            discrete_action,
-            cont_params,
-            legal_params
-        )
-
         self.logger.info(
-            f"AI selected: {self.env.ACTIONS[action_idx]} with params {param_dict}")
+            f"AI selected action ID: {action_id}")
 
-        return int(action_idx), param_dict
+        return int(action_id), None
 
 
 class HumanVsAIManager:
@@ -206,12 +194,12 @@ class HumanVsAIManager:
             self.logger.info("Game over during AI turn")
             return False
 
-        action_idx, param_dict = self.ai_opponent.get_action(
+        action_id, _ = self.ai_opponent.get_action(
             self.ai_player,
             self.ai_player_idx,
             deterministic=True
         )
-        actions = [(action_idx, param_dict)]
+        actions = [(action_id, None)]
 
         self.game_env.step_evaluation(self.ai_player, actions, 10, callback)
 
