@@ -13,6 +13,7 @@ from core.game_info.events import (
 )
 from gui.arrow import DragArrow
 from gui.sprite_manager import SpriteManager
+from core.utils import get_logger
 
 
 # TODO: remove all the AI written slops with weird icons
@@ -159,7 +160,7 @@ class RenderEngine:
 
             self.event_logger.clear_events()
         except Exception as e:
-            logging.getLogger("GameEngine").error(f"[ERROR] handle_events failed: {e}")
+            get_logger().error(f"[ERROR] handle_events failed: {e}")
 
     def process_pending_merges(self):
         still_pending = []

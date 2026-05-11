@@ -1,8 +1,8 @@
-import logging
 import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.player import Player
+from core.utils import get_logger
 
 # TODO: rework this later
 # TODO: especially rework the reward system for card count
@@ -96,7 +96,7 @@ class RewardCalculator:
     def __init__(self, config: Optional[RewardConfig] = None, max_stats: float = 9999.0):
         self.config = config or RewardConfig()
         self.max_stats = max_stats
-        self.logger = logging.getLogger("GameEngine")
+        self.logger = get_logger()
 
         # Track rewards per episode for analysis
         self.episode_rewards: Dict[str, List[float]] = {}

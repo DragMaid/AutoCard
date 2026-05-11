@@ -1,8 +1,8 @@
+from core.utils import get_logger
 from core.handle_game_logic.turn_manager import TurnManager
 from core.cards.trap_card import ActivateCondition
 from core.game_info.game_state import GameState
 from typing import Tuple, List
-import logging
 
 
 class RuleEngine:
@@ -12,7 +12,7 @@ class RuleEngine:
         self.max_hand_cards = 10
         self.max_stats = 9999
 
-        self.logger = logging.getLogger("GameEngine")
+        self.logger = get_logger()
         self.logger.info("RuleEngine initialized")
 
     def can_draw(self, player_id: str) -> bool:

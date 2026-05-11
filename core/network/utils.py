@@ -2,6 +2,7 @@ import socket
 import urllib.parse
 import socketio
 import logging
+from core.utils import get_logger
 
 
 def run_socketio_server(host, port, password, sub_queue, out_queue):
@@ -34,7 +35,7 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
         if password:
             client_pass = extract_password(environ)
             if client_pass != password:
-                logging.getLogger("GameEngine").warning(
+                get_logger().warning(
                     f"Rejected connection from {sid}: bad password")
                 return False
         sub_queue.put({"connected": {}})

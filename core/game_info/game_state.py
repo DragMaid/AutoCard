@@ -5,7 +5,7 @@ from core.cards.card import Card
 from core.cards.monster_card import MonsterCard
 from gui.gui_info.hand import CollectionInfo
 from core.cards.trap_card import ActivateCondition
-import logging
+from core.utils import get_logger
 
 ModifyMode = Literal["add", "remove"]
 
@@ -16,11 +16,12 @@ class GameState:
         self.players_lookup: dict[str, Player] = {p.id: p for p in players}
         self.max_cards: int = 10
         self.game_over: bool = False
-        self.entity_lookup: dict = {}
+        self.entity_lookup:dict = {}
 
-        self.logger = logging.getLogger("GameEngine")
+        self.logger = get_logger()
         self.rows = rows
         self.cols = cols
+
 
         self.reset()
         self.logger.info(f"GameState initialized: {rows}x{
@@ -255,7 +256,7 @@ class GameState:
         if not monsters:
             return {}
 
-        logger = logging.getLogger("GameEngine")
+        logger = get_logger()
 
         # Group monsters by type and level
         groups = {}

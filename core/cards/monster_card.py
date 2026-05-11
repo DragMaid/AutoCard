@@ -1,6 +1,6 @@
 from core.cards.card import Card
 from typing import Literal
-import logging
+from core.utils import get_logger
 
 cardMode = Literal["attack", "defense"]
 
@@ -54,5 +54,5 @@ class MonsterCard(Card):
     def switch_position(self):
         """Change the card mode to either attack or defense."""
         self.mode = "defense" if self.mode == "attack" else "attack"
-        logging.getLogger("GameEngine").info(f"{self.name} switched to {self.mode} position.")
+        get_logger().info(f"{self.name} switched to {self.mode} position.")
         return self.mode

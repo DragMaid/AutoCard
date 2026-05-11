@@ -1,7 +1,12 @@
 import logging
 
+
+def get_logger(name="GameEngine"):
+    return logging.getLogger(name)
+
+
 def setup_logger(log_path: str | None = None, console=True, level=logging.DEBUG):
-    logger = logging.getLogger("GameEngine")
+    logger = get_logger()
     logger.setLevel(level)
 
     # Avoid adding multiple handlers (happens when reloading engine)

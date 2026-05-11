@@ -41,8 +41,9 @@ from core.handle_game_logic.game_engine import GameEngine
 from core.player import Player
 from ml.config import Config
 from ml.trainer.action_codec import ActionCodec
-import logging
+from core.utils import get_logger
 
+# TODO: refactor this shit for god sake
 # Constants
 CARD_FEATURES = 6
 
@@ -66,7 +67,7 @@ class GameEnv:
                  reward_config: Optional[RewardConfig] = None) -> None:
         self.render = render
         self.engine: GameEngine = engine
-        self.logger = logging.getLogger("GameEngine")
+        self.logger = get_logger()
 
         # Initialize reward calculator
         self.reward_calculator = RewardCalculator(config=reward_config)
@@ -141,7 +142,10 @@ class GameEnv:
             if acting_player is None:
                 break
 
-            idx = acting_player.id
+            for i, player in enumerate(self.engine.players):
+                if player.id == acting_player.id:
+                    idx = i
+                    break
             player_id_str = str(idx + 1)
 
             self.logger.info(f"[STAGE] {acting_player.name}'s {

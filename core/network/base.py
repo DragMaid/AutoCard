@@ -42,8 +42,7 @@ class GameApp(ABC):
 
     def _setup_engine(self):
         self.game_engine = GameEngine(
-            [self.player1, self.player2], verbose=True, log_to_file=False
-        )
+            [self.player1, self.player2], log_to_file=False)
         self.env = GameEnv(engine=self.game_engine, render=False)
 
     def _setup_rendering(self):

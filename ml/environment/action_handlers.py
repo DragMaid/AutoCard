@@ -1,6 +1,6 @@
 from core.player import Player
 from typing import Optional, Dict
-import logging
+from core.utils import get_logger
 
 
 class ActionHandler:
@@ -11,7 +11,7 @@ class ActionHandler:
     """
 
     def __init__(self):
-        self.logger = logging.getLogger("GameEngine")
+        self.logger = get_logger()
 
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
         """Perform the action. Return True if successful."""

@@ -1,9 +1,9 @@
-import logging
 from multiprocessing import Process, Queue
 from core.network.discovery import DiscoveryServer
 from gui.effects.manager import EffectManager
 from .base import GameApp
 from .utils import run_socketio_server
+from core.utils import get_logger
 
 
 class SocketServerGame(GameApp):
@@ -75,7 +75,7 @@ class SocketServerGame(GameApp):
         EffectManager.update()
 
     def cleanup(self):
-        logger = logging.getLogger("GameEngine")
+        logger = get_logger()
         logger.info("Stopping SocketServerGame…")
         try:
             self._discovery.stop()

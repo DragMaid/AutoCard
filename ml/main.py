@@ -14,7 +14,7 @@ def new_players() -> Tuple[Player, Player]:
 
 if __name__ == "__main__":
     cfg = Config()
-    engine = GameEngine(players=new_players(), verbose=True, log_to_file=True)
+    engine = GameEngine(players=new_players(), log_to_file=True)
     env = GameEnv(engine=engine, render=True)
     trainer = Trainer(env, cfg)
     trainer.train()

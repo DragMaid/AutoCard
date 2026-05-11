@@ -8,7 +8,7 @@ from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager
 from core.game_info.effect_tracker import EffectTracker
 from core.game_info.events import EventLogger, AttackEvent, ToggleEvent, MergeEvent
-from core.utils import disable_print, setup_logger
+from core.utils import setup_logger
 from core.handle_game_logic.trap_engine import TrapEngine
 from core.handle_game_logic.spell_engine import SpellEngine
 from .utils import log_action, is_local_turn
@@ -17,7 +17,6 @@ from .utils import log_action, is_local_turn
 class GameEngine:
     def __init__(self,
                  players: List[Player],
-                 verbose: bool = True,
                  log_to_file: bool = False,
                  socket_io=None):
         self.game_state = GameState(players)
@@ -34,10 +33,6 @@ class GameEngine:
 
         self.start_hand_count = 5
         self.socket_io = socket_io
-
-        # Control verbosity
-        if not verbose:
-            disable_print()
 
         log_path = None
         if log_to_file:
