@@ -39,7 +39,7 @@ help:
 
 venv:
 	$(PYTHON) -m venv $(VENV)
-	@echo "✅ Virtual environment created at $(VENV)"
+	@echo "Virtual environment created at $(VENV)"
 
 
 install: venv

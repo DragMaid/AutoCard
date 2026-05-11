@@ -1,9 +1,4 @@
-"""
-Buffer management for multi-step transitions.
-"""
 from collections import deque
-from typing import Optional
-import numpy as np
 
 
 class BufferManager:

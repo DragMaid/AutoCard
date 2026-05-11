@@ -4,6 +4,9 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.player import Player
 
+# TODO: rework this later
+# TODO: especially rework the reward system for card count
+
 
 @dataclass
 class RewardConfig:
@@ -542,14 +545,10 @@ class RewardCalculator:
     def _log_reward(self, player: Player, breakdown: RewardBreakdown, terminal: bool = False):
         """Log reward details."""
         if terminal:
-            self.logger.info(f"\n{'='*60}")
-            self.logger.info(f"🏆 TERMINAL REWARD for {player.name}")
-            self.logger.info(f"{'='*60}")
-            self.logger.info(f"  {breakdown.get_summary()}")
-            self.logger.info(f"{'='*60}\n")
+            self.logger.info(f"ERMINAL REWARD for {player.name}")
+            self.logger.info(f"{breakdown.get_summary()}")
         elif breakdown.total != 0:
-            emoji = "💰" if breakdown.total > 0 else "📉"
-            self.logger.info(f"  {emoji} REWARD ({breakdown.action_type}): {
+            self.logger.info(f"REWARD ({breakdown.action_type}): {
                              breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
@@ -570,9 +569,7 @@ class RewardCalculator:
         """Log episode reward summary."""
         summary = self.get_episode_summary()
 
-        self.logger.info(f"\n{'='*60}")
         self.logger.info("EPISODE REWARD SUMMARY")
-        self.logger.info(f"{'='*60}")
 
         for category, stats in summary.items():
             self.logger.info(f"\n{category.upper()}:")
@@ -581,8 +578,6 @@ class RewardCalculator:
             self.logger.info(
                 f"  Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
             self.logger.info(f"  Count: {stats['count']}")
-
-        self.logger.info(f"\n{'='*60}\n")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
@@ -602,9 +597,4 @@ def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
         "opp_hand_size": len(gs.player_info[opp_id]["held_cards"].cards),
         "triggerable_traps": list(gs.triggerable_traps.keys()),
         "activated_traps": list(gs.activated_traps),
-    }
-  }
-r_cards(opp_id)),
-        "my_hand_size": len(gs.player_info[player.id]["held_cards"].cards),
-        "opp_hand_size": len(gs.player_info[opp_id]["held_cards"].cards),
     }

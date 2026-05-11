@@ -73,7 +73,6 @@ class GameState:
         for player in self.players:
             if player.life_points <= 0:
                 self.game_over = True
-                self.logger.info(f"{'='*60}")
                 self.logger.info(
                     f"GAME OVER! {player.name} defeated (LP: {player.life_points})")
 
@@ -83,7 +82,6 @@ class GameState:
                 if winner:
                     self.logger.info(
                         f"Winner: {winner.name} (LP: {winner.life_points})")
-                self.logger.info(f"{'='*60}")
                 break
         return self.game_over
 
@@ -94,21 +92,21 @@ class GameState:
         if mode == "add":
             # Validation checks with logging
             if not (0 <= row < self.rows and 0 <= col < self.cols):
-                self.logger.error(f"❌ FIELD MODIFY FAILED: Invalid position {
+                self.logger.error(f"FIELD MODIFY FAILED: Invalid position {
                                   pos} for field size {self.rows}x{self.cols}")
                 return
 
             if self.field_matrix[row][col] is not None:
                 existing_id = self.field_matrix[row][col]
                 existing = self.entity_lookup.get(existing_id)
-                self.logger.warning(f"⚠️ FIELD MODIFY WARNING: Position {pos} already occupied by {
+                self.logger.warning(f"FIELD MODIFY WARNING: Position {pos} already occupied by {
                                     existing.name if existing else existing_id}")
                 return
 
             # Check ownership
             expected_owner_id = self.field_matrix_ownership[row][col]
             if card.owner_id != expected_owner_id:
-                self.logger.error(f"❌ FIELD MODIFY FAILED: {card.owner_id} trying to place {
+                self.logger.error(f"FIELD MODIFY FAILED: {card.owner_id} trying to place {
                                   card.name} at {pos}, but position belongs to {expected_owner_id}")
                 return
 
@@ -117,12 +115,12 @@ class GameState:
             self.entity_lookup[card.id] = card
             card.pos_in_matrix = pos
 
-            self.logger.info(f"  ➕ Field modified: {card.name} placed at {
+            self.logger.info(f"Field modified: {card.name} placed at {
                              pos} by {card.owner_id}")
 
         elif mode == "remove":
             if not (0 <= row < self.rows and 0 <= col < self.cols):
-                self.logger.error(f"❌ FIELD MODIFY FAILED: Invalid position {
+                self.logger.error(f"FIELD MODIFY FAILED: Invalid position {
                                   pos} for removal")
                 return
 
@@ -133,15 +131,15 @@ class GameState:
                     try:
                         self._player_cards[existing_card.owner_id].remove(
                             existing_card_id)
-                        self.logger.info(f"  ➖ Field modified: {existing_card.name} removed from {
+                        self.logger.info(f"Field modified: {existing_card.name} removed from {
                                          pos} (Owner: {existing_card.owner_id})")
                     except ValueError:
-                        self.logger.error(f"❌ FIELD MODIFY ERROR: {existing_card.name} at {
+                        self.logger.error(f"FIELD MODIFY ERROR: {existing_card.name} at {
                                           pos} not found in {existing_card.owner_id}'s field cards")
                     existing_card.pos_in_matrix = None
                 else:
                     self.logger.error(
-                        f"❌ FIELD MODIFY ERROR: Card ID {existing_card_id} at {pos} not found in entity_lookup")
+                        f"FIELD MODIFY ERROR: Card ID {existing_card_id} at {pos} not found in entity_lookup")
 
             self.field_matrix[row][col] = None
 
@@ -161,7 +159,7 @@ class GameState:
 
         if not empty_slots:
             self.logger.warning(
-                f"⚠️ No empty slots available for {player_id}")
+                f"No empty slots available for {player_id}")
             return None
 
         slot = choice(empty_slots)
@@ -204,9 +202,7 @@ class GameState:
 
     def log_field_state(self):
         """Log the current field state in a readable format."""
-        self.logger.info(f"\n{'='*60}")
         self.logger.info("FIELD STATE")
-        self.logger.info(f"{'='*60}")
 
         for r in range(self.rows):
             row_str = []
@@ -219,8 +215,6 @@ class GameState:
                 else:
                     row_str.append(f"[{'Empty':10s}|{owner_id}]")
             self.logger.info(f"Row {r}: {' '.join(row_str)}")
-
-        self.logger.info(f"{'='*60}\n")
 
     def validate_card_placement(self, card: Card, pos: Tuple[int, int]) -> Tuple[bool, str]:
         """Validate if a card can be placed at a given position. Returns (valid, reason)."""
@@ -400,9 +394,11 @@ class GameState:
         card_dict["is_opponent"] = not card_dict["is_opponent"]
         ctype = card_dict["ctype"]
         if card_dict['is_opponent']:
-            card_dict["is_face_down"] = ctype == "trap" or not isinstance(card_dict["pos_in_matrix"], list)
+            card_dict["is_face_down"] = ctype == "trap" or not isinstance(
+                card_dict["pos_in_matrix"], list)
         else:
-            card_dict["is_face_down"] = ctype == "trap" and isinstance(card_dict["pos_in_matrix"], list)
+            card_dict["is_face_down"] = ctype == "trap" and isinstance(
+                card_dict["pos_in_matrix"], list)
         card = card_map[ctype](**card_dict)
         return card
 

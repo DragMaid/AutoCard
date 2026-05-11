@@ -1,6 +1,3 @@
-"""
-Agent module handling RL and IL components.
-"""
 import numpy as np
 import random
 from typing import List
@@ -251,4 +248,3 @@ class Agent:
         except Exception as e:
             logging.exception(f"Exception in _select_with_policy_masked: {e}")
             return 0
-

@@ -1,6 +1,3 @@
-"""
-Episode statistics and metrics management.
-"""
 from typing import List
 
 

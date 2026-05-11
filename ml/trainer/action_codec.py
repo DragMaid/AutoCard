@@ -1,10 +1,10 @@
 from typing import Tuple, Optional, Dict, Any
-import numpy as np
+
 
 class ActionCodec:
     """
     Handles encoding and decoding of game actions into a fixed discrete action space.
-    
+
     Action ID Ranges:
     - 0: End Turn
     - 1-10: Summon (Hand Slot 0-9)
@@ -42,7 +42,7 @@ class ActionCodec:
             offset = action_id - 21
             hand_idx = offset // 21
             target_idx = offset % 21
-            
+
             # Map target_idx back to what the handler expects
             # Handler expects: target_id or None
             # Here we just pass the index, the environment will map it to ID

@@ -338,7 +338,7 @@ class RuleEngine:
                                           card.pos_in_matrix} but field has {field_card.name if field_card else 'None'}")
 
         if violations:
-            self.logger.warning("[RULE] ⚠️ Game rule violations detected:")
+            self.logger.warning("[RULE] Game rule violations detected:")
             for violation in violations:
                 self.logger.warning(f"  - {violation}")
 
