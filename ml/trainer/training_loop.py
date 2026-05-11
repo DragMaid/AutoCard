@@ -100,6 +100,7 @@ class TrainingLoop:
         """Select actions for all agents."""
         env_actions = {}
 
+        # States here has batch size >= 1 but we will be processing each independently
         for agent_idx, (agent, state) in enumerate(zip(agents, states)):
             # Get current action mask from environment
             mask, _ = self.env.get_legal_actions(agent_idx)

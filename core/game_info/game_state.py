@@ -16,12 +16,11 @@ class GameState:
         self.players_lookup: dict[str, Player] = {p.id: p for p in players}
         self.max_cards: int = 10
         self.game_over: bool = False
-        self.entity_lookup:dict = {}
+        self.entity_lookup: dict = {}
 
         self.logger = get_logger()
         self.rows = rows
         self.cols = cols
-
 
         self.reset()
         self.logger.info(f"GameState initialized: {rows}x{

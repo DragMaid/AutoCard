@@ -24,11 +24,13 @@ class ActivateHandler(ActionHandler):
         if not params:
             return False
 
-        slot_idx = params.get("trap")
-        if slot_idx is None:
-            return False
+        card_id = params.get("card_id")
+        if not card_id:
+            slot_idx = params.get("trap")
+            if slot_idx is None:
+                return False
+            card_id = env._get_card_id_at_slot(player.id, slot_idx)
 
-        card_id = env._get_card_id_at_slot(player.id, slot_idx)
         if not card_id:
             return False
 
@@ -36,7 +38,7 @@ class ActivateHandler(ActionHandler):
         if card_id in gs.triggerable_traps:
             # We use toggle_trap_activation to mark it for resolution
             env.engine.toggle_trap_activation(card_id, activated=True)
-            self.logger.debug(f"[HANDLER] ✓ Activated trap at slot {slot_idx}")
+            self.logger.debug(f"[HANDLER] ✓ Activated trap {card_id}")
             return True
 
         return False
@@ -48,16 +50,17 @@ class SummonHandler(ActionHandler):
         if not params:
             return False
 
-        hand_idx = params.get("monster", 0)
         gs = env.engine.game_state
-        player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+        card_id = params.get("card_id")
 
-        if hand_idx >= len(player_hand_ids):
-            return False
+        if not card_id:
+            hand_idx = params.get("monster")
+            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            if hand_idx >= len(player_hand_ids):
+                return False
+            card_id = player_hand_ids[hand_idx]
 
-        card_id = player_hand_ids[hand_idx]
         card = gs.get_card_by_id(card_id)
-
         if not card or card.ctype != "monster":
             return False
 
@@ -77,25 +80,27 @@ class AttackHandler(ActionHandler):
             return False
 
         gs = env.engine.game_state
-        attacker_slot = params.get("attacker", 0)
-        target_slot = params.get("target", 0)
+        attacker_id = params.get("attacker_id")
+        target_id = params.get("target_id")
+        target_is_player = params.get("target_is_player", False)
 
-        attacker_id = env._get_card_id_at_slot(player.id, attacker_slot)
+        if not attacker_id:
+            attacker_slot = params.get("attacker", 0)
+            attacker_id = env._get_card_id_at_slot(player.id, attacker_slot)
+
         attacker = gs.get_card_by_id(attacker_id)
-
         if not attacker or attacker.ctype != "monster":
             return False
 
         opp_id = gs.get_opponent_id(player.id)
-        target_id = None
-        target_is_player = False
 
-        if target_slot == 10:
-            # Direct attack
-            target_id = opp_id
-            target_is_player = True
-        else:
-            target_id = env._get_card_id_at_slot(opp_id, target_slot)
+        if not target_id:
+            target_slot = params.get("target", 0)
+            if target_slot == 10:
+                target_id = opp_id
+                target_is_player = True
+            else:
+                target_id = env._get_card_id_at_slot(opp_id, target_slot)
 
         if not target_id:
             return False
@@ -116,27 +121,28 @@ class CastSpellHandler(ActionHandler):
         if not params:
             return False
 
-        hand_idx = params.get("spell", 0)
-        target_val = params.get("target", 0)  # 0=None, 1-10=Own, 11-20=Opp
-
         gs = env.engine.game_state
-        player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+        card_id = params.get("card_id")
+        target_id = params.get("target_id")
 
-        if hand_idx >= len(player_hand_ids):
-            return False
+        if not card_id:
+            hand_idx = params.get("spell", 0)
+            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            if hand_idx >= len(player_hand_ids):
+                return False
+            card_id = player_hand_ids[hand_idx]
 
-        card_id = player_hand_ids[hand_idx]
         spell_card = gs.get_card_by_id(card_id)
-
         if not spell_card or spell_card.ctype != "spell":
             return False
 
-        target_id = None
-        if 1 <= target_val <= 10:
-            target_id = env._get_card_id_at_slot(player.id, target_val - 1)
-        elif 11 <= target_val <= 20:
-            opp_id = gs.get_opponent_id(player.id)
-            target_id = env._get_card_id_at_slot(opp_id, target_val - 11)
+        if not target_id and "target_id" not in params:  # target_id can be None for non-targeted spells
+            target_val = params.get("target", 0)  # 0=None, 1-10=Own, 11-20=Opp
+            if 1 <= target_val <= 10:
+                target_id = env._get_card_id_at_slot(player.id, target_val - 1)
+            elif 11 <= target_val <= 20:
+                opp_id = gs.get_opponent_id(player.id)
+                target_id = env._get_card_id_at_slot(opp_id, target_val - 11)
 
         # Attempt to cast spell
         success = env.engine.cast_spell(spell_card.id, target_id)
@@ -152,16 +158,17 @@ class SetTrapHandler(ActionHandler):
         if not params:
             return False
 
-        hand_idx = params.get("trap", 0)
         gs = env.engine.game_state
-        player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+        card_id = params.get("card_id")
 
-        if hand_idx >= len(player_hand_ids):
-            return False
+        if not card_id:
+            hand_idx = params.get("trap", 0)
+            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            if hand_idx >= len(player_hand_ids):
+                return False
+            card_id = player_hand_ids[hand_idx]
 
-        card_id = player_hand_ids[hand_idx]
         trap_card = gs.get_card_by_id(card_id)
-
         if not trap_card or trap_card.ctype != "trap":
             return False
 
@@ -179,11 +186,14 @@ class ToggleHandler(ActionHandler):
         if not params:
             return False
 
-        slot_idx = params.get("toggle", 0)
-        card_id = env._get_card_id_at_slot(player.id, slot_idx)
         gs = env.engine.game_state
-        card = gs.get_card_by_id(card_id)
+        card_id = params.get("card_id")
 
+        if not card_id:
+            slot_idx = params.get("toggle", 0)
+            card_id = env._get_card_id_at_slot(player.id, slot_idx)
+
+        card = gs.get_card_by_id(card_id)
         if not card or card.ctype != "monster":
             return False
 
@@ -203,12 +213,15 @@ class CombineHandler(ActionHandler):
         if not params:
             return False
 
-        pair_slots = params.get("pair")
-        if not pair_slots or len(pair_slots) != 2:
-            return False
+        card1_id = params.get("card1_id")
+        card2_id = params.get("card2_id")
 
-        card1_id = env._get_card_id_at_slot(player.id, pair_slots[0])
-        card2_id = env._get_card_id_at_slot(player.id, pair_slots[1])
+        if not card1_id or not card2_id:
+            pair_slots = params.get("pair")
+            if not pair_slots or len(pair_slots) != 2:
+                return False
+            card1_id = env._get_card_id_at_slot(player.id, pair_slots[0])
+            card2_id = env._get_card_id_at_slot(player.id, pair_slots[1])
 
         if not card1_id or not card2_id:
             return False
@@ -217,7 +230,8 @@ class CombineHandler(ActionHandler):
         success = env.engine.upgrade_monster(player.id, card1_id, card2_id)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Combined slots {pair_slots}")
+            self.logger.debug(f"[HANDLER] ✓ Combined {
+                              card1_id} and {card2_id}")
         return success
 
 

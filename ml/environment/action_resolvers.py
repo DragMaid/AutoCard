@@ -1,53 +1,54 @@
 from core.player import Player
 from typing import Tuple, List, Dict, Any
+from .action_codec import ActionCodec
 
 
 class LegalActionResolver:
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         raise NotImplementedError
 
 
 class TrapActivateResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve triggerable traps based on the current state."""
         gs = env.engine.game_state
+        results = {}
 
-        triggerable_slots = []
-        for trap_id in gs.triggerable_traps:
+        for trap_id in gs.triggerable_traps.keys():
             card = gs.get_card_by_id(trap_id)
-            if card.owner_id == player.id:
+            if card.owner_id == player.id and card.id not in gs.activated_traps:
                 slot = env._get_card_slot_idx(player.id, card)
                 if slot != -1:
-                    triggerable_slots.append(slot)
+                    action_id = ActionCodec.encode("activate_trap", trap=slot)
+                    results[action_id] = (
+                        "activate_trap", {"card_id": trap_id, "slot": slot})
 
-        if not triggerable_slots:
-            return [], {}
-
-        return ["activate_trap"], {"activate_trap": {"traps": triggerable_slots}}
+        return results
 
 
 class SummonResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve summonable monsters from hand slots."""
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id]["held_cards"].cards
 
-        # Resolver logic for summonable monsters
-        summonable_hand_slots = []
+        results = {}
+        if gs.player_info[player.id].get("has_summoned_monster", False) or \
+                not gs.has_slot_available(player.id):
+            return {}
+
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
             if card and card.ctype == "monster":
-                summonable_hand_slots.append(i)
+                action_id = ActionCodec.encode("summon", monster=i)
+                results[action_id] = (
+                    "summon", {"card_id": cid, "hand_idx": i})
 
-        if summonable_hand_slots \
-                and not gs.player_info[player.id].get("has_summoned_monster", False) \
-                and gs.has_slot_available(player.id):
-            return ["summon"], {"summon": {"monsters": summonable_hand_slots}}
-        return [], {}
+        return results
 
 
 class AttackResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve monsters in field slots that can attack."""
         gs = env.engine.game_state
         tm = env.engine.turn_manager
@@ -59,140 +60,154 @@ class AttackResolver(LegalActionResolver):
                         and c.mode == "attack"
                         and not c.has_attack]
 
+        if not my_attackers or tm.turn_count <= 1:
+            return {}
+
         opp_monsters = gs.get_cards_typed(opp_id, "monster")
+        results = {}
 
-        if my_attackers and tm.turn_count > 1:
-            attacker_slots = [env._get_card_slot_idx(
-                player.id, c) for c in my_attackers]
-            target_slots = [env._get_card_slot_idx(
-                opp_id, c) for c in opp_monsters]
+        for attacker in my_attackers:
+            attacker_slot = env._get_card_slot_idx(player.id, attacker)
+            if attacker_slot == -1:
+                continue
 
-            # If no monsters, direct attack is target 10
-            if not target_slots:
-                target_slots = [10]
-
-            # Filter out -1 slots (shouldn't happen but safe)
-            attacker_slots = [s for s in attacker_slots if s != -1]
-            target_slots = [s for s in target_slots if s != -1]
-
-            if attacker_slots:
-                return ["attack"], {
-                    "attack": {
-                        "attackers": attacker_slots,
-                        "targets": target_slots,
-                    }
-                }
-        return [], {}
+            if not opp_monsters:
+                # Direct attack is target 10
+                action_id = ActionCodec.encode(
+                    "attack", attacker=attacker_slot, target=10)
+                results[action_id] = ("attack", {
+                    "attacker_id": attacker.id,
+                    "target_id": opp_id,
+                    "target_is_player": True
+                })
+            else:
+                for target in opp_monsters:
+                    target_slot = env._get_card_slot_idx(opp_id, target)
+                    if target_slot != -1:
+                        action_id = ActionCodec.encode_attack(
+                            "attack", attacker=attacker_slot, target=target_slot)
+                        results[action_id] = ("attack", {
+                            "attacker_id": attacker.id,
+                            "target_id": target.id,
+                            "target_is_player": False
+                        })
+        return results
 
 
 class CastSpellResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve castable spells and their target field slots."""
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id]["held_cards"].cards
+        opp_id = gs.get_opponent_id(player.id)
 
-        castable_hand_slots = []
+        results = {}
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
-            if card and card.ctype == "spell":
-                castable_hand_slots.append(i)
+            if not card or card.ctype != "spell":
+                continue
 
-        if not castable_hand_slots:
-            return [], {}
-
-        spell_targets: Dict[int, List[int]] = {}
-        my_monsters = gs.get_cards_typed(player.id, "monster")
-        opp_id = gs.get_opponent_id(player.id)
-        opp_traps = gs.get_cards_typed(opp_id, "trap")
-
-        for hand_idx in castable_hand_slots:
-            card = gs.get_card_by_id(card_ids[hand_idx])
             ability = card.ability
-            valid_target_vals: List[int] = []  # 0=None, 1-10=Own, 11-20=Opp
+            # (target_val, target_id, is_player)
+            valid_targets: List[Tuple[int, Any, bool]] = []
 
             if ability in ("buff_attack", "buff_defense"):
+                my_monsters = gs.get_cards_typed(player.id, "monster")
                 for m in my_monsters:
                     s = env._get_card_slot_idx(player.id, m)
                     if s != -1:
-                        valid_target_vals.append(1 + s)
+                        valid_targets.append((1 + s, m.id, False))
 
             elif ability == "destroy_trap":
+                opp_traps = gs.get_cards_typed(opp_id, "trap")
                 for t in opp_traps:
                     s = env._get_card_slot_idx(opp_id, t)
                     if s != -1:
-                        valid_target_vals.append(11 + s)
+                        valid_targets.append((11 + s, t.id, False))
             else:
                 # Spells with no target
-                valid_target_vals = [0]
+                valid_targets.append((0, None, False))
 
-            if valid_target_vals:
-                spell_targets[hand_idx] = valid_target_vals
+            for target_val, target_id, is_player in valid_targets:
+                action_id = ActionCodec.encode(
+                    "cast_spell", spell=i, target=target_val)
+                results[action_id] = ("cast_spell", {
+                    "card_id": cid,
+                    "target_id": target_id,
+                    "hand_idx": i,
+                    "target_val": target_val
+                })
 
-        if spell_targets:
-            return ["cast_spell"], {"cast_spell": {"spells": list(spell_targets.keys()), "targets": spell_targets}}
-        return [], {}
+        return results
 
 
 class SetTrapResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve settable traps from hand slots."""
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id]["held_cards"].cards
 
-        trappable_hand_slots = []
+        if gs.player_info[player.id].get("has_summoned_trap", False) or not gs.has_slot_available(player.id):
+            return {}
+
+        results = {}
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
             if card and card.ctype == "trap":
-                trappable_hand_slots.append(i)
+                action_id = ActionCodec.encode("set_trap", trap=i)
+                results[action_id] = (
+                    "set_trap", {"card_id": cid, "hand_idx": i})
 
-        if trappable_hand_slots \
-                and not gs.player_info[player.id].get("has_summoned_trap", False) \
-                and gs.has_slot_available(player.id):
-            return ["set_trap"], {"set_trap": {"traps": trappable_hand_slots}}
-        return [], {}
+        return results
 
 
 class ToggleResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve monsters in field slots that can be toggled."""
         gs = env.engine.game_state
+        if gs.player_info[player.id].get("has_toggled", False):
+            return {}
+
         my_monsters = gs.get_cards_typed(player.id, "monster")
-
-        if not my_monsters or gs.player_info[player.id].get("has_toggled", False):
-            return [], {}
-
-        toggle_slots = []
+        results = {}
         for m in my_monsters:
             s = env._get_card_slot_idx(player.id, m)
             if s != -1:
-                toggle_slots.append(s)
+                action_id = ActionCodec.encode("toggle", toggle=s)
+                results[action_id] = ("toggle", {"card_id": m.id, "slot": s})
 
-        if toggle_slots:
-            return ["toggle"], {"toggle": {"toggles": toggle_slots}}
-        return [], {}
+        return results
 
 
 class CombineResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve pairs of field slots containing mergeable monsters."""
         gs = env.engine.game_state
         mergeable_groups = gs.get_mergeable_groups(player.id)
-        combine_pairs: List[Tuple[int, int]] = []
+        results = {}
 
         for group in mergeable_groups.values():
             if len(group) >= 2:
                 for i in range(len(group)):
                     for j in range(i + 1, len(group)):
-                        s1 = env._get_card_slot_idx(player.id, group[i])
-                        s2 = env._get_card_slot_idx(player.id, group[j])
+                        m1, m2 = group[i], group[j]
+                        s1 = env._get_card_slot_idx(player.id, m1)
+                        s2 = env._get_card_slot_idx(player.id, m2)
                         if s1 != -1 and s2 != -1:
-                            combine_pairs.append((s1, s2))
+                            # Both orderings for completeness
+                            # TODO: is this really the way to go ?
+                            aid1 = ActionCodec.encode(
+                                "combine", slot_1=s1, slot_2=s2)
+                            results[aid1] = (
+                                "combine", {"card1_id": m1.id, "card2_id": m2.id, "slots": (s1, s2)})
+                            aid2 = ActionCodec.encode(
+                                "combine", slot_1=s2, slot_2=s1)
+                            results[aid2] = (
+                                "combine", {"card1_id": m2.id, "card2_id": m1.id, "slots": (s2, s1)})
 
-        if combine_pairs:
-            return ["combine"], {"combine": {"pairs": combine_pairs}}
-        return [], {}
+        return results
 
 
 class EndTurnResolver(LegalActionResolver):
-    def resolve(self, env, player: Player) -> Tuple[List[str], Dict[str, Any]]:
-        return ["end_turn"], {"end_turn": {}}
+    def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+        return {0: ("end_turn", {})}

@@ -30,7 +30,8 @@ class Agent:
         self.dqn = DuelingDQN(state_dim, num_actions).to(self.cfg.DEVICE)
         self.target_dqn = DuelingDQN(
             state_dim, num_actions).to(self.cfg.DEVICE)
-        update_target(self.dqn, self.target_dqn)
+        # Initial sync params to target dqn
+        self.update_target_network()
 
         # Average policy
         self.policy = AveragePolicy(state_dim, num_actions).to(self.cfg.DEVICE)
@@ -41,21 +42,15 @@ class Agent:
         self.rl_optimizer = optim.Adam(self.dqn.parameters(), lr=1e-4)
         self.sl_optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
 
-        self.buffer_manager = BufferManager(
-            self,
-            self.cfg
-        )
+        # Buffer manager for temporary state, reward containment till
+        # enough samples are met to be flushed into replay and reservoir
+        self.buffer_manager = BufferManager(self, self.cfg)
 
         # Metrics
         self.rl_losses: List[float] = []
         self.sl_losses: List[float] = []
 
-    def select_action(
-            self,
-            state,
-            epsilon: float,
-            best_response: bool = True
-    ) -> int:
+    def select_action(self, state, epsilon: float, best_response: bool = True) -> int:
         """Select action using either DQN or average policy."""
         tensor = torch.FloatTensor(state).to(self.cfg.DEVICE)
 
@@ -68,28 +63,15 @@ class Agent:
         if not self._can_update():
             return
 
+        # Normalize the parameters before updating
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
-
-        self._check_and_reset_weights(self.policy, "policy")
-        self._check_and_reset_weights(self.dqn, "dqn")
 
         rl_loss = self._update_rl_network()
         sl_loss = self._update_sl_network()
 
         self.rl_losses.append(rl_loss.item())
         self.sl_losses.append(sl_loss.item())
-
-    @staticmethod
-    def _check_and_reset_weights(model, model_name="model"):
-        for name, param in model.named_parameters():
-            if not torch.isfinite(param).all():
-                logging.warning(f"⚠️ NaN detected in {model_name}.{
-                                name}, resetting weights.")
-                if param.ndim >= 2:
-                    torch.nn.init.xavier_uniform_(param)
-                else:
-                    torch.nn.init.zeros_(param)
 
     def _can_update(self) -> bool:
         """Check if buffers have enough samples."""
@@ -113,15 +95,19 @@ class Agent:
 
         # Compute loss
         q_values = self.dqn(state)
-        next_q_values = self.target_dqn(next_state)
-
         current_q = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
-        max_next_q = next_q_values.max(1)[0]
 
+        # Avoid building grad graph for the target network
+        with torch.no_grad():
+            next_q_values = self.target_dqn(next_state)
+            max_next_q = next_q_values.max(1)[0]
+
+        # Additional discount factor
         discount_factor = self.cfg.GAMMA ** self.cfg.MULTI_STEP
         expected_q = reward + discount_factor * max_next_q * (1 - done)
 
-        loss = F.smooth_l1_loss(current_q, expected_q.detach())
+        # Changed MSE loss for Huber loss, avoid huge spikes
+        loss = F.smooth_l1_loss(current_q, expected_q)
 
         # Optimize
         self.rl_optimizer.zero_grad()
@@ -171,6 +157,7 @@ class Agent:
             # No valid actions - should never happen, but fallback
             return 0
 
+        # This assume that batch size will be 1
         tensor = torch.FloatTensor(state).unsqueeze(0).to(self.cfg.DEVICE)
         mask_tensor = torch.FloatTensor(
             action_mask).unsqueeze(0).to(self.cfg.DEVICE)
@@ -191,60 +178,44 @@ class Agent:
 
         # Apply mask (set invalid actions to -inf)
         masked_q = q_values.masked_fill(mask_tensor == 0, float('-inf'))
+        assert not torch.isinf(masked_q).all()
 
         if random.random() < epsilon:
             # Explore: choose randomly from valid actions
             valid_actions = torch.where(mask_tensor[0] == 1)[0]
             return random.choice(valid_actions.tolist())
-        else:
-            # Exploit: choose best valid action
-            return masked_q[0].argmax().item()
 
-    def _select_with_policy_masked(self, state_tensor: torch.Tensor, mask_tensor: torch.Tensor) -> int:
-        """Policy selection with masking."""
-        try:
-            # Step 1: Forward pass
-            probs = self.policy(state_tensor)
+        # Exploit: choose best valid action
+        return masked_q[0].argmax().item()
 
-            # Step 2: Validate shapes
-            if probs.dim() != 2:
-                logging.error(f"Unexpected policy output shape: {probs.shape}")
-                return 0
-            if probs.shape[-1] != mask_tensor.shape[-1]:
-                logging.error(f"Shape mismatch: probs {
-                              probs.shape} vs mask {mask_tensor.shape}")
-                return 0
+    def _select_with_policy_masked(
+        self,
+        state_tensor: torch.Tensor,
+        mask_tensor: torch.Tensor
+    ) -> int:
+        """Policy selection using logit masking BEFORE softmax (Option A)."""
+        logits = self.policy.head(self.policy.feature_net(state_tensor))
 
-            # Step 3: Check for invalid values
-            if not torch.isfinite(probs).all():
-                logging.error(
-                    f"Non-finite values in policy output: min={probs.min().item()}, max={probs.max().item()}")
-                return 0
+        # check for shape mismatches
+        assert logits.dim() == 2
+        assert logits.shape[-1] == mask_tensor.shape[-1]
+        # check for nans
+        assert not torch.isfinite(logits).all()
+        # handle edge case: no valid actions
+        assert mask_tensor.sum().item() != 0
 
-            # Step 4: Apply masking
-            masked_probs = probs[0] * mask_tensor[0]
-            prob_sum = masked_probs.sum().item()
+        # mask the logits with -inf
+        masked_logits = logits.clone()
+        masked_logits = masked_logits.masked_fill(mask_tensor == 0, float("-inf"))
 
-            # Step 5: Handle invalid / degenerate cases
-            if mask_tensor.sum().item() == 0:
-                logging.warning(
-                    "Mask tensor has no valid actions! Falling back to random action.")
-                return random.randint(0, probs.shape[-1] - 1)
+        # In case everything is just masked
+        assert not torch.isinf(masked_logits).all()
 
-            if prob_sum < 1e-8:
-                valid_actions = torch.where(mask_tensor[0] == 1)[0]
-                logging.warning(
-                    "All masked probabilities are near zero. Using uniform over valid actions.")
-                return random.choice(valid_actions.cpu().tolist())
+        # softmax over valid actions only
+        probs = torch.softmax(masked_logits, dim=1)
 
-            # Step 6: Normalize and sample
-            masked_probs = masked_probs / prob_sum
-            masked_probs = torch.clamp(masked_probs, min=1e-10)
-            masked_probs = masked_probs / masked_probs.sum()
+        # check for nans in probabilities
+        assert not torch.isfinite(probs).all()
 
-            action = torch.multinomial(masked_probs, 1).item()
-            return action
-
-        except Exception as e:
-            logging.exception(f"Exception in _select_with_policy_masked: {e}")
-            return 0
+        action = torch.multinomial(probs[0], 1).item()
+        return action

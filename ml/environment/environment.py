@@ -14,7 +14,7 @@ from ml.environment.action_handlers import (
     ToggleHandler,
     CombineHandler,
     ActivateHandler,
-    ActionHandler,
+    EndTurnHandler,
 )
 from ml.environment.action_resolvers import (
     LegalActionResolver,
@@ -40,8 +40,8 @@ from ml.environment.reward_system import (
 from core.handle_game_logic.game_engine import GameEngine
 from core.player import Player
 from ml.config import Config
-from ml.trainer.action_codec import ActionCodec
 from core.utils import get_logger
+from .action_codec import ActionCodec
 
 # TODO: refactor this shit for god sake
 # Constants
@@ -61,19 +61,17 @@ class GameEnv:
     Actions are identified by integer indices corresponding to ActionCodec.
     """
 
-    def __init__(self,
-                 engine: GameEngine,
-                 render: bool = False,
-                 reward_config: Optional[RewardConfig] = None) -> None:
+    def __init__(
+        self,
+        engine: GameEngine,
+        render: bool = False,
+        reward_config: Optional[RewardConfig] = None
+    ) -> None:
         self.render = render
         self.engine: GameEngine = engine
         self.logger = get_logger()
-
-        # Initialize reward calculator
         self.reward_calculator = RewardCalculator(config=reward_config)
-
         self._init_handlers_and_resolvers()
-
         if self.render:
             self.renderer = Renderer(engine=self.engine)
 
@@ -89,13 +87,7 @@ class GameEnv:
         return len(self._get_state(p1))
 
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Start a new game and return initial states for both players.
-
-        Returns
-        -------
-        tuple
-            (state_player1, state_player2)
-        """
+        """Start a new game and return initial states for both players."""
         # Log previous episode summary if exists
         self.reward_calculator.log_episode_summary()
         self.engine.reset()
@@ -232,7 +224,7 @@ class GameEnv:
         done = False
 
         while actions_taken < max_actions_per_turn:
-            mask, _ = self.get_legal_actions(player.id)
+            mask, legal_actions = self.get_legal_actions(player.id)
             if not np.any(mask):
                 # This player has no legal actions (e.g., interrupted by trap stage)
                 break
@@ -240,12 +232,15 @@ class GameEnv:
             if action_pointer < len(player_actions):
                 action_id, _ = player_actions[action_pointer]
                 action_pointer += 1
-                # Decode the flat action ID
-                action_name, action_params = ActionCodec.decode(action_id)
             else:
                 # Random legal action selection
                 legal_ids = np.where(mask)[0]
                 action_id = random.choice(legal_ids)
+
+            # Use legal_actions if available, otherwise decode
+            if action_id in legal_actions:
+                action_name, action_params = legal_actions[action_id]
+            else:
                 action_name, action_params = ActionCodec.decode(action_id)
 
             # Take snapshot before action
@@ -266,6 +261,7 @@ class GameEnv:
 
         return total_turn_reward, actions_taken, action_pointer, done
 
+    # TODO: just move this to the other place
     def _init_handlers_and_resolvers(self) -> None:
         self._action_handlers: Dict[str, ActionHandler] = {
             "summon": SummonHandler(),
@@ -275,7 +271,7 @@ class GameEnv:
             "toggle": ToggleHandler(),
             "combine": CombineHandler(),
             "activate_trap": ActivateHandler(),
-            "end_turn": ActionHandler(),
+            "end_turn": EndTurnHandler(),
         }
 
         # resolvers should be ordered
@@ -318,6 +314,7 @@ class GameEnv:
             return gs.field_matrix[r][c]
         return None
 
+    # TODO: refactor this for the love of god
     def get_legal_actions(self, player_id: str | int):
         """Return mask for legal actions."""
         # Convert index to player ID if needed
@@ -329,48 +326,14 @@ class GameEnv:
         mask = np.zeros(Config.NUM_ACTIONS, dtype=bool)
 
         # Resolve all basic legal actions from resolvers
-        legal_names, params = self._get_legal_actions(player)
+        legal_actions = self._get_legal_actions(player)
 
-        if "summon" in legal_names:
-            for hand_idx in params["summon"]["monsters"]:
-                mask[ActionCodec.encode_summon(hand_idx)] = True
+        for action_id in legal_actions:
+            mask[action_id] = True
 
-        if "set_trap" in legal_names:
-            for hand_idx in params["set_trap"]["traps"]:
-                mask[ActionCodec.encode_set_trap(hand_idx)] = True
+        return mask, legal_actions
 
-        if "attack" in legal_names:
-            for attacker_slot in params["attack"]["attackers"]:
-                for target_slot in params["attack"]["targets"]:
-                    mask[ActionCodec.encode_attack(
-                        attacker_slot, target_slot)] = True
-
-        if "cast_spell" in legal_names:
-            spell_info = params["cast_spell"]
-            for hand_idx in spell_info["spells"]:
-                for target_val in spell_info["targets"].get(hand_idx, []):
-                    mask[ActionCodec.encode_cast_spell(
-                        hand_idx, target_val)] = True
-
-        if "toggle" in legal_names:
-            for slot in params["toggle"]["toggles"]:
-                mask[ActionCodec.encode_toggle(slot)] = True
-
-        if "combine" in legal_names:
-            for s1, s2 in params["combine"]["pairs"]:
-                mask[ActionCodec.encode_combine(s1, s2)] = True
-                mask[ActionCodec.encode_combine(s2, s1)] = True
-
-        if "activate_trap" in legal_names:
-            for slot in params["activate_trap"]["traps"]:
-                mask[ActionCodec.encode_activate_trap(slot)] = True
-
-        if "end_turn" in legal_names:
-            mask[0] = True
-
-        return mask, params
-
-    def _get_legal_actions(self, player: Player) -> Tuple[List[str], Dict[str, Any]]:
+    def _get_legal_actions(self, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Identify which resolvers are allowed based on the game stage."""
         tm = self.engine.turn_manager
 
@@ -378,27 +341,22 @@ class GameEnv:
             trapper = tm.get_trapper()
             if not trapper or trapper.id != player.id:
                 # Opponent of trapper has NO actions during trap stage
-                return [], {}
+                return {}
             # Trapper can ONLY use TrapActivateResolver or EndTurnResolver
             allowed_resolver_types = (TrapActivateResolver, EndTurnResolver)
         else:
             # Normal turn: acting player can do everything EXCEPT manual trap activation
             if tm.get_current_player().id != player.id:
-                return [], {}
+                return {}
             allowed_resolver_types = (SummonResolver, AttackResolver, CastSpellResolver,
                                       SetTrapResolver, ToggleResolver, CombineResolver,
                                       EndTurnResolver)
 
-        legal_actions: List[str] = []
-        action_params: Dict[str, Any] = {}
+        legal_actions: Dict[int, Tuple[str, Dict[str, Any]]] = {}
         for resolver in self._resolvers:
             if isinstance(resolver, allowed_resolver_types):
-                names, params = resolver.resolve(self, player)
-                for name in names:
-                    if name not in legal_actions:
-                        legal_actions.append(name)
-                action_params.update(params)
-        return legal_actions, action_params
+                legal_actions.update(resolver.resolve(self, player))
+        return legal_actions
 
     def _apply_action(
         self,
@@ -416,20 +374,6 @@ class GameEnv:
         handler = self._action_handlers.get(action_name)
         done = False
         success = False
-
-        # Handle no-op or unimplemented actions
-        if handler is None or (isinstance(handler, ActionHandler) and type(handler) is ActionHandler):
-            if action_name == "end_turn":
-                success = True
-            else:
-                self.logger.warning(
-                    f"Action '{action_name}' has no handler")
-
-            after_snapshot = create_enhanced_snapshot(self.engine, player)
-            breakdown = self.reward_calculator.calculate_action_reward(
-                action_name, player, params, success, before_snapshot, after_snapshot
-            )
-            return breakdown.total, done, success
 
         # Perform the action
         try:
@@ -491,10 +435,10 @@ class GameEnv:
             # TODO: wtf is even this
             owner_flag = 0  # current player
             hand_encoded[base + 3] = owner_flag
+            # TODO: rather write this into category separation
             # TODO: rewrite this into vector embeddings
             hand_encoded[base + 4] = ability_to_float(card)
-            hand_encoded[base +
-                         5] = 1 if card.is_face_down else 0
+            hand_encoded[base + 5] = 1 if card.is_face_down else 0
         return hand_encoded
 
     def _encode_board(self, player: Player) -> np.ndarray:
@@ -542,17 +486,21 @@ class GameEnv:
         actions_taken = 0
 
         while actions_taken < max_actions:
-            mask, _ = self.get_legal_actions(player.id)
+            mask, legal_actions = self.get_legal_actions(player.id)
             if not np.any(mask):
                 break
 
             if action_pointer < len(player_actions):
                 action_id, _ = player_actions[action_pointer]
                 action_pointer += 1
-                action_name, action_params = ActionCodec.decode(action_id)
             else:
                 legal_ids = np.where(mask)[0]
                 action_id = random.choice(legal_ids)
+
+            # Use legal_actions if available, otherwise decode
+            if action_id in legal_actions:
+                action_name, action_params = legal_actions[action_id]
+            else:
                 action_name, action_params = ActionCodec.decode(action_id)
 
             # Take snapshot before action

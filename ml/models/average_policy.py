@@ -1,14 +1,13 @@
 import torch
 import torch.nn as nn
-from ml.models.dqn import DQN
 from ml.models.mlp_base import MLPBase
 
 
-class AveragePolicy(DQN):
+class AveragePolicy(nn.Module):
     """Policy network for NFSP (stochastic, NaN-safe version)."""
 
     def __init__(self, input_dim, num_actions, hidden_dims=[256, 256]):
-        super().__init__(input_dim, num_actions)
+        super().__init__()
         self.feature_net = MLPBase(input_dim, hidden_dims)
         self.num_actions = num_actions
         self.head = nn.Linear(self.feature_net.output_dim, num_actions)

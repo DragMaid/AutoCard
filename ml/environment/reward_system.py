@@ -573,11 +573,10 @@ class RewardCalculator:
 
         for category, stats in summary.items():
             self.logger.info(f"\n{category.upper()}:")
-            self.logger.info(f"  Total: {stats['total']:+.4f}")
-            self.logger.info(f"  Mean:  {stats['mean']:+.4f}")
-            self.logger.info(
-                f"  Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
-            self.logger.info(f"  Count: {stats['count']}")
+            self.logger.info(f"Total: {stats['total']:+.4f}")
+            self.logger.info(f"Mean:  {stats['mean']:+.4f}")
+            self.logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
+            self.logger.info(f"Count: {stats['count']}")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:

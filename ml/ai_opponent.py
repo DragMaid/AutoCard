@@ -3,8 +3,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from ml.trainer.agent import Agent
-# TODO: remove this if not used
-# from ml.trainer.action_codec import ActionCodec
 from core.player import Player
 
 
