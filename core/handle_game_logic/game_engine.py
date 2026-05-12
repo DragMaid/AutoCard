@@ -461,9 +461,6 @@ class GameEngine:
     # TODO: should remove all the print for logging module instead
     def end_turn(self):
         """End current player's turn"""
-        if not self.is_local_turn():
-            return
-
         if self.turn_manager.is_trap_stage():
             # only let the player activating traps end the turn
             # TODO: add an automatic timeout

@@ -133,7 +133,7 @@ def parse_args():
     p.add_argument("--server", action="store_true")
     p.add_argument("--ai",     action="store_true")
     p.add_argument("--host",   type=str, default="localhost")
-    p.add_argument("--port",   type=int, default=5000)
+    p.add_argument("--port",   type=int, default=5555)
     return p.parse_args()
 
 

@@ -73,7 +73,7 @@ class MatchmakingScreen:
         self.host_components.append(self.room_name_input)
 
         self.port_input = InputBox(
-            (center_x - 100, 320, 200, 50), text="5000", placeholder="Port", numeric=True)
+            (center_x - 100, 320, 200, 50), text="5555", placeholder="Port", numeric=True)
         self.host_components.append(self.port_input)
 
         self.password_input = InputBox(

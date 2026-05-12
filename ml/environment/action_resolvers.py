@@ -18,10 +18,9 @@ class TrapActivateResolver(LegalActionResolver):
             card = gs.get_card_by_id(trap_id)
             if card.owner_id == player.id and card.id not in gs.activated_traps:
                 slot = env._get_card_slot_idx(player.id, card)
-                if slot != -1:
-                    action_id = ActionCodec.encode("activate_trap", trap=slot)
-                    results[action_id] = (
-                        "activate_trap", {"card_id": trap_id, "slot": slot})
+                action_id = ActionCodec.encode("activate_trap", trap=slot)
+                results[action_id] = (
+                    "activate_trap", {"card_id": trap_id, "slot": slot})
 
         return results
 
@@ -37,6 +36,8 @@ class SummonResolver(LegalActionResolver):
                 not gs.has_slot_available(player.id):
             return {}
 
+        # TODO: since when were there 11 cards in hand ?
+        print("The length of the card in hands are", len(card_ids))
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
             if card and card.ctype == "monster":
@@ -68,8 +69,6 @@ class AttackResolver(LegalActionResolver):
 
         for attacker in my_attackers:
             attacker_slot = env._get_card_slot_idx(player.id, attacker)
-            if attacker_slot == -1:
-                continue
 
             if not opp_monsters:
                 # Direct attack is target 10

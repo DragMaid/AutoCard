@@ -7,7 +7,7 @@ from core.utils import get_logger
 
 
 class SocketServerGame(GameApp):
-    def __init__(self, screen, host="0.0.0.0", port=5000,
+    def __init__(self, screen, host="0.0.0.0", port=5555,
                  room_name="AutoCard Room", password=""):
         super().__init__(screen)
 

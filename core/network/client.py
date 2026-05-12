@@ -8,7 +8,7 @@ from .utils import resolve_to_localhost_if_self
 
 
 class SocketClientGame(GameApp):
-    def __init__(self, screen, host="localhost", port=5000, password=""):
+    def __init__(self, screen, host="localhost", port=5555, password=""):
         super().__init__(screen)
 
         self.game_started = False

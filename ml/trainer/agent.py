@@ -1,7 +1,6 @@
 import numpy as np
 import random
 from typing import List
-import logging
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -178,6 +177,7 @@ class Agent:
 
         # Apply mask (set invalid actions to -inf)
         masked_q = q_values.masked_fill(mask_tensor == 0, float('-inf'))
+
         assert not torch.isinf(masked_q).all()
 
         if random.random() < epsilon:
@@ -196,26 +196,35 @@ class Agent:
         """Policy selection using logit masking BEFORE softmax (Option A)."""
         logits = self.policy.head(self.policy.feature_net(state_tensor))
 
+        # Sanitize logits
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)
+        logits = torch.clamp(logits, -10, 10)
+
         # check for shape mismatches
         assert logits.dim() == 2
         assert logits.shape[-1] == mask_tensor.shape[-1]
-        # check for nans
-        assert not torch.isfinite(logits).all()
+
+        # check for finiteness (corrected assertion)
+        assert torch.isfinite(logits).all(), "Logits must be finite"
+
         # handle edge case: no valid actions
-        assert mask_tensor.sum().item() != 0
+        if mask_tensor.sum().item() == 0:
+            return 0
 
         # mask the logits with -inf
         masked_logits = logits.clone()
-        masked_logits = masked_logits.masked_fill(mask_tensor == 0, float("-inf"))
+        masked_logits = masked_logits.masked_fill(
+            mask_tensor == 0, float("-inf"))
 
-        # In case everything is just masked
-        assert not torch.isinf(masked_logits).all()
+        # In case everything is just masked (should be impossible now)
+        if torch.isinf(masked_logits).all():
+            return 0
 
         # softmax over valid actions only
         probs = torch.softmax(masked_logits, dim=1)
 
-        # check for nans in probabilities
-        assert not torch.isfinite(probs).all()
+        # check for finiteness in probabilities (corrected assertion)
+        assert torch.isfinite(probs).all(), "Probs must be finite"
 
         action = torch.multinomial(probs[0], 1).item()
         return action

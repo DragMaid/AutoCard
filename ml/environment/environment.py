@@ -15,6 +15,7 @@ from ml.environment.action_handlers import (
     CombineHandler,
     ActivateHandler,
     EndTurnHandler,
+    ActionHandler,
 )
 from ml.environment.action_resolvers import (
     LegalActionResolver,
@@ -87,7 +88,13 @@ class GameEnv:
         return len(self._get_state(p1))
 
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Start a new game and return initial states for both players."""
+        """Start a new game and return initial states for both players.
+
+        Returns
+        -------
+        tuple
+            (state_player1, state_player2)
+        """
         # Log previous episode summary if exists
         self.reward_calculator.log_episode_summary()
         self.engine.reset()
@@ -101,6 +108,9 @@ class GameEnv:
         p1, p2 = self.engine.game_state.players
         if hasattr(self, "renderer"):
             self.renderer.reset()
+            # Force Matrix to re-sync with the reset GameState objects (held_cards etc)
+            self.renderer.field_matrix.set_game_state(
+                self.engine.game_state, force=True)
 
         return self._get_state(p1), self._get_state(p2)
 
@@ -116,6 +126,7 @@ class GameEnv:
         # Track which actions from the provided lists have been consumed
         action_queues = {k: list(v)
                          for k, v in actions.items()} if actions else {}
+        provided_actions = actions is not None
 
         start_turn = self.engine.turn_manager.turn_count
         # We want to finish one main turn for each player in this round
@@ -140,13 +151,25 @@ class GameEnv:
                     break
             player_id_str = str(idx + 1)
 
+            # If we provided actions and this player's queue is exhausted,
+            # and we are NOT in a trap stage, we force end their turn.
+            if provided_actions and not action_queues.get(player_id_str) and not tm.is_trap_stage():
+                before_snap = create_enhanced_snapshot(self.engine, acting_player)
+                self.engine.end_turn()
+                after_snap = create_enhanced_snapshot(self.engine, acting_player)
+                breakdown = self.reward_calculator.calculate_action_reward(
+                    "end_turn", acting_player, None, True, before_snap, after_snap
+                )
+                rewards[idx] += breakdown.total
+                continue
+
             self.logger.info(f"[STAGE] {acting_player.name}'s {
                              'TRAP ' if tm.is_trap_stage() else ''}SEGMENT START (Turn {tm.turn_count})")
 
             # Execute a segment for the acting player
             segment_actions_list = action_queues.get(player_id_str, [])
             total_turn_reward, actions_taken, consumed_from_list, done = self.step_single(
-                acting_player, segment_actions_list)
+                acting_player, segment_actions_list, use_random=not provided_actions)
 
             # Update results
             rewards[idx] += total_turn_reward
@@ -164,43 +187,30 @@ class GameEnv:
 
             # If segment ended but we didn't advance turn/stage (i.e. didn't call end_turn),
             # we force end segment to resolve traps or advance turn.
-            if tm.is_trap_stage():
-                if tm.get_trapper() == acting_player:
-                    # Take snapshot before forced end_turn
-                    before_snap = create_enhanced_snapshot(
-                        self.engine, acting_player)
-
-                    # Set trap triggers for reward calculation
-                    num_activated = len(self.engine.game_state.activated_traps)
-                    if num_activated > 0:
-                        self.reward_calculator.set_trap_triggers(num_activated)
-
-                    self.engine.end_turn()
-
-                    # Calculate reward for forced end_turn
-                    after_snap = create_enhanced_snapshot(
-                        self.engine, acting_player)
-                    breakdown = self.reward_calculator.calculate_action_reward(
-                        "end_turn", acting_player, None, True, before_snap, after_snap
-                    )
-                    rewards[idx] += breakdown.total
-            else:
+            if not tm.is_trap_stage():
                 if tm.get_current_player() == acting_player:
-                    # For main turns, we only force end if we exhausted actions or reach max
-                    if not segment_actions_list:
-                        # Take snapshot before forced end_turn
-                        before_snap = create_enhanced_snapshot(
-                            self.engine, acting_player)
-
+                    # For main turns, we only force end if we didn't provide actions (random mode)
+                    if not provided_actions:
+                        before_snap = create_enhanced_snapshot(self.engine, acting_player)
                         self.engine.end_turn()
-
-                        # Calculate reward for forced end_turn
-                        after_snap = create_enhanced_snapshot(
-                            self.engine, acting_player)
+                        after_snap = create_enhanced_snapshot(self.engine, acting_player)
                         breakdown = self.reward_calculator.calculate_action_reward(
                             "end_turn", acting_player, None, True, before_snap, after_snap
                         )
                         rewards[idx] += breakdown.total
+            else:
+                if tm.get_trapper() == acting_player:
+                    # Trapper segment ended, resolve traps
+                    before_snap = create_enhanced_snapshot(self.engine, acting_player)
+                    num_activated = len(self.engine.game_state.activated_traps)
+                    if num_activated > 0:
+                        self.reward_calculator.set_trap_triggers(num_activated)
+                    self.engine.end_turn()
+                    after_snap = create_enhanced_snapshot(self.engine, acting_player)
+                    breakdown = self.reward_calculator.calculate_action_reward(
+                        "end_turn", acting_player, None, True, before_snap, after_snap
+                    )
+                    rewards[idx] += breakdown.total
 
         # Add terminal rewards if game ended
         done = self.engine.game_state.is_game_over()
@@ -216,7 +226,8 @@ class GameEnv:
     def step_single(self,
                     player,
                     player_actions,
-                    max_actions_per_turn: int = 10
+                    max_actions_per_turn: int = 10,
+                    use_random: bool = True
                     ):
         total_turn_reward = 0.0
         action_pointer = 0
@@ -232,10 +243,13 @@ class GameEnv:
             if action_pointer < len(player_actions):
                 action_id, _ = player_actions[action_pointer]
                 action_pointer += 1
-            else:
+            elif use_random:
                 # Random legal action selection
                 legal_ids = np.where(mask)[0]
                 action_id = random.choice(legal_ids)
+            else:
+                # No more provided actions and random is disabled
+                break
 
             # Use legal_actions if available, otherwise decode
             if action_id in legal_actions:
