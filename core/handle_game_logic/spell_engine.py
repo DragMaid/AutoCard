@@ -19,8 +19,8 @@ class DrawTwoCardsPolicy(SpellPolicy):
         return True
 
     def execute(self, engine, spell, target_id, details):
-        engine.draw_card(spell.owner_id, check=False)
-        engine.draw_card(spell.owner_id, check=False)
+        engine.draw_card(spell.owner_id, check=True)
+        engine.draw_card(spell.owner_id, check=True)
         details["effect"] = "Drew 2 cards"
         return True
 
@@ -155,13 +155,17 @@ class SpellEngine:
         if not policy.can_execute(self.engine, spell, target_id):
             return False
 
+        # Remove card from hand before execution so it doesn't count towards hand size limits
+        self.engine.game_state.player_info[spell.owner_id]["held_cards"].remove(spell_id)
+
         if not policy.execute(self.engine, spell, target_id, details):
+            # If execution fails, return card to hand
+            self.engine.game_state.player_info[spell.owner_id]["held_cards"].add(spell_id)
             return False
 
         self.engine.event_logger.add_event(SpellActiveEvent(
             spell_id=spell.id, target_id=target_id))
-        self.engine.game_state.player_info[spell.owner_id]["held_cards"].remove(
-            spell_id)
+
         self.engine.game_state.player_info[spell.owner_id]["graveyard_cards"].add(
             spell_id)
 
