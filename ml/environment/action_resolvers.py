@@ -82,14 +82,13 @@ class AttackResolver(LegalActionResolver):
             else:
                 for target in opp_monsters:
                     target_slot = env._get_card_slot_idx(opp_id, target)
-                    if target_slot != -1:
-                        action_id = ActionCodec.encode_attack(
-                            "attack", attacker=attacker_slot, target=target_slot)
-                        results[action_id] = ("attack", {
-                            "attacker_id": attacker.id,
-                            "target_id": target.id,
-                            "target_is_player": False
-                        })
+                    action_id = ActionCodec.encode(
+                        "attack", attacker=attacker_slot, target=target_slot)
+                    results[action_id] = ("attack", {
+                        "attacker_id": attacker.id,
+                        "target_id": target.id,
+                        "target_is_player": False
+                    })
         return results
 
 
@@ -114,15 +113,13 @@ class CastSpellResolver(LegalActionResolver):
                 my_monsters = gs.get_cards_typed(player.id, "monster")
                 for m in my_monsters:
                     s = env._get_card_slot_idx(player.id, m)
-                    if s != -1:
-                        valid_targets.append((1 + s, m.id, False))
+                    valid_targets.append((1 + s, m.id, False))
 
             elif ability == "destroy_trap":
                 opp_traps = gs.get_cards_typed(opp_id, "trap")
                 for t in opp_traps:
                     s = env._get_card_slot_idx(opp_id, t)
-                    if s != -1:
-                        valid_targets.append((11 + s, t.id, False))
+                    valid_targets.append((11 + s, t.id, False))
             else:
                 # Spells with no target
                 valid_targets.append((0, None, False))
@@ -171,9 +168,8 @@ class ToggleResolver(LegalActionResolver):
         results = {}
         for m in my_monsters:
             s = env._get_card_slot_idx(player.id, m)
-            if s != -1:
-                action_id = ActionCodec.encode("toggle", toggle=s)
-                results[action_id] = ("toggle", {"card_id": m.id, "slot": s})
+            action_id = ActionCodec.encode("toggle", toggle=s)
+            results[action_id] = ("toggle", {"card_id": m.id, "slot": s})
 
         return results
 
@@ -192,17 +188,16 @@ class CombineResolver(LegalActionResolver):
                         m1, m2 = group[i], group[j]
                         s1 = env._get_card_slot_idx(player.id, m1)
                         s2 = env._get_card_slot_idx(player.id, m2)
-                        if s1 != -1 and s2 != -1:
-                            # Both orderings for completeness
-                            # TODO: is this really the way to go ?
-                            aid1 = ActionCodec.encode(
-                                "combine", slot_1=s1, slot_2=s2)
-                            results[aid1] = (
-                                "combine", {"card1_id": m1.id, "card2_id": m2.id, "slots": (s1, s2)})
-                            aid2 = ActionCodec.encode(
-                                "combine", slot_1=s2, slot_2=s1)
-                            results[aid2] = (
-                                "combine", {"card1_id": m2.id, "card2_id": m1.id, "slots": (s2, s1)})
+                        # Both orderings for completeness
+                        # TODO: is this really the way to go ?
+                        aid1 = ActionCodec.encode(
+                            "combine", slot_1=s1, slot_2=s2)
+                        results[aid1] = (
+                            "combine", {"card1_id": m1.id, "card2_id": m2.id, "slots": (s1, s2)})
+                        aid2 = ActionCodec.encode(
+                            "combine", slot_1=s2, slot_2=s1)
+                        results[aid2] = (
+                            "combine", {"card1_id": m2.id, "card2_id": m1.id, "slots": (s2, s1)})
 
         return results
 

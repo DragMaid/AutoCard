@@ -78,14 +78,15 @@ class TrainingLoop:
         if done:
             self._record_winner()
 
-        # Store transitions for all agents
+        # Store transitions for agents
         self._store_transitions(
             states,
             env_actions,
             rewards,
             next_states,
             done,
-            best_response
+            best_response,
+            acting_idx=info.get("acting_player_idx", -1)
         )
 
         return next_states, done
@@ -126,10 +127,15 @@ class TrainingLoop:
         rewards: List,
         next_states: List,
         done: bool,
-        best_response: bool
+        best_response: bool,
+        acting_idx: int = -1
     ):
         """Store transitions in agent buffers."""
         for agent_idx, agent in enumerate(self.agents):
+            # Only store transition if this agent was acting OR if the episode is done
+            if agent_idx != acting_idx and not done:
+                continue
+
             # Extract action info for this agent
             player_id = str(agent_idx + 1)
             action_id, _ = actions[player_id][0]
@@ -143,8 +149,8 @@ class TrainingLoop:
                 done
             )
 
-            # Add to reservoir if not best response
-            if not best_response:
+            # Add to reservoir if not best response (only for acting agent)
+            if not best_response and agent_idx == acting_idx:
                 agent.reservoir.push(states[agent_idx], action_id)
 
             # Track episode reward
