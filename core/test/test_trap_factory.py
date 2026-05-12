@@ -17,7 +17,7 @@ def test_trap_factory():
     sample_name = list(cards.keys())[0]
     trap = factory.load(player, name=sample_name)
     assert isinstance(trap, TrapCard)
-    assert trap.owner == player
+    assert trap.owner_id == player.id
 
     # Load random trap
     random_trap = factory.load(player)

@@ -1,7 +1,6 @@
 import pygame
 from gui.arrow import DragArrow
 from core.cards.monster_card import MonsterCard
-from gui.audio_manager import AudioManager
 
 
 class InputManager:

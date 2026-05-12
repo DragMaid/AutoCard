@@ -9,6 +9,7 @@ class SpellAbility(Enum):
     BUFF_DEFEND = "BUFF_DEFEND"
     DESTROY_TRAP = "DESTROY_TRAP"
     EXTRA_SUMMON = "EXTRA_SUMMON"
+    DRAW_CARD = "DRAW_CARD"
 
 
 class SpellCard(Card):

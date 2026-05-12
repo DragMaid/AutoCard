@@ -17,7 +17,7 @@ def test_spell_factory():
     sample_name = list(cards.keys())[0]
     spell = factory.load(player, name=sample_name)
     assert isinstance(spell, SpellCard)
-    assert spell.owner == player
+    assert spell.owner_id == player.id
 
     # Load random spell
     random_spell = factory.load(player)
