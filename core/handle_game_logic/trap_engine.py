@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from core.game_info.effect_tracker import EffectType
-from core.game_info.events import TrapTriggerEvent
+from core.game_info.events import TrapTriggerEvent, TrapTriggerableEvent
 from core.cards.trap_card import ActivateCondition
 from typing import Tuple
 from .utils import log_action
@@ -79,6 +79,8 @@ class DebuffDefendTogglePolicy(TrapPolicy):
         engine.effect_tracker.add_effect(
             EffectType.DEBUFF, toggled_card.id, "defend",
             trap.value, trap.duration, engine.game_state)
+        engine.event_logger.add_event(
+            TrapTriggerEvent(trap.id, toggled_card.id))
         engine.move_card_to_graveyard(trap.id)
         engine.logger.info(f"[TRAP] {trap.name} debuffed {
                            toggled_card.name} DEF")
@@ -94,6 +96,8 @@ class DebuffSummonPolicy(TrapPolicy):
             engine.effect_tracker.add_effect(
                 EffectType.DEBUFF, summoned_card.id, stat,
                 trap.value, trap.duration, engine.game_state)
+        engine.event_logger.add_event(
+            TrapTriggerEvent(trap.id, summoned_card.id))
         engine.move_card_to_graveyard(trap.id)
         engine.logger.info(f"[TRAP] {trap.name} debuffed {summoned_card.name}")
         return True, None
@@ -167,6 +171,7 @@ class TrapEngine:
 
             trap = self.game_engine.game_state.get_card_by_id(trap_id)
             trap.triggerable = True
+            self.game_engine.event_logger.add_event(TrapTriggerableEvent(trap_id))
         return len(triggerable) > 0
 
     def get_triggerable_traps(self) -> list:

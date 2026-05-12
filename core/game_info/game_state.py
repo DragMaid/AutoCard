@@ -255,8 +255,6 @@ class GameState:
         if not monsters:
             return {}
 
-        logger = get_logger()
-
         # Group monsters by type and level
         groups = {}
         for monster in monsters:
@@ -265,17 +263,6 @@ class GameState:
                 if key not in groups:
                     groups[key] = []
                 groups[key].append(monster)
-
-        # Log mergeable groups
-        mergeable_count = sum(
-            1 for group in groups.values() if len(group) >= 2)
-        if mergeable_count > 0:
-            for (pid, mtype, level), cards in groups.items():
-                if len(cards) >= 2:
-                    card_names = ", ".join([c.name for c in cards])
-                    logger.debug(
-                        f"  - Type: {mtype}, Lv{level}: {len(cards)} cards ({card_names})")
-
         return groups
 
     def serialize(self):

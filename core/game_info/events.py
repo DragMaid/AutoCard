@@ -16,6 +16,11 @@ class TrapTriggerEvent:
 
 
 @dataclass
+class TrapTriggerableEvent:
+    card_id: str
+
+
+@dataclass
 class ToggleEvent:
     card_id: str
     mode: str
@@ -73,6 +78,7 @@ class EventLogger:
         event_map: dict[str, Type[GameEvent]] = {
             "AttackEvent": AttackEvent,
             "TrapTriggerEvent": TrapTriggerEvent,
+            "TrapTriggerableEvent": TrapTriggerableEvent,
             "ToggleEvent": ToggleEvent,
             "SpellActiveEvent": SpellActiveEvent,
             "MergeEvent": MergeEvent,
