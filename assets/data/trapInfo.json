@@ -2,44 +2,43 @@
   {
     "name": "Crippling Curse",
     "description": "When an opponent's monster attacks, reduce its ATK by 500 points.",
-    "ctype": "trap",
-    "ability": "debuff_enemy_atk",
-    "texture": "/images/trap/debuff_atk.png",
-    "value": 500,
-    "duration": 5
+    "ability": ["DEBUFF_ATTACK"],
+    "activation": "ATTACK",
+    "texture": "/images/TRAP/debuff_atk.png",
+    "value": [500],
+    "duration": [5]
 
   },
   {
     "name": "Shattered Guard",
     "description": "When an opponent's monster toggle to defense mode, reduce its DEF by 500 points.",
-    "ctype": "trap",
-    "ability": "debuff_defend_toggle",
-    "texture": "/images/trap/debuff_def.png",
-    "value": 500,
-    "duration": 5
+    "ability": ["DEBUFF_DEFEND"],
+    "activation": "TOGGLE",
+    "texture": "/images/TRAP/debuff_def.png",
+    "value": [500],
+    "duration": [5]
   },
   {
     "name": "Phantom Dodge",
     "description": "Negate the first attack on your monsters this turn.",
-    "ctype": "trap",
-    "ability": "dodge_attack",
-    "texture": "/images/trap/dodge.png"  
+    "ability": ["DODGE_ATTACK"],
+    "activation": "ATTACK",
+    "texture": "/images/TRAP/dodge.png"  
   },
   {
     "name": "Mirror Strike",
     "description": "Reflect an enemy's attacking monster: the attacker is destroyed instead.",
-    "ctype": "trap",
-    "ability": "reflect_attack",
-    "texture": "/images/trap/reflect_atk.png" 
+    "ability": ["REFLECT_ATTACK"],
+    "activation": "ATTACK",
+    "texture": "/images/TRAP/reflect_atk.png" 
    },
   {
     "name": "Weaken Summon",
     "description": "When an opponent summons a monster, it loses 500 ATK and DEF.",
-    "ctype": "trap",
-    "ability": "debuff_summon",
-    "texture": "/images/trap/debuff_summon.png",
-    "value": 500,
-    "duration": 5
+    "ability": ["DEBUFF_ATTACK", "DEBUFF_DEFEND"],
+    "activation": "SUMMON",
+    "texture": "/images/TRAP/debuff_summon.png",
+    "value": [500, 500],
+    "duration": [5, 5]
   }
 ]
-
