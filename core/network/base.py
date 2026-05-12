@@ -2,7 +2,7 @@ import pygame
 from abc import ABC, abstractmethod
 from ml.environment.environment import GameEnv
 from ml.config import Config
-from core.player import Player
+from core.data.player import Player
 from core.handle_game_logic.game_engine import GameEngine
 from core.handle_logic_gui.input_manager import InputManager
 from gui.gui_info.matrix_field import Matrix

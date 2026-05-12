@@ -1,4 +1,4 @@
-from core.player import Player
+from core.data.player import Player
 from typing import Tuple, List, Dict, Any
 from .action_codec import ActionCodec
 

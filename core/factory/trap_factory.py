@@ -48,7 +48,7 @@ class TrapFactory(BaseFactory):
             name=prototype["name"],
             description=prototype.get("description", ""),
             owner_id=owner_id,
-            image_path=prototype.get("_image_path"),
+            image_path=str(prototype.get("_image_path")),
             ability=prototype.get("ability", []),
             activation=prototype.get("activation"),
             effectiveness=prototype.get("value"),

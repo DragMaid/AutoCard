@@ -1,6 +1,6 @@
 from core.cards.spell_card import SpellCard
 from core.factory.spell_factory import SpellFactory
-from core.player import Player
+from core.data.player import Player
 
 
 def test_spell_factory():
@@ -15,10 +15,10 @@ def test_spell_factory():
 
     # Load a specific spell
     sample_name = list(cards.keys())[0]
-    spell = factory.load(player, name=sample_name)
+    spell = factory.load(player.id, name=sample_name)
     assert isinstance(spell, SpellCard)
     assert spell.owner_id == player.id
 
     # Load random spell
-    random_spell = factory.load(player)
+    random_spell = factory.load(player.id)
     assert isinstance(random_spell, SpellCard)

@@ -1,7 +1,7 @@
 import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
-from core.player import Player
+from core.data.player import Player
 from core.utils import get_logger
 
 # TODO: rework this later

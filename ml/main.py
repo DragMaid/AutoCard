@@ -2,7 +2,7 @@ from ml.config import Config
 from ml.trainer.trainer import Trainer
 from ml.environment.environment import GameEnv
 from core.handle_game_logic.game_engine import GameEngine
-from core.player import Player
+from core.data.player import Player
 from typing import Tuple
 
 

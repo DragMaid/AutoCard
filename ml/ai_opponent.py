@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from ml.trainer.agent import Agent
-from core.player import Player
+from core.data.player import Player
 
 
 class AIOpponent:

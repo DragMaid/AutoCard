@@ -39,7 +39,7 @@ from ml.environment.reward_system import (
     create_enhanced_snapshot
 )
 from core.handle_game_logic.game_engine import GameEngine
-from core.player import Player
+from core.data.player import Player
 from ml.config import Config
 from core.utils import get_logger
 from .action_codec import ActionCodec

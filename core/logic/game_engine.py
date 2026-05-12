@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Tuple, List
 from core.cards.trap_card import ActivateCondition
 from core.factory.draw_system import DrawSystem
-from core.player import Player
+from core.data.player import Player
 from core.game_info.game_state import GameState
 from core.handle_game_logic.rule_engine import RuleEngine
 from core.handle_game_logic.turn_manager import TurnManager

@@ -1,6 +1,6 @@
 from typing import Tuple, List, Optional, Literal
 from random import choice
-from core.player import Player
+from core.data.player import Player
 from core.cards.card import Card
 from core.cards.monster_card import MonsterCard
 from gui.gui_info.hand import CollectionInfo
@@ -314,7 +314,7 @@ class GameState:
         return content
 
     def deserialize(self, content):
-        from core.player import Player
+        from core.data.player import Player
 
         players = []
         for p in content["players"]:

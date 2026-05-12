@@ -1,4 +1,8 @@
+import random
 import logging
+from core.cards.monster_card import MonsterType, MonsterCard
+from core.factory.base_factory import BaseFactory
+from typing import Optional
 
 
 def get_logger(name="GameEngine"):
@@ -32,17 +36,17 @@ def setup_logger(log_path: str | None = None, console=True, level=logging.DEBUG)
 
     return logger
 
-# TODO: rework and utilize this function later
+
 def load_by_type_and_level(
-    self,
+    factory: BaseFactory,
     player_id: str,
     monster_type: MonsterType,
     star: int
 ) -> Optional[MonsterCard]:
     """Specific loader for monsters filtering by type and level."""
     candidates = [
-        name for name, info in self._cards.items()
-        if info.get("type") == monster_type
+        name for name, info in factory.get_cards().items()
+        if info.get("monster_type") == monster_type
         and info.get("star") == star
     ]
 
@@ -50,5 +54,4 @@ def load_by_type_and_level(
         return None
 
     selected_name = random.choice(candidates)
-    return self.load(player_id, name=selected_name)
-
+    return factory.load(player_id, name=selected_name)

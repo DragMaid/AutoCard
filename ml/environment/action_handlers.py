@@ -1,4 +1,4 @@
-from core.player import Player
+from core.data.player import Player
 from typing import Optional, Dict
 from core.utils import get_logger
 
