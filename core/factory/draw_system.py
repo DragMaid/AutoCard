@@ -48,9 +48,6 @@ class DrawSystem:
             }
         }
 
-    # -------------------------------
-    # Utility: Weighted random choice
-    # -------------------------------
     def rate(self, table: dict):
         """
         Weighted random choice from a dictionary {key: weight}.
@@ -75,9 +72,6 @@ class DrawSystem:
 
         return random.choices(keys, weights=weights, k=1)[0]
 
-    # -------------------------------
-    # Core: Draw a single card
-    # -------------------------------
     def rate_card_draw(self, player_id: str):
         """
         Draws a card based on weighted probabilities.
@@ -132,25 +126,3 @@ class DrawSystem:
                          card_key}' even after fallback.")
 
         return card
-
-    # -------------------------------
-    # Debug / diagnostic
-    # -------------------------------
-    def check_draw_issues(self, player_id: str, attempts=1000):
-        """
-        Perform multiple draws to detect any cards that fail to load.
-        """
-        failures = []
-        for _ in range(attempts):
-            card = self.rate_card_draw(player_id)
-            if not card:
-                # We need to know what failed, but rate_card_draw logs it.
-                # For this diagnostic, we'll re-run a simplified check if needed
-                # or just track null returns.
-                failures.append("Unknown")
-
-        if failures:
-            logger.warning(f"Found {len(failures)} problematic draws out of {
-                           attempts} attempts.")
-        else:
-            logger.info(f"No draw issues found after {attempts} attempts.")
