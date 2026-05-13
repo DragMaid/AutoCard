@@ -1,5 +1,5 @@
 import pygame
-from gui.gui_info.game_area import GameArea
+from gui.background.game_area import GameArea
 
 
 class DeckArea(GameArea):

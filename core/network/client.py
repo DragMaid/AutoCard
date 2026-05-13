@@ -80,4 +80,4 @@ class SocketClientGame(GameApp):
         try:
             self._sio.disconnect()
         except Exception:
-            pass
+            raise

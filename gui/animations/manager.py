@@ -11,7 +11,8 @@ from .spell_activate import SpellAnimation
 from .merge import MergeAnimation
 from .attack_player import AttackPlayerAnimation
 from gui.effects.manager import EffectManager
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
+from core.cards.monster_card import CardMode
 
 
 class AnimationManager:
@@ -110,7 +111,7 @@ class AnimationManager:
             on_finish=lambda c: self.create_place_animation(c)))
 
     def create_toggle_animation(self, card, mode, duration=0.3):
-        if mode == "attack":
+        if mode == CardMode.ATTACK:
             start_angle = 90
             end_angle = 0
             file = "assets/sounds/sword-slice.mp3"

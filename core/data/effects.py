@@ -1,4 +1,4 @@
-from core.game_info.game_state import GameState
+from core.data.game_state import GameState
 from enum import Enum
 from typing import List
 from pydantic import BaseModel

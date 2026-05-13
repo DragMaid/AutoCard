@@ -3,12 +3,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from core.cards.card import CardType
 from core.cards.monster_card import MonsterCard
-from core.logic.game_engine import GameEngine
-from core.game_info.effect_tracker import EffectType
-from core.game_info.events import TrapTriggerEvent, TrapTriggerableEvent
+from core.data.effects import EffectType
+from core.data.events import TrapTriggerEvent, TrapTriggerableEvent
 from core.cards.trap_card import ActivateCondition, TrapAbility
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, TYPE_CHECKING
 from .utils import log_action
+
+if TYPE_CHECKING:
+    from core.logic.game_engine import GameEngine
 
 
 class TrapPolicy(ABC):

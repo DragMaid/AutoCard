@@ -1,7 +1,8 @@
 import math
 import pygame
+from core.cards.monster_card import CardMode
 from gui.effects.manager import EffectManager
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 from .animation import Animation
 
 
@@ -30,9 +31,9 @@ class AttackAnimation(Animation):
 
         # Base angles from card mode (defense = 90 deg)
         self.start_angle1 = 90 if getattr(
-            card1.logic_card, "mode", "attack") == "defense" else 0
+            card1.logic_card, "mode", CardMode.ATTACK) == CardMode.DEFENSE else 0
         self.start_angle2 = 90 if getattr(
-            card2.logic_card, "mode", "attack") == "defense" else 0
+            card2.logic_card, "mode", CardMode.ATTACK) == CardMode.DEFENSE else 0
 
     @staticmethod
     def _signed_angle(vec, facing):

@@ -5,9 +5,11 @@ from core.data.effects import EffectType
 from core.data.events import SpellActiveEvent
 from core.cards.spell_card import SpellCard, SpellAbility
 from core.cards.card import CardType
-from typing import Optional, Dict
-from .game_engine import GameEngine
+from typing import Optional, Dict, TYPE_CHECKING
 from .utils import log_action
+
+if TYPE_CHECKING:
+    from core.logic.game_engine import GameEngine
 
 
 class SpellPolicy(ABC):

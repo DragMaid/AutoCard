@@ -1,8 +1,8 @@
 import pygame
 from enum import Enum, auto
-from gui.ui_components import Button, InputBox, ScrollList
 from gui.cache import get_font
 from core.network.discovery import DiscoveryClient
+from .ui_components import Button, InputBox, ScrollList
 import threading
 
 
@@ -28,6 +28,8 @@ class MatchmakingScreen:
         self.discovery_client = DiscoveryClient()
         self.is_scanning = False
         self.scan_timer = 0
+        self.error_msg = ""
+        self.error_timer = 0.0
 
         self._init_menu()
         self._init_host()
@@ -150,7 +152,7 @@ class MatchmakingScreen:
     def _on_start_hosting(self):
         port_text = self.port_input.text
         if not port_text or not (1024 <= int(port_text) <= 65535):
-            self._show_error("Invalid Port (1024-65535)")
+            self.show_error("Invalid Port (1024-65535)")
             return
 
         self.result = ("SERVER", int(port_text),
@@ -160,7 +162,7 @@ class MatchmakingScreen:
 
     def _on_join_game(self):
         if self.room_list.selected_index == -1:
-            self._show_error("Select a room first")
+            self.show_error("Select a room first")
             return
 
         room = self.room_list.items[self.room_list.selected_index]
@@ -173,7 +175,7 @@ class MatchmakingScreen:
         self.result = None
         self.set_state(ScreenState.MENU)
 
-    def _show_error(self, msg):
+    def show_error(self, msg):
         self.error_msg = msg
         self.error_timer = 3.0
 
@@ -182,17 +184,13 @@ class MatchmakingScreen:
             self.state = ScreenState.EXIT
             return True
 
-        components = []
-        if self.state == ScreenState.MENU:
-            components = self.menu_buttons
-        elif self.state == ScreenState.HOST:
-            components = self.host_components
-        elif self.state == ScreenState.JOIN:
-            components = self.join_components
-        elif self.state == ScreenState.WAITING:
-            components = self.waiting_components
-
-        for comp in components:
+        state_to_component = {
+            ScreenState.MENU: self.menu_buttons,
+            ScreenState.HOST: self.host_components,
+            ScreenState.JOIN: self.join_components,
+            ScreenState.WAITING: self.waiting_components,
+        }
+        for comp in state_to_component[self.state]:
             if comp.handle_event(event):
                 return True
         return False

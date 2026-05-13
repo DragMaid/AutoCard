@@ -1,10 +1,13 @@
 from __future__ import annotations
-from typing import Tuple, Optional
+
+from typing import Tuple, Optional, TYPE_CHECKING
 from core.cards.card import CardType
 from core.cards.monster_card import MonsterCard
 from core.cards.trap_card import ActivateCondition
 from .utils import log_action
-from .game_engine import GameEngine
+
+if TYPE_CHECKING:
+    from core.logic.game_engine import GameEngine
 
 
 class SummonEngine:

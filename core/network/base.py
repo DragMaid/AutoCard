@@ -3,13 +3,13 @@ from abc import ABC, abstractmethod
 from ml.environment.environment import GameEnv
 from ml.config import Config
 from core.data.player import Player
-from core.handle_game_logic.game_engine import GameEngine
-from core.handle_logic_gui.input_manager import InputManager
-from gui.gui_info.matrix_field import Matrix
-from core.handle_logic_gui.render_engine import RenderEngine
+from core.logic.game_engine import GameEngine
+from core.gui.input_manager import InputManager
+from gui.background.matrix_field import Matrix
+from core.gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
-from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
+from gui.screen.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
 from core.config import config
 
 

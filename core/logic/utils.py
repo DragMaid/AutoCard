@@ -1,13 +1,14 @@
 from core.utils import get_logger
+from core.cards.card import CardType
 
 
-def draw_specific_card(engine, player_id: str, name: str, ctype: str):
+def draw_specific_card(engine, player_id: str, name: str, card_type: CardType):
     factory_map = {
-        "monster": engine.draw_system.monster_factory,
-        "trap": engine.draw_system.trap_factory,
-        "spell": engine.draw_system.spell_factory
+        CardType.MONSTER: engine.draw_system.monster_factory,
+        CardType.TRAP: engine.draw_system.trap_factory,
+        CardType.SPELL: engine.draw_system.spell_factory
     }
-    card = factory_map[ctype].create_card(name)
+    card = factory_map[card_type].create_card(name)
     engine.game_state.entity_lookup[card.id] = card
     engine.game_state.player_info[player_id]["held_cards"].add(card.id)
     get_logger().debug(f"[DEBUG] {player_id} received specific card: {name}")

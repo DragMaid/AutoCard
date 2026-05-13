@@ -1,4 +1,4 @@
-from gui.gui_info.game_area import GameArea
+from gui.background.game_area import GameArea
 from gui.cache import get_font
 
 

@@ -1,5 +1,5 @@
 import pygame
-from gui.cards_gui.card_gui import CardGUI
+from gui.cards.card_gui import CardGUI
 from gui.cache import load_image
 
 

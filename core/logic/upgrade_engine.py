@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 from core.cards.monster_card import MonsterCard
-from core.game_info.events import MergeEvent
+from core.data.events import MergeEvent
 from .utils import log_action
-from .game_engine import GameEngine
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.logic.game_engine import GameEngine
 
 
 class UpgradeEngine:

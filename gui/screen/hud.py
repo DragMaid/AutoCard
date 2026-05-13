@@ -1,6 +1,6 @@
 import pygame
 from gui.cache import get_font
-from gui.ui_components import Button
+from .ui_components import Button
 
 
 # TODO: move these to config

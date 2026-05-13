@@ -1,7 +1,12 @@
 from __future__ import annotations
+
 from core.cards.monster_card import MonsterCard
+from typing import TYPE_CHECKING
 from .utils import log_action
-from .game_engine import GameEngine
+from core.data.events import AttackEvent
+
+if TYPE_CHECKING:
+    from core.logic.game_engine import GameEngine
 
 
 class BattleEngine:
@@ -30,7 +35,6 @@ class BattleEngine:
             target_id (str): ID of the target card or player.
             target_is_player (bool): True if the target is a player.
         """
-        from core.game_info.events import AttackEvent
 
         card: MonsterCard = self.game_engine.game_state.get_card_by_id(card_id)
         if not card:

@@ -1,6 +1,6 @@
 import pygame
-from core.handle_logic_gui.render_engine import RenderEngine
-from gui.gui_info.matrix_field import Matrix
+from core.gui.render_engine import RenderEngine
+from gui.background.matrix_field import Matrix
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
 

@@ -6,7 +6,7 @@ from core.cards.monster_card import MonsterCard
 from core.cards.trap_card import ActivateCondition
 from core.data.player import Player
 from core.utils import get_logger
-from gui.gui_info.hand import CollectionInfo
+from gui.background.hand import CollectionInfo
 from core.config import config
 
 

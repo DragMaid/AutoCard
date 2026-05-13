@@ -1,6 +1,7 @@
 from core.data.player import Player
 from typing import Optional, Dict
 from core.utils import get_logger
+from core.cards.card import CardType
 
 
 class ActionHandler:
@@ -64,7 +65,7 @@ class SummonHandler(ActionHandler):
             card_id = player_hand_ids[hand_idx]
 
         card = gs.get_card_by_id(card_id)
-        if not card or card.ctype != "monster":
+        if not card or card.card_type != CardType.MONSTER:
             return False
 
         # Attempt to summon
@@ -92,7 +93,7 @@ class AttackHandler(ActionHandler):
             attacker_id = env._get_card_id_at_slot(player.id, attacker_slot)
 
         attacker = gs.get_card_by_id(attacker_id)
-        if not attacker or attacker.ctype != "monster":
+        if not attacker or attacker.card_type != CardType.MONSTER:
             return False
 
         opp_id = gs.get_opponent_id(player.id)
@@ -136,7 +137,7 @@ class CastSpellHandler(ActionHandler):
             card_id = player_hand_ids[hand_idx]
 
         spell_card = gs.get_card_by_id(card_id)
-        if not spell_card or spell_card.ctype != "spell":
+        if not spell_card or spell_card.card_type != CardType.SPELL:
             return False
 
         if not target_id and "target_id" not in params:  # target_id can be None for non-targeted spells
@@ -172,7 +173,7 @@ class SetTrapHandler(ActionHandler):
             card_id = player_hand_ids[hand_idx]
 
         trap_card = gs.get_card_by_id(card_id)
-        if not trap_card or trap_card.ctype != "trap":
+        if not trap_card or trap_card.card_type != CardType.TRAP:
             return False
 
         # Attempt to set trap
@@ -197,7 +198,7 @@ class ToggleHandler(ActionHandler):
             card_id = env._get_card_id_at_slot(player.id, slot_idx)
 
         card = gs.get_card_by_id(card_id)
-        if not card or card.ctype != "monster":
+        if not card or card.card_type != CardType.MONSTER:
             return False
 
         old_mode = card.mode
@@ -205,10 +206,7 @@ class ToggleHandler(ActionHandler):
         success = card.mode != old_mode
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Toggled {
-                              card.name} to {card.mode}")
-        return success
-
+            self.logger.debug(f"[HANDLER] ✓ Toggled {card.name} to {card.mode}")
 
 class CombineHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:

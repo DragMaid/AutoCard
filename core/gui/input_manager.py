@@ -1,6 +1,8 @@
 import pygame
-from gui.arrow import DragArrow
+from gui.screen.arrow import DragArrow
 from core.cards.monster_card import MonsterCard
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
 
 LEFT_CLICK = 1
 RIGHT_CLICK = 3
@@ -148,8 +150,8 @@ class InputManager:
             if (
                 card
                 and card.rect.collidepoint(pos)
-                and card_info.ctype == "monster"
-                and card_info.mode == "attack"
+                and card_info.card_type == CardType.MONSTER
+                and card_info.mode == CardMode.ATTACK
                 and card_info.owner_id == current_player_id
                 and not owner.is_opponent
             ):

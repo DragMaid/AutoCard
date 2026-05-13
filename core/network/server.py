@@ -32,11 +32,11 @@ class SocketServerGame(GameApp):
         self._server_process.start()
 
     def update(self):
-        self._drain_sub_queue()
+        self.drain_sub_queue()
         self._apply_pending_sync()
         self._tick_rendering()
 
-    def _drain_sub_queue(self):
+    def drain_sub_queue(self):
         while not self._sub_queue.empty():
             msg = self._sub_queue.get()
             key, value = next(iter(msg.items()))

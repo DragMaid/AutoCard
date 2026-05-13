@@ -1,8 +1,8 @@
-from gui.cards_gui.card_gui import CardGUI
+from gui.cards.card_gui import CardGUI
 from core.cards.spell_card import SpellCard as LogicSpellCard
 
-from gui.gui_info.matrix_field import Matrix
-from core.handle_game_logic.game_engine import GameEngine
+from gui.background.matrix_field import Matrix
+from core.logic.game_engine import GameEngine
 
 
 class SpellCardGUI(CardGUI):

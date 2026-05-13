@@ -609,8 +609,8 @@ class RuleEngine:
                 extra={
                     "reason": "Cards are not monsters",
                     "playerID": player_id,
-                    "card1Type": own_card.ctype,
-                    "card2Type": target_card.ctype
+                    "card1Type": own_card.card_type,
+                    "card2Type": target_card.card_type
                 }
             )
             return False

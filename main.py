@@ -1,5 +1,5 @@
 import pygame
-from gui.matchmaking import MatchmakingScreen, ScreenState
+from gui.screen.matchmaking import MatchmakingScreen, ScreenState
 from core.network.server import SocketServerGame
 from core.network.client import SocketClientGame
 from core.network.ai import AIGame
@@ -52,7 +52,7 @@ class GameApp:
             self._cleanup_game()
             self.matchmaker.set_state(ScreenState.MENU)
             if reason:
-                self.matchmaker._show_error(reason)
+                self.matchmaker.show_error(reason)
 
     def _tick_matchmaking(self, dt: float):
         self._handle_matchmaking_events()
@@ -80,13 +80,13 @@ class GameApp:
             return
 
         if isinstance(self.game_app, SocketServerGame):
-            self.game_app._drain_sub_queue()
+            self.game_app.drain_sub_queue()
             if self.game_app.game_started:
                 self.matchmaker.set_state(ScreenState.START_GAME)
 
         elif isinstance(self.game_app, SocketClientGame):
             if self.game_app.connection_error:
-                self.matchmaker._show_error(
+                self.matchmaker.show_error(
                     f"Failed: {self.game_app.connection_error}")
                 self._cleanup_game()
                 self.matchmaker.set_state(ScreenState.JOIN)
@@ -110,7 +110,7 @@ class GameApp:
                 self.game_app = AIGame(self.screen)
         except Exception as e:
             print(f"Failed to create game: {e}")
-            self.matchmaker._show_error(str(e))
+            self.matchmaker.show_error(str(e))
             self.matchmaker.set_state(ScreenState.MENU)
 
     def _cleanup_game(self):

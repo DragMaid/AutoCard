@@ -38,7 +38,7 @@ from ml.environment.reward_system import (
     RewardConfig,
     create_enhanced_snapshot
 )
-from core.handle_game_logic.game_engine import GameEngine
+from core.logic.game_engine import GameEngine
 from core.data.player import Player
 from ml.config import Config
 from core.utils import get_logger

@@ -1,6 +1,8 @@
 from core.data.player import Player
 from typing import Tuple, List, Dict, Any
 from .action_codec import ActionCodec
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
 
 
 class LegalActionResolver:
@@ -40,7 +42,7 @@ class SummonResolver(LegalActionResolver):
         print("The length of the card in hands are", len(card_ids))
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
-            if card and card.ctype == "monster":
+            if card and card.card_type == CardType.MONSTER:
                 action_id = ActionCodec.encode("summon", monster=i)
                 results[action_id] = (
                     "summon", {"card_id": cid, "hand_idx": i})
@@ -57,14 +59,14 @@ class AttackResolver(LegalActionResolver):
 
         # Get attackers that are in attack mode and haven't attacked yet
         my_attackers = [c for c in gs.get_player_cards(player.id)
-                        if c.ctype == "monster"
-                        and c.mode == "attack"
+                        if c.card_type == CardType.MONSTER
+                        and c.mode == CardMode.ATTACK
                         and not c.has_attack]
 
         if not my_attackers or tm.turn_count <= 1:
             return {}
 
-        opp_monsters = gs.get_cards_typed(opp_id, "monster")
+        opp_monsters = gs.get_cards_typed(opp_id, CardType.MONSTER)
         results = {}
 
         for attacker in my_attackers:
@@ -102,7 +104,7 @@ class CastSpellResolver(LegalActionResolver):
         results = {}
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
-            if not card or card.ctype != "spell":
+            if not card or card.card_type != CardType.SPELL:
                 continue
 
             ability = card.ability
@@ -149,7 +151,7 @@ class SetTrapResolver(LegalActionResolver):
         results = {}
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
-            if card and card.ctype == "trap":
+            if card and card.card_type == CardType.TRAP:
                 action_id = ActionCodec.encode("set_trap", trap=i)
                 results[action_id] = (
                     "set_trap", {"card_id": cid, "hand_idx": i})
@@ -164,7 +166,7 @@ class ToggleResolver(LegalActionResolver):
         if gs.player_info[player.id].get("has_toggled", False):
             return {}
 
-        my_monsters = gs.get_cards_typed(player.id, "monster")
+        my_monsters = gs.get_cards_typed(player.id, CardType.MONSTER)
         results = {}
         for m in my_monsters:
             s = env._get_card_slot_idx(player.id, m)

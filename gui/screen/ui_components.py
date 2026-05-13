@@ -1,6 +1,6 @@
 import pygame
 from gui.cache import get_font
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 
 
 class UIComponent:

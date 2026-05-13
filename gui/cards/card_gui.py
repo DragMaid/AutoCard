@@ -1,8 +1,8 @@
 import pygame
 from pygame.draw import rect
 from typing import Tuple
-from gui.sprite import Sprite
-from gui.draggable import Draggable
+from gui.sprites.sprite import Sprite
+from gui.sprites.draggable import Draggable
 from gui.cache import get_font
 
 

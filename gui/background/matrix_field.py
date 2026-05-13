@@ -1,9 +1,9 @@
 import pygame
-from gui.gui_info.game_area import GameAreaConfig
-from gui.gui_info.hand import HandUI
-from gui.gui_info.text_area import TextArea
-from gui.gui_info.preview_card_table import CardPreview
-from gui.gui_info.deck_area import DeckArea
+from gui.background.game_area import GameAreaConfig
+from gui.background.hand import HandUI
+from gui.background.text_area import TextArea
+from gui.background.preview_card_table import CardPreview
+from gui.background.deck_area import DeckArea
 from gui.cache import load_image
 
 

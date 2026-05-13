@@ -1,7 +1,7 @@
 import pygame
-from gui.cards_gui.card_gui import CardGUI
+from gui.cards.card_gui import CardGUI
 from core.cards.trap_card import TrapCard as LogicTrapCard
-from gui.ui_components import Button
+from gui.screen.ui_components import Button
 
 
 class TrapCardGUI(CardGUI):

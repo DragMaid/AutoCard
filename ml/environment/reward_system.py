@@ -3,6 +3,8 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.data.player import Player
 from core.utils import get_logger
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
 
 # TODO: rework this later
 # TODO: especially rework the reward system for card count
@@ -320,7 +322,7 @@ class RewardCalculator:
 
             # Bonus based on destroyed monster strength
             for m in opp_monsters_destroyed:
-                stat = m.atk if m.mode == "attack" else m.defend
+                stat = m.atk if m.mode == CardMode.ATTACK else m.defend
                 strength_bonus = (stat / self.max_stats) * \
                     self.config.strength_scale_factor
                 breakdown.add("destroy_strength_bonus", strength_bonus)
@@ -366,9 +368,9 @@ class RewardCalculator:
 
         # Check for trap destruction (only reward if not already triggered)
         before_traps = [c for c in before.get("opp_cards", [])
-                        if c.ctype == "trap"]
+                        if c.card_type == CardType.TRAP]
         after_traps = [c for c in after.get("opp_cards", [])
-                       if c.ctype == "trap"]
+                       if c.card_type == CardType.TRAP]
 
         # Find destroyed traps
         destroyed_traps = [t for t in before_traps if t not in after_traps]
@@ -407,10 +409,10 @@ class RewardCalculator:
             if toggle_idx < len(after["my_monsters"]):
                 am = after["my_monsters"][toggle_idx]
                 # Reward optimal positioning
-                if (am.mode == "attack" and am.atk > am.defend) \
-                        or (am.mode == "defense" and am.atk < am.defend):
+                if (am.mode == CardMode.ATTACK and am.atk > am.defend) \
+                        or (am.mode == CardMode.DEFENSE and am.atk < am.defend):
                     breakdown.add("optimal_toggle", 0.2)
-                elif (am.mode == "defense" and am.atk > am.defend):
+                elif (am.mode == CardMode.DEFENSE and am.atk > am.defend):
                     breakdown.add("suboptimal_toggle", -0.5)
 
     def _calculate_combine_reward(
@@ -450,20 +452,20 @@ class RewardCalculator:
             - Decay factor prevents over-reaction to single-turn swings
         """
         my_total_stats = sum(
-            (m.atk if m.mode == "attack" else m.defend)
+            (m.atk if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["my_monsters"]
         )
 
         opp_total_stats = sum(
-            (m.atk if m.mode == "attack" else m.defend)
+            (m.atk if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["opp_monsters"]
         )
 
         # Trap advantage
         my_traps = len([t for t in snapshot["my_cards"]
-                       if t.ctype == "trap"])
+                       if t.card_type == CardType.TRAP])
         opp_traps = len([t for t in snapshot["opp_cards"]
-                        if t.ctype == "trap"])
+                        if t.card_type == CardType.TRAP])
         trap_diff = (my_traps - opp_traps) * self.config.trap_advantage
 
         # Normalize by total power to get relative advantage
