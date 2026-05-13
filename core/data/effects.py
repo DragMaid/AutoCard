@@ -65,6 +65,12 @@ class EffectTracker:
     def __init__(self):
         self.active_effects: List[Effect] = []
 
+    def serialize(self) -> dict:
+        return [e.model_dump() for e in self.active_effects]
+
+    def deserialize(self, serialized: dict):
+        self.active_effects = [Effect.validated_model(e) for e in serialized]
+
     def add_effect(
         self,
         effect_type: EffectType,

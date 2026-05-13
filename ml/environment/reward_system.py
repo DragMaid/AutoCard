@@ -594,8 +594,8 @@ def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
         "opp_monsters": list(gs.get_cards_typed(opp_id, "monster")),
         "my_cards": list(gs.get_player_cards(player.id)),
         "opp_cards": list(gs.get_player_cards(opp_id)),
-        "my_hand_size": len(gs.player_info[player.id]["held_cards"].cards),
-        "opp_hand_size": len(gs.player_info[opp_id]["held_cards"].cards),
+        "my_hand_size": len(gs.player_info[player.id].held_cards.card_ids),
+        "opp_hand_size": len(gs.player_info[opp_id].held_cards.card_ids),
         "triggerable_traps": list(gs.triggerable_traps.keys()),
         "activated_traps": list(gs.activated_traps),
     }

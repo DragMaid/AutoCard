@@ -49,12 +49,21 @@ class GameState(BaseModel):
     activated_traps: List[str] = Field(default_factory=list)
     attack_queue: List[AttackEntry] = Field(default_factory=list)
 
+    def serialize(self) -> dict:
+        return self.model_dump()
+
+    def deserialize(self, serialized) -> None:
+        validated = GameState.model_validate(serialized)
+        for field in self.model_fields:
+            setattr(self, field, getattr(validated, field))
+
     @property
     def players_lookup(self) -> Dict[str, Player]:
         return {p.id: p for p in self.players}
 
     def model_post_init(self, __context: Any) -> None:
         self._logger = get_logger()
+        self.reset()
 
     # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
@@ -64,9 +73,10 @@ class GameState(BaseModel):
 
         self.player_info = {
             player.id: PlayerInfo(
-                held_cards=CollectionInfo([], player.id),
-                graveyard_cards=CollectionInfo([], player.id),
-                deck_cards=CollectionInfo([], player.id),
+                held_cards=CollectionInfo(card_ids=[], player_id=player.id),
+                graveyard_cards=CollectionInfo(
+                    card_ids=[], player_id=player.id),
+                deck_cards=CollectionInfo(card_ids=[], player_id=player.id),
             )
             for player in self.players
         }
@@ -211,8 +221,8 @@ class GameState(BaseModel):
             and self.field_matrix_ownership[r][c] == player_id
         ]
 
-    def get_player_held_cards(self, player_id: str) -> List[Card]:
-        return self.player_info[player_id].held_cards.cards
+    def get_player_held_card_ids(self, player_id: str) -> List[Card]:
+        return self.player_info[player_id].held_cards.card_ids
 
     def get_empty_slots(self, player_id: str) -> Optional[Tuple[int, int]]:
         """Return row, col tuples of all empty slots owned by user."""

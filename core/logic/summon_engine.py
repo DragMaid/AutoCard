@@ -47,7 +47,7 @@ class SummonEngine:
             if card.card_type == CardType.MONSTER:
                 if self.game_engine.game_state.player_info[player_id]["has_summoned_monster"]:
                     reasons.append("Already summoned monster this turn")
-                if card_id not in self.game_engine.game_state.player_info[player_id]["held_cards"].cards:
+                if card_id not in self.game_engine.game_state.player_info[player_id].held_cards.card_ids:
                     reasons.append("Card not in hand")
 
             log_action("SUMMON", player_id, {
@@ -67,7 +67,7 @@ class SummonEngine:
                 }, False)
                 return False
 
-        self.game_engine.game_state.player_info[player_id]["held_cards"].remove(
+        self.game_engine.game_state.player_info[player_id].held_cards.remove(
             card_id)
         if card.card_type == CardType.MONSTER:
             self.game_engine.game_state.player_info[player_id]["has_summoned_monster"] = True

@@ -59,7 +59,7 @@ class SummonHandler(ActionHandler):
 
         if not card_id:
             hand_idx = params.get("monster")
-            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            player_hand_ids = gs.player_info[player.id].held_cards.card_ids
             if hand_idx >= len(player_hand_ids):
                 return False
             card_id = player_hand_ids[hand_idx]
@@ -131,7 +131,7 @@ class CastSpellHandler(ActionHandler):
 
         if not card_id:
             hand_idx = params.get("spell", 0)
-            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            player_hand_ids = gs.player_info[player.id].held_cards.card_ids
             if hand_idx >= len(player_hand_ids):
                 return False
             card_id = player_hand_ids[hand_idx]
@@ -167,7 +167,7 @@ class SetTrapHandler(ActionHandler):
 
         if not card_id:
             hand_idx = params.get("trap", 0)
-            player_hand_ids = gs.player_info[player.id]["held_cards"].cards
+            player_hand_ids = gs.player_info[player.id].held_cards.card_ids
             if hand_idx >= len(player_hand_ids):
                 return False
             card_id = player_hand_ids[hand_idx]

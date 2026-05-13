@@ -35,8 +35,8 @@ class GameApp(ABC):
 
     # TODO: consider not doing this weird ass player thing
     def _setup_players(self):
-        self.player1 = Player(0, "p1")
-        self.player2 = Player(1, "p2", is_opponent=True)
+        self.player1 = Player(player_index=0, name="p1")
+        self.player2 = Player(player_index=1, name="p2", is_opponent=True)
 
     def _setup_engine(self):
         self.game_engine = GameEngine(
@@ -44,16 +44,16 @@ class GameApp(ABC):
         self.env = GameEnv(engine=self.game_engine, render=False)
 
     def _setup_rendering(self):
-        self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
+        self.matrix = Matrix(self.screen, self.game_engine.game_state)
         self.render_engine = RenderEngine(
-            field_matrix=self.field_matrix,
+            matrix=self.matrix,
             screen=self.screen,
             event_logger=self.game_engine.event_logger,
             turn_manager=self.game_engine.turn_manager,
             game_state=self.game_engine.game_state
         )
         self.input_manager = InputManager(
-            self.field_matrix,
+            self.matrix,
             self.game_engine,
             self.render_engine
         )
@@ -170,8 +170,8 @@ class GameApp(ABC):
 
     def _draw(self):
         self.screen.blit(self.background, (0, 0))
-        self.field_matrix.areas["preview_card_table"].draw(self.screen)
-        self.field_matrix.draw()
+        self.matrix.areas["preview_card_table"].draw(self.screen)
+        self.matrix.draw()
         self.input_manager.draw(self.screen)
         self.render_engine.draw()
         # TODO: should move these to a centralized hub

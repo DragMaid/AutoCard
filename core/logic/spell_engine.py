@@ -211,7 +211,7 @@ class SpellEngine:
                 return False
 
         # Remove card from hand before execution
-        held_collection = self.engine.game_state.player_info[spell.owner_id]["held_cards"]
+        held_collection = self.engine.game_state.player_info[spell.owner_id].held_cards
         held_collection.remove(spell_id)
 
         # Execute all abilities

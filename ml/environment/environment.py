@@ -408,7 +408,7 @@ class GameEnv:
     # TODO: there's way to many weird constants, fix this
     def _encode_hand(self, player: Player) -> np.ndarray:
         gs = self.engine.game_state
-        hand_card_ids = gs.player_info[player.id]["held_cards"].cards
+        hand_card_ids = gs.player_info[player.id].held_cards.card_ids
         max_hand = self.engine.rule_engine.max_hand_cards
 
         # Create a temp placeholder

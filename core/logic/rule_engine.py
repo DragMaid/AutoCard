@@ -38,7 +38,7 @@ class RuleEngine:
         """
         current_player = self.turn_manager.get_current_player()
         hand_size = len(
-            self.game_state.player_info[player_id]["held_cards"].cards)
+            self.game_state.player_info[player_id].held_cards.card_ids)
 
         if current_player.id != player_id:
             self.logger.debug(

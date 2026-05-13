@@ -110,7 +110,8 @@ class GameApp:
                 self.game_app = AIGame(self.screen)
         except Exception as e:
             print(f"Failed to create game: {e}")
-            self.matchmaker.show_error(str(e))
+            # self.matchmaker.show_error(str(e))
+            raise
             self.matchmaker.set_state(ScreenState.MENU)
 
     def _cleanup_game(self):

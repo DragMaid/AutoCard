@@ -10,7 +10,7 @@ def draw_specific_card(engine, player_id: str, name: str, card_type: CardType):
     }
     card = factory_map[card_type].create_card(name)
     engine.game_state.entity_lookup[card.id] = card
-    engine.game_state.player_info[player_id]["held_cards"].add(card.id)
+    engine.game_state.player_info[player_id].held_cards.add(card.id)
     get_logger().debug(f"[DEBUG] {player_id} received specific card: {name}")
 
 

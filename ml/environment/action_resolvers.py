@@ -31,7 +31,7 @@ class SummonResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve summonable monsters from hand slots."""
         gs = env.engine.game_state
-        card_ids = gs.player_info[player.id]["held_cards"].cards
+        card_ids = gs.player_info[player.id].held_cards.card_ids
 
         results = {}
         if gs.player_info[player.id].get("has_summoned_monster", False) or \
@@ -98,7 +98,7 @@ class CastSpellResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve castable spells and their target field slots."""
         gs = env.engine.game_state
-        card_ids = gs.player_info[player.id]["held_cards"].cards
+        card_ids = gs.player_info[player.id].held_cards.card_ids
         opp_id = gs.get_opponent_id(player.id)
 
         results = {}
@@ -143,7 +143,7 @@ class SetTrapResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve settable traps from hand slots."""
         gs = env.engine.game_state
-        card_ids = gs.player_info[player.id]["held_cards"].cards
+        card_ids = gs.player_info[player.id].held_cards.card_ids
 
         if gs.player_info[player.id].get("has_summoned_trap", False) or not gs.has_slot_available(player.id):
             return {}

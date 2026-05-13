@@ -38,8 +38,7 @@ class GameEngine:
             log_to_file (bool): Whether to log game actions to a file.
             socket_io: Socket interface for synchronization.
         """
-        self.game_state = GameState(players)
-        self.players = players
+        self.game_state = GameState(players=players)
         self.effect_tracker = EffectTracker()
         self.turn_manager = TurnManager(self.game_state, self.effect_tracker)
         self.rule_engine = RuleEngine(self.game_state, self.turn_manager)
@@ -72,9 +71,21 @@ class GameEngine:
                 self.logger.error(e)
                 raise
 
-    def serialize(self):
+    def serialize(self) -> dict:
         """Placeholder for serialization logic."""
-        return self.game_state.serialize()
+        serialized = {}
+        serialized["game_state"] = self.game_state.serialize()
+        serialized["effect_tracker"] = self.effect_tracker.serialize()
+        serialized["event_logger"] = self.event_logger.serialize()
+        serialized["turn_manager"] = self.turn_manager.serialize()
+        return serialized
+
+    def deserialize(self, serialized: dict) -> None:
+        self.game_state.deserialize(serialized["game_state"])
+        self.effect_tracker.deserialize(serialized["effect_tracker"])
+        self.event_logger.deserialize(serialized["event_logger"])
+        self.turn_manager.deserialize(
+            serialized["turn_manager"], self.game_state)
 
     def reset(self) -> None:
         """Resets the game state and trackers."""
@@ -93,7 +104,7 @@ class GameEngine:
         Args:
             number (int): Number of cards to draw.
         """
-        for player in self.players:
+        for player in self.game_state.players:
             for _ in range(number):
                 self.draw_card(player.id, check=False)
 
@@ -111,16 +122,16 @@ class GameEngine:
         can_draw = not check or self.rule_engine.can_draw(player_id)
 
         if can_draw:
-            card = self.draw_system.rate_card_draw(player_id)
+            card = self.draw_system.draw(player_id)
             if card:
                 card.is_opponent = self.game_state.players_lookup[player_id].is_opponent
                 self.game_state.entity_lookup[card.id] = card
-                self.game_state.player_info[player_id]["held_cards"].add(
+                self.game_state.player_info[player_id].held_cards.add(
                     card.id)
                 log_action("DRAW", player_id, {
                     "card": card.name,
                     "type": card.card_type.value,
-                    "hand_size": len(self.game_state.player_info[player_id]["held_cards"].cards)
+                    "hand_size": len(self.game_state.player_info[player_id].held_cards.card_ids)
                 }, True)
                 self.synchronize()
                 return True
@@ -315,4 +326,4 @@ class GameEngine:
 
     def is_local_turn(self) -> bool:
         """Checks if it's the local player's turn."""
-        return is_local_turn(self.turn_manager, self.players)
+        return is_local_turn(self.turn_manager, self.game_state.players)

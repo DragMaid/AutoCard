@@ -226,7 +226,7 @@ class TrapEngine:
                 return False
 
         # Place trap face-down
-        self.game_engine.game_state.player_info[trap.owner_id]["held_cards"].remove(
+        self.game_engine.game_state.player_info[trap.owner_id].held_cards.remove(
             trap_id)
         self.game_engine.game_state.modify_field("add", trap, position)
         self.game_engine.game_state.player_info[trap.owner_id]["has_summoned_trap"] = True

@@ -283,7 +283,7 @@ class Matrix:
             ),
             'opponent_hand_area': HandUI(
                 opponent.id,
-                self.game_state.player_info[opponent.id]["held_cards"],
+                self.game_state.player_info[opponent.id].held_cards,
                 self.grid['origin_x'], padding,
                 self.grid['width'], margins['top'] - (2 * padding),
                 self.config.OPPONENT_COLOR, self.config.AREA_BORDER_WIDTH
@@ -302,7 +302,7 @@ class Matrix:
             ),
             'my_hand_area': HandUI(
                 ally.id,
-                self.game_state.player_info[ally.id]["held_cards"],
+                self.game_state.player_info[ally.id].held_cards,
                 self.grid['origin_x'],
                 screen_height - margins['bottom'] + padding,
                 self.grid['width'], area_dims['bottom_height'],

@@ -29,7 +29,7 @@ class Renderer:
         self.background = pygame.transform.scale(
             self.background, self.screen_size)
 
-        # Initialize field_matrix and render_engine if engine is provided
+        # Initialize matrix and render_engine if engine is provided
         if self.engine is not None:
             self._init_render_objects()
 
@@ -37,10 +37,10 @@ class Renderer:
         self.render_engine.reset()
 
     def _init_render_objects(self):
-        """Initialize or update field_matrix and render_engine for the current engine."""
-        self.field_matrix = Matrix(self.screen, self.engine.game_state)
+        """Initialize or update matrix and render_engine for the current engine."""
+        self.matrix = Matrix(self.screen, self.engine.game_state)
         self.render_engine = RenderEngine(
-            field_matrix=self.field_matrix,
+            matrix=self.matrix,
             screen=self.screen,
             game_state=self.engine.game_state,
             event_logger=self.engine.event_logger,
@@ -57,10 +57,10 @@ class Renderer:
         self.screen.blit(self.background, (0, 0))
 
         # Draw field and preview areas
-        if hasattr(self, "field_matrix"):
-            if "preview_card_table" in self.field_matrix.areas:
-                self.field_matrix.areas["preview_card_table"].draw(self.screen)
-            self.field_matrix.draw()
+        if hasattr(self, "matrix"):
+            if "preview_card_table" in self.matrix.areas:
+                self.matrix.areas["preview_card_table"].draw(self.screen)
+            self.matrix.draw()
 
         # Draw animations via render_engine
         if hasattr(self, "render_engine"):

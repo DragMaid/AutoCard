@@ -1,4 +1,14 @@
-from typing import Any, Optional, Dict
+from typing import Optional
+from pydantic import BaseModel
+from core.data.game_state import GameState
+from core.data.effects import EffectTracker
+from core.data.player import Player
+
+
+class TurnManagerState(BaseModel):
+    current_player_index: int = 0
+    _is_trap_stage: bool = False
+    turn_count: int = 1
 
 
 class TurnManager:
@@ -6,7 +16,7 @@ class TurnManager:
     Manages turn-based logic, including player switching, turn tracking, and phase states.
     """
 
-    def __init__(self, game_state: Any, effect_tracker: Any):
+    def __init__(self, game_state: GameState, effect_tracker: EffectTracker):
         """
         Initializes the TurnManager.
 
@@ -16,35 +26,15 @@ class TurnManager:
         """
         self.game_state = game_state
         self.effect_tracker = effect_tracker
-        self.current_player_index: int = 0
-        self._is_trap_stage: bool = False
-        self.turn_count: int = 1
+        self.turn_state = TurnManagerState()
 
-    def serialize(self) -> Dict[str, Any]:
-        """
-        Serializes the turn manager state for saving or network transmission.
+    def serialize(self) -> dict:
+        return self.turn_state.model_dump()
 
-        Returns:
-            Dict[str, Any]: Serialized turn state.
-        """
-        return {
-            "current_player_index": self.current_player_index,
-            "turn_count": self.turn_count,
-            "is_trap_stage": self._is_trap_stage
-        }
+    def deserialize(self, serialized: dict) -> None:
+        self.turn_state = TurnManagerState.model_validate(serialized)
 
-    def deserialize(self, content: Dict[str, Any]) -> None:
-        """
-        Deserializes the turn manager state from the provided dictionary.
-
-        Args:
-            content (Dict[str, Any]): The state data to load.
-        """
-        self.current_player_index = content["current_player_index"]
-        self.turn_count = content["turn_count"]
-        self._is_trap_stage = content["is_trap_stage"]
-
-    def get_trapper(self) -> Optional[Any]:
+    def get_trapper(self) -> Optional[Player]:
         """
         Returns the player currently authorized to trigger traps, if in trap stage.
 
@@ -55,16 +45,16 @@ class TurnManager:
             return None
         return self.get_next_player()
 
-    def get_current_player(self) -> Any:
+    def get_current_player(self) -> Player:
         """
         Returns the player whose turn it currently is.
 
         Returns:
             Player: The current player object.
         """
-        return self.game_state.players[self.current_player_index]
+        return self.game_state.players[self.turn_state.current_player_index]
 
-    def get_next_player(self) -> Any:
+    def get_next_player(self) -> Player:
         """
         Returns the player who will be active after the current turn ends.
 
@@ -80,7 +70,7 @@ class TurnManager:
         Returns:
             int: The index of the next player in the game state's players list.
         """
-        return (self.current_player_index + 1) % len(self.game_state.players)
+        return (self.turn_state.current_player_index + 1) % len(self.game_state.players)
 
     def is_trap_stage(self) -> bool:
         """
@@ -89,7 +79,7 @@ class TurnManager:
         Returns:
             bool: True if in trap stage, False otherwise.
         """
-        return self._is_trap_stage
+        return self.turn_state._is_trap_stage
 
     def toggle_trap_stage(self, state: Optional[bool] = None) -> None:
         """
@@ -98,7 +88,7 @@ class TurnManager:
         Args:
             state (bool, optional): Force set the trap stage state.
         """
-        self._is_trap_stage = state if state is not None else not self._is_trap_stage
+        self.turn_state._is_trap_stage = state if state is not None else not self.turn_state._is_trap_stage
 
     def end_turn(self) -> None:
         """
@@ -126,5 +116,4 @@ class TurnManager:
         """
         Resets the turn management to the initial state (turn 1, player 0).
         """
-        self.turn_count = 1
-        self.current_player_index = 0
+        self.turn_state = TurnManagerState()

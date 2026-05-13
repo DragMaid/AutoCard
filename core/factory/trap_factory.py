@@ -10,6 +10,7 @@ from core.config import config
 
 
 class TrapFactory(BaseFactory):
+    # TODO: put these to config instead
     DATA_FILE = Path("./assets/data/trapInfo.json")
 
     def __init__(self):
@@ -29,6 +30,7 @@ class TrapFactory(BaseFactory):
 
         for card_info in data:
             image_path = config.ASSET_DIR / card_info["texture"]
+            print(image_path)
             card_info["_image_path"] = image_path
             self._cards[card_info["name"]] = card_info
 

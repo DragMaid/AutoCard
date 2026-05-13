@@ -190,9 +190,14 @@ class MatchmakingScreen:
             ScreenState.JOIN: self.join_components,
             ScreenState.WAITING: self.waiting_components,
         }
-        for comp in state_to_component[self.state]:
+        comps = state_to_component.get(self.state)
+        if not comps:
+            return False
+
+        for comp in comps:
             if comp.handle_event(event):
                 return True
+
         return False
 
     def update(self, dt):
