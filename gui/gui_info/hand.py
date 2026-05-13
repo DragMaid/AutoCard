@@ -1,24 +1,25 @@
 import pygame
 from gui.gui_info.game_area import GameArea
 from gui.cache import load_image
+from pydantic import BaseModel
+from typing import List
 
 
-class CollectionInfo:
-    def __init__(self, cards, player_id):
-        self.cards = cards  # List of card IDs
-        self.player_id = player_id
+class CollectionInfo(BaseModel):
+    card_ids: List[str]
+    player_id: str
 
     def __len__(self):
-        return len(self.cards)
+        return len(self.card_ids)
 
     def __iter__(self):
-        return iter(self.cards)
+        return iter(self.card_ids)
 
     def add(self, card_id):
-        self.cards.append(card_id)
+        self.card_ids.append(card_id)
 
     def remove(self, card_id):
-        self.cards.remove(card_id)
+        self.card_ids.remove(card_id)
 
 
 class HandUI(GameArea):

@@ -20,7 +20,7 @@ class ActivateCondition(Enum):
 class TrapCard(Card):
     card_type: CardType = Field(default=CardType.TRAP, frozen=True)
 
-    ability: List[TrapAbility]
+    abilities: List[TrapAbility]
     activation: ActivateCondition
 
     effectiveness: Optional[List[int]] = None

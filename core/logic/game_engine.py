@@ -120,7 +120,10 @@ class GameEngine:
                 ToggleEvent(card_id=card.id, mode=new_mode))
             self.game_state.player_info[owner_id]["has_toggled"] = True
 
-            if self.trap_engine.check_traps(ActivateCondition.TOGGLE, toggled_card_id=card_id):
+            if self.trap_engine.check_traps(
+                condition=ActivateCondition.TOGGLE,
+                target_id=card_id
+            ):
                 self.turn_manager.toggle_trap_stage(state=True)
 
             log_action("TOGGLE", owner_id, {
@@ -201,7 +204,10 @@ class GameEngine:
 
         log_action("SUMMON", player_id, details, True)
 
-        if self.trap_engine.check_traps(ActivateCondition.SUMMON, summoned_card_id=card_id):
+        if self.trap_engine.check_traps(
+            condition=ActivateCondition.SUMMON,
+            target_id=card_id
+        ):
             self.turn_manager.toggle_trap_stage(state=True)
 
         self.synchronize()
@@ -247,9 +253,8 @@ class GameEngine:
 
         # if no trap trigger then process it internally else let the opponent do it
         if not self.trap_engine.check_traps(
-            ActivateCondition.ATTACK,
-            attacker_id=card_id,  # the one doing attacking is this one
-            defender_id=defender_id
+            condition=ActivateCondition.ATTACK,
+            target_id=card_id,
         ):
             self.resolve_battle(
                 attacker_id=attacker_id,
@@ -279,7 +284,14 @@ class GameEngine:
             self.game_state.modify_field("remove", card, card.pos_in_matrix)
         self.game_state.player_info[card.owner_id]["graveyard_cards"].add(
             card_id)
-        self.logger.info(f"  → {card.name} moved to {card.owner_id}'s graveyard")
+        self.logger.info(
+            "Card moved to graveyard",
+            extra={
+                "card_name": card.name,
+                "owner_id": card.owner_id,
+                "card_id": card_id
+            }
+        )
 
     def toggle_trap_activation(self, trap_id, activated=False):
         # TODO: this check doesnt make sense but will fix later
