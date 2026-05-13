@@ -8,7 +8,7 @@ def draw_specific_card(engine, player_id: str, name: str, card_type: CardType):
         CardType.TRAP: engine.draw_system.trap_factory,
         CardType.SPELL: engine.draw_system.spell_factory
     }
-    card = factory_map[card_type].create_card(name)
+    card = factory_map[card_type].load(player_id, name)
     engine.game_state.entity_lookup[card.id] = card
     engine.game_state.player_info[player_id].held_cards.add(card.id)
     get_logger().debug(f"[DEBUG] {player_id} received specific card: {name}")
@@ -17,7 +17,7 @@ def draw_specific_card(engine, player_id: str, name: str, card_type: CardType):
 def log_action(action_type: str, player_id: str, details: dict, success: bool):
     """Central logging method for all game actions"""
     logger = get_logger()
-    logger = logger.info if success else logger.error
+    logger = logger.debug if success else logger.error
 
     payload = {
         "event": action_type,

@@ -82,7 +82,7 @@ class RuleEngine:
         trapper = self.turn_manager.get_trapper()
         card = self.game_state.get_card_by_id(trap_id)
 
-        if trapper.id != player_id:
+        if not trapper or trapper.id != player_id:
             self.logger.debug(
                 "Activation denied",
                 extra={
@@ -166,7 +166,7 @@ class RuleEngine:
             return False
 
         # Check if card is in hand
-        if card_id not in self.game_state.get_player_held_cards(player_id):
+        if card_id not in self.game_state.get_player_held_card_ids(player_id):
             self.logger.debug(
                 "Summon denied",
                 extra={
@@ -179,7 +179,7 @@ class RuleEngine:
 
         # Check summon type restrictions
         if card.card_type == CardType.MONSTER:
-            if self.game_state.player_info[player_id]["has_summoned_monster"]:
+            if self.game_state.player_info[player_id].has_summoned_monster:
                 self.logger.debug(
                     "Summon denied",
                     extra={
@@ -190,7 +190,7 @@ class RuleEngine:
                 )
                 return False
         elif card.card_type == CardType.TRAP:
-            if self.game_state.player_info[player_id]["has_summoned_trap"]:
+            if self.game_state.player_info[player_id].has_summoned_trap:
                 self.logger.debug(
                     "Summon denied",
                     extra={
@@ -253,7 +253,7 @@ class RuleEngine:
             )
             return False
 
-        slot_owner_id = ownership_matrix[col][row]
+        slot_owner_id = ownership_matrix[row][col]
         if slot_owner_id != player_id:
             self.logger.debug(
                 "Summon denied",
@@ -361,7 +361,7 @@ class RuleEngine:
             return False
 
         # Cannot attack on first turn
-        if self.turn_manager.turn_count == 1:
+        if self.turn_manager.turn_state.turn_count == 1:
             self.logger.debug(
                 "Attack denied",
                 extra={
@@ -464,7 +464,7 @@ class RuleEngine:
         # If direct attack to player
         if target_is_player:
             # Check if defender has any monsters
-            defender_cards = self.game_state.get_player_cards(defender_id)
+            defender_cards = self.game_state.get_player_field_cards(defender_id)
             for def_card in defender_cards:
                 if def_card.card_type == CardType.MONSTER:
                     self.logger.debug(
@@ -671,7 +671,7 @@ class RuleEngine:
                 "playerID": player_id,
                 "ownCard": own_card.name,
                 "targetCard": target_card.name,
-                "type": own_card.type,
+                "type": own_card.monster_type,
                 "oldLevel": own_card.star,
                 "newLevel": own_card.star + 1
             }

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Union, List
+from typing import Union, List, Optional
 from pydantic import TypeAdapter
 
 
@@ -25,7 +25,7 @@ class ToggleEvent(BaseModel):
 
 class SpellActiveEvent(BaseModel):
     spell_id: str
-    target_id: str
+    target_id: Optional[str]
 
 
 class MergeEvent(BaseModel):
@@ -40,6 +40,7 @@ GameEvent = Union[
     ToggleEvent,
     SpellActiveEvent,
     MergeEvent,
+    TrapTriggerableEvent
 ]
 
 GameEventAdapter = TypeAdapter(GameEvent)

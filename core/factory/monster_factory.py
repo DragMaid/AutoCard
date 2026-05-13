@@ -33,7 +33,7 @@ class MonsterFactory(BaseFactory):
                 enum_name = category.upper().replace(" ", "_")
                 card_info["monster_type"] = enum_name
                 card_info["star"] = card_info.get("star", 1)
-                image_path = config.ASSET_DIR / card_info["texture"]
+                image_path = str(config.ASSET_DIR / card_info["texture"].lstrip("/"))
                 card_info["_image_path"] = image_path
                 self._cards[card_info["name"]] = card_info
 
@@ -53,7 +53,7 @@ class MonsterFactory(BaseFactory):
             name=prototype["name"],
             description=prototype.get("description", ""),
             owner_id=owner_id,
-            image_path=str(prototype.get("_image_path")),
+            image_path=prototype.get("_image_path"),
             monster_type=prototype["monster_type"],
             attack=prototype.get("attack", 0),
             defend=prototype.get("defend", 0),

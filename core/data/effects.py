@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from core.cards.card import Card
 
 
-class EffectType(Enum):
+class EffectType(str, Enum):
     """Different types of effects a spell can apply"""
     BUFF = "BUFF"
     DEBUFF = "DEBUFF"
@@ -24,25 +24,27 @@ class Effect(BaseModel):
 class EffectPolicy:
     """Base class for implementing effect management."""
 
-    def apply(self, card: Card, effect: Effect, game_state: GameState):
+    @staticmethod
+    def apply(card: Card, effect: Effect, game_state: GameState):
         raise NotImplementedError
 
+    @staticmethod
     def remove(self, card: Card, effect: Effect, game_state: GameState):
         raise NotImplementedError
 
 
 class BuffPolicy(EffectPolicy):
-    def apply(self, target, effect, game_state):
+    def apply(target, effect, game_state):
         setattr(target, effect.stat,
                 getattr(target, effect.stat) + effect.value)
 
-    def remove(self, target, effect, game_state):
+    def remove(target, effect, game_state):
         setattr(target, effect.stat,
                 getattr(target, effect.stat) - effect.value)
 
 
 class DebuffPolicy(EffectPolicy):
-    def apply(self, target, effect, game_state):
+    def apply(target, effect, game_state):
         # NOTE: update effect effectiveness so it wouldn't buff the card
         # ex: 500 atk -> -100 atk -> 0 atk -> 500 atk instead of 600 atk
         new_stat = getattr(target, effect.stat) - effect.value
@@ -50,7 +52,7 @@ class DebuffPolicy(EffectPolicy):
         effect.value = abs(new_stat_filtered - new_stat)
         setattr(target, effect.stat, new_stat_filtered)
 
-    def remove(self, target, effect, game_state):
+    def remove(target, effect, game_state):
         setattr(target, effect.stat,
                 getattr(target, effect.stat) + effect.value)
 
@@ -69,7 +71,7 @@ class EffectTracker:
         return [e.model_dump() for e in self.active_effects]
 
     def deserialize(self, serialized: dict):
-        self.active_effects = [Effect.validated_model(e) for e in serialized]
+        self.active_effects = [Effect.model_validate(e) for e in serialized]
 
     def add_effect(
         self,
@@ -111,12 +113,14 @@ class EffectTracker:
     def _apply_effect(self, effect: Effect, game_state: GameState):
         """Apply the effect to the target"""
         target = game_state.get_card_by_id(effect.target_id)
+        assert target and hasattr(target, effect.stat), f"Invalid effect target or stat: {effect}"
         if target and hasattr(target, effect.stat):
             self.EFFECT_MAP[effect.effect_type].apply(target, effect, game_state)
 
     def _remove_effect(self, effect: Effect, game_state: GameState):
         """Revert the effect when it expires"""
         target = game_state.get_card_by_id(effect.target_id)
+        assert target and hasattr(target, effect.stat), f"Invalid effect target or stat: {effect}"
         if target and hasattr(target, effect.stat):
             self.EFFECT_MAP[effect.effect_type].remove(target, effect, game_state)
 

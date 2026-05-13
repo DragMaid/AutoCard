@@ -6,7 +6,7 @@ from typing import List
 
 
 class CollectionInfo(BaseModel):
-    card_ids: List[str]
+    card_ids: List[str] = []
     player_id: str
 
     def __len__(self):

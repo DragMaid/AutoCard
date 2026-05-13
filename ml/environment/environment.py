@@ -420,9 +420,9 @@ class GameEnv:
                 continue
             base = i * CARD_FEATURES
             hand_encoded[base + 0] = card_type_to_int(card)
-            hand_encoded[base + 1] = getattr(card, "atk", 0) / \
+            hand_encoded[base + 1] = getattr(card, "attack", 0) / \
                 self.reward_calculator.max_stats
-            hand_encoded[base + 2] = getattr(card, "defense", 0) / \
+            hand_encoded[base + 2] = getattr(card, "defend", 0) / \
                 self.reward_calculator.max_stats
             # TODO: wtf is even this
             owner_flag = 0  # current player
@@ -444,9 +444,9 @@ class GameEnv:
                     owner_flag = 0 if card.owner_id == player.id else 1
                     board_encoded.extend([
                         card_type_to_int(card),
-                        getattr(card, "atk", 0) /
+                        getattr(card, "attack", 0) /
                         self.reward_calculator.max_stats,
-                        getattr(card, "defense", 0) /
+                        getattr(card, "defend", 0) /
                         self.reward_calculator.max_stats,
                         owner_flag,
                         # TODO: same for this thing

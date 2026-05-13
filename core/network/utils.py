@@ -21,7 +21,8 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
                     break
                 event, data = item
                 sio.emit(event, data)
-            except Exception:
+            except Exception as e:
+                print(f"[Server Process] Bridge error: {e}")
                 pass
 
     _Thread(target=_bridge, daemon=True).start()
@@ -32,6 +33,7 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
 
     @sio.event
     def connect(sid, environ):
+        print(f"[Server Process] Client {sid} connecting...")
         if password:
             client_pass = extract_password(environ)
             if client_pass != password:
@@ -39,6 +41,7 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
                     f"Rejected connection from {sid}: bad password")
                 return False
         sub_queue.put({"connected": {}})
+        print(f"[Server Process] Client {sid} connection signal sent to main process")
         return True
 
     @sio.event

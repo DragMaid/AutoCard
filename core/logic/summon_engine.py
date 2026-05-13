@@ -4,6 +4,7 @@ from typing import Tuple, Optional, TYPE_CHECKING
 from core.cards.card import CardType
 from core.cards.monster_card import MonsterCard
 from core.cards.trap_card import ActivateCondition
+from core.data.game_state import ModifyMode
 from .utils import log_action
 
 if TYPE_CHECKING:
@@ -18,11 +19,13 @@ class SummonEngine:
     def __init__(self, game_engine: GameEngine):
         self.game_engine = game_engine
 
-    def summon_card(self,
-                    player_id: str,
-                    card_id: str,
-                    cell: Optional[Tuple[int, int]],
-                    check: bool = True) -> bool:
+    def summon_card(
+        self,
+        player_id: str,
+        card_id: str,
+        cell: Optional[Tuple[int, int]],
+        check: bool = True
+    ) -> bool:
         """
         Processes a summon request from a player.
 
@@ -36,26 +39,13 @@ class SummonEngine:
             bool: True if successfully summoned, False otherwise.
         """
         can_summon = self.game_engine.rule_engine.can_summon(
-            player_id, card_id, self.game_engine.game_state.field_matrix, cell) or not check
+            player_id, card_id, cell) or not check
 
         card = self.game_engine.game_state.get_card_by_id(card_id)
         if not card:
             return False
 
         if not can_summon:
-            reasons = []
-            if card.card_type == CardType.MONSTER:
-                if self.game_engine.game_state.player_info[player_id]["has_summoned_monster"]:
-                    reasons.append("Already summoned monster this turn")
-                if card_id not in self.game_engine.game_state.player_info[player_id].held_cards.card_ids:
-                    reasons.append("Card not in hand")
-
-            log_action("SUMMON", player_id, {
-                "card": card.name,
-                "type": card.card_type.value,
-                "target_cell": cell,
-                "reason": ", ".join(reasons) if reasons else "Rule check failed"
-            }, False)
             return False
 
         if cell is None:
@@ -70,11 +60,11 @@ class SummonEngine:
         self.game_engine.game_state.player_info[player_id].held_cards.remove(
             card_id)
         if card.card_type == CardType.MONSTER:
-            self.game_engine.game_state.player_info[player_id]["has_summoned_monster"] = True
+            self.game_engine.game_state.player_info[player_id].has_summoned_monster = True
         elif card.card_type == CardType.TRAP:
-            self.game_engine.game_state.player_info[player_id]["has_summoned_trap"] = True
+            self.game_engine.game_state.player_info[player_id].has_summoned_trap = True
 
-        self.game_engine.game_state.modify_field("add", card, cell)
+        self.game_engine.game_state.modify_field(ModifyMode.ADD, card, cell)
         card.is_placed = True
         card.pos_in_matrix = cell
 
@@ -85,8 +75,8 @@ class SummonEngine:
         }
         if isinstance(card, MonsterCard):
             details.update({
-                "atk": card.attack,
-                "def": card.defend,
+                "attack": card.attack,
+                "defened": card.defend,
                 "level": card.star
             })
 

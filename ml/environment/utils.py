@@ -17,6 +17,7 @@ def safe_index(seq: Sequence[Any], idx: Optional[int]) -> Optional[Any]:
     return seq[i]
 
 
+# TODO: fix this later its outdated
 def ability_to_float(card: Any) -> float:
     if hasattr(card, "ability") and card.ability is not None:
         return float(sum(ord(c) for c in str(card.ability)) % 1000) / 1000.0

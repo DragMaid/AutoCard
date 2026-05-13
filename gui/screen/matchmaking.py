@@ -2,7 +2,7 @@ import pygame
 from enum import Enum, auto
 from gui.cache import get_font
 from core.network.discovery import DiscoveryClient
-from .ui_components import Button, InputBox, ScrollList
+from .components import Button, InputBox, ScrollList
 import threading
 
 

@@ -5,6 +5,7 @@ from core.network.client import SocketClientGame
 from core.network.ai import AIGame
 
 
+# TODO: move these to config
 class GameApp:
     def __init__(self):
         pygame.init()

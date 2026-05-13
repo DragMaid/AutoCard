@@ -1,9 +1,10 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional, Tuple, Union, Annotated
+from pydantic import BaseModel, Field, TypeAdapter
 from core.cards.card import Card
 from core.cards.monster_card import MonsterCard
-from core.cards.trap_card import ActivateCondition
+from core.cards.spell_card import SpellCard
+from core.cards.trap_card import TrapCard
 from core.data.player import Player
 from core.utils import get_logger
 from gui.background.hand import CollectionInfo
@@ -11,8 +12,8 @@ from core.config import config
 
 
 class ModifyMode(str, Enum):
-    ADD = "add"
-    REMOVE = "remove"
+    ADD = "ADD"
+    REMOVE = "REMOVE"
 
 
 class PlayerInfo(BaseModel):
@@ -26,15 +27,22 @@ class PlayerInfo(BaseModel):
 
 
 class TrapContext(BaseModel):
-    trigger_type: ActivateCondition
-    attacker_id: Optional[str] = None
-    defender_id: Optional[str] = None
+    target_id: str
 
 
 class AttackEntry(BaseModel):
     attacker_id: str
     defender_id: str
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    card_id: str
+    target_id: str
+    target_is_player: bool
+
+
+LogicCard = Annotated[
+    Union[MonsterCard, SpellCard, TrapCard],
+    Field(discriminator="card_type")
+]
+LogicCardAdapter = TypeAdapter(LogicCard)
 
 
 class GameState(BaseModel):
@@ -42,7 +50,7 @@ class GameState(BaseModel):
 
     game_over: bool = False
     player_info: Dict[str, PlayerInfo] = Field(default_factory=dict)
-    entity_lookup: Dict[str, Card] = Field(default_factory=dict)
+    entity_lookup: Dict[str, LogicCard] = Field(default_factory=dict)
     field_matrix: List[List[Optional[str]]] = Field(default_factory=list)
     field_matrix_ownership: List[List[str]] = Field(default_factory=list)
     triggerable_traps: Dict[str, TrapContext] = Field(default_factory=dict)
@@ -54,16 +62,52 @@ class GameState(BaseModel):
 
     def deserialize(self, serialized) -> None:
         validated = GameState.model_validate(serialized)
+        # Reverse everything before assigning
+        for p in validated.players:
+            p.is_opponent = not p.is_opponent
+
+        validated.entity_lookup = {k: self._deserialize_card(
+            v) for k, v in validated.entity_lookup.items()}
+
+        validated.field_matrix = self._deserialize_2d_matrix(
+            validated.field_matrix)
+
+        validated.field_matrix_ownership = self._deserialize_2d_matrix(
+            validated.field_matrix_ownership)
+
+        for i in range(len(validated.field_matrix)):
+            for j in range(len(validated.field_matrix[i])):
+                card_id = validated.field_matrix[i][j]
+                if card_id:
+                    validated.entity_lookup[card_id].pos_in_matrix = (i, j)
+
         for field in self.model_fields:
             setattr(self, field, getattr(validated, field))
+
+    @staticmethod
+    def _deserialize_card(card):
+        from core.cards.card import CardType
+        card.is_opponent = not card.is_opponent
+
+        if card.is_opponent:
+            card.is_face_down = card.card_type == CardType.TRAP \
+                or card.pos_in_matrix is None
+        else:
+            card.is_face_down = card.card_type == CardType.TRAP \
+                and card.pos_in_matrix is not None
+        return card
+
+    @staticmethod
+    def _deserialize_2d_matrix(matrix):
+        # Flip matrix 180 degrees (both axes)
+        return [row[::-1] for row in matrix[::-1]]
 
     @property
     def players_lookup(self) -> Dict[str, Player]:
         return {p.id: p for p in self.players}
 
     def model_post_init(self, __context: Any) -> None:
-        self._logger = get_logger()
-        self.reset()
+        self._logger = get_logger("GameState")
 
     # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
@@ -108,6 +152,8 @@ class GameState(BaseModel):
     def modify_field(self, mode: ModifyMode, card: Card, pos: Tuple[int, int]) -> None:
         """Perform action validation before adding / removing card from field slots."""
         row, col = pos
+        # Convert to enum if this fail then just crash
+        ModifyMode(mode)
 
         if mode is ModifyMode.ADD:
             if not (0 <= row < config.ROWS and 0 <= col < config.COLS):
@@ -247,6 +293,6 @@ class GameState(BaseModel):
         groups: Dict[Tuple, List[MonsterCard]] = {}
         for card in self.get_player_field_cards(player_id):
             if isinstance(card, MonsterCard):
-                key = (player_id, card.type, card.level_star)
+                key = (player_id, card.monster_type, card.star)
                 groups.setdefault(key, []).append(card)
         return groups

@@ -35,7 +35,7 @@ class GameApp(ABC):
 
     # TODO: consider not doing this weird ass player thing
     def _setup_players(self):
-        self.player1 = Player(player_index=0, name="p1")
+        self.player1 = Player(player_index=0, name="p1", is_opponent=False)
         self.player2 = Player(player_index=1, name="p2", is_opponent=True)
 
     def _setup_engine(self):

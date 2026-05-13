@@ -276,7 +276,7 @@ class RewardCalculator:
                 breakdown.add("strength_bonus", strength_bonus)
 
                 # High-level monster bonus (2+ stars)
-                if hasattr(monster, 'level_star') and monster.level_star >= 2:
+                if hasattr(monster, 'star') and monster.star >= 2:
                     breakdown.add("high_level_summon",
                                   self.config.high_level_summon_bonus)
 
@@ -356,7 +356,7 @@ class RewardCalculator:
             for i, before_mon in enumerate(before.get("my_monsters", [])):
                 if i < len(after.get("my_monsters", [])):
                     after_mon = after.get("my_monsters", [])[i]
-                    if getattr(after_mon, "atk", 0) > getattr(before_mon, "atk", 0) or \
+                    if getattr(after_mon, "attack", 0) > getattr(before_mon, "attack", 0) or \
                        getattr(after_mon, "defend", 0) > getattr(before_mon, "defend", 0):
                         cards_changed.append(after_mon)
 
@@ -410,9 +410,9 @@ class RewardCalculator:
                 am = after["my_monsters"][toggle_idx]
                 # Reward optimal positioning
                 if (am.mode == CardMode.ATTACK and am.atk > am.defend) \
-                        or (am.mode == CardMode.DEFENSE and am.atk < am.defend):
+                        or (am.mode == CardMode.DEFEND and am.atk < am.defend):
                     breakdown.add("optimal_toggle", 0.2)
-                elif (am.mode == CardMode.DEFENSE and am.atk > am.defend):
+                elif (am.mode == CardMode.DEFEND and am.atk > am.defend):
                     breakdown.add("suboptimal_toggle", -0.5)
 
     def _calculate_combine_reward(
@@ -430,7 +430,7 @@ class RewardCalculator:
         new_monsters = [m for m in after_monsters if m not in before_monsters]
         if new_monsters:
             new_monster = new_monsters[0]
-            level = getattr(new_monster, "level_star", 1)
+            level = getattr(new_monster, "star", 1)
 
             # Logarithmic reward based on level
             merge_reward = self.config.merge_base * math.log(level + 1)
@@ -592,8 +592,8 @@ def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
         "opp_lp": opp.life_points,
         "my_monsters": list(gs.get_cards_typed(player.id, "monster")),
         "opp_monsters": list(gs.get_cards_typed(opp_id, "monster")),
-        "my_cards": list(gs.get_player_cards(player.id)),
-        "opp_cards": list(gs.get_player_cards(opp_id)),
+        "my_cards": list(gs.get_player_field_cards(player.id)),
+        "opp_cards": list(gs.get_player_field_cards(opp_id)),
         "my_hand_size": len(gs.player_info[player.id].held_cards.card_ids),
         "opp_hand_size": len(gs.player_info[opp_id].held_cards.card_ids),
         "triggerable_traps": list(gs.triggerable_traps.keys()),

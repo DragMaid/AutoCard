@@ -16,15 +16,17 @@ class SpellPolicy(ABC):
     """
     Abstract base class defining the policy interface for spell execution.
     """
+    @staticmethod
     @abstractmethod
-    def can_execute(self, engine: GameEngine, spell: SpellCard, target_id: Optional[str]) -> bool:
+    def can_execute(engine: GameEngine, spell: SpellCard, target_id: Optional[str]) -> bool:
         """
         Determines if a spell can be executed given the current state.
         """
         raise NotImplementedError
 
+    @staticmethod
     @abstractmethod
-    def execute(self, engine: GameEngine, spell: SpellCard, target_id: Optional[str], details: dict, effectiveness: int, duration: int) -> bool:
+    def execute(engine: GameEngine, spell: SpellCard, target_id: Optional[str], details: dict, effectiveness: int, duration: int) -> bool:
         """
         Executes the spell effect.
         """
@@ -36,10 +38,10 @@ class DrawCardPolicy(SpellPolicy):
     Policy for drawing cards from the player's deck.
     """
 
-    def can_execute(self, engine, spell, target_id):
+    def can_execute(engine, spell, target_id):
         return True
 
-    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+    def execute(engine, spell, target_id, details, effectiveness, duration):
         for _ in range(effectiveness):
             engine.draw_card(spell.owner_id, check=True)
         details.setdefault("effects", []).append(f"Drew {effectiveness} cards")
@@ -51,7 +53,7 @@ class BuffAttackPolicy(SpellPolicy):
     Policy for applying an attack buff to a monster.
     """
 
-    def can_execute(self, engine, spell, target_id):
+    def can_execute(engine, spell, target_id):
         if not target_id:
             return False
         target = engine.game_state.get_card_by_id(target_id)
@@ -63,9 +65,9 @@ class BuffAttackPolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+    def execute(engine, spell, target_id, details, effectiveness, duration):
         engine.effect_tracker.add_effect(
-            EffectType.BUFF, target_id, "atk", effectiveness, duration, engine.game_state)
+            EffectType.BUFF, target_id, "attack", effectiveness, duration, engine.game_state)
         target = engine.game_state.get_card_by_id(target_id)
         details["target"] = target.name if target else target_id
         details.setdefault("effects", []).append(
@@ -78,7 +80,7 @@ class BuffDefensePolicy(SpellPolicy):
     Policy for applying a defense buff to a monster.
     """
 
-    def can_execute(self, engine, spell, target_id):
+    def can_execute(engine, spell, target_id):
         if not target_id:
             return False
 
@@ -91,7 +93,7 @@ class BuffDefensePolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+    def execute(engine, spell, target_id, details, effectiveness, duration):
         engine.effect_tracker.add_effect(
             EffectType.BUFF, target_id, "defend", effectiveness, duration, engine.game_state)
         target = engine.game_state.get_card_by_id(target_id)
@@ -106,7 +108,7 @@ class DestroyTrapPolicy(SpellPolicy):
     Policy for destroying a target trap card.
     """
 
-    def can_execute(self, engine, spell, target_id):
+    def can_execute(engine, spell, target_id):
         if not target_id:
             return False
         target = engine.game_state.get_card_by_id(target_id)
@@ -119,7 +121,7 @@ class DestroyTrapPolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+    def execute(engine, spell, target_id, details, effectiveness, duration):
         target = engine.game_state.get_card_by_id(target_id)
         if target and target.card_type == CardType.TRAP:
             engine.move_card_to_graveyard(target_id)
@@ -136,12 +138,12 @@ class ExtraSummonPolicy(SpellPolicy):
     Policy that enables an extra summon for the current turn.
     """
 
-    def can_execute(self, engine, spell, target_id):
+    def can_execute(engine, spell, target_id):
         return True
 
-    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+    def execute(engine, spell, target_id, details, effectiveness, duration):
         # Reset the summon flag to allow another monster summon
-        engine.game_state.player_info[spell.owner_id]['has_summoned_monster'] = False
+        engine.game_state.player_info[spell.owner_id].has_summoned_monster = False
         details.setdefault("effects", []).append("Extra summon enabled")
         return True
 
@@ -151,11 +153,11 @@ class SpellEngine:
     Handles spell casting logic and orchestration with policies.
     """
     SPELL_POLICIES: Dict[SpellAbility, SpellPolicy] = {
-        SpellAbility.DRAW_CARD: DrawCardPolicy(),
-        SpellAbility.BUFF_ATTACK: BuffAttackPolicy(),
-        SpellAbility.BUFF_DEFEND: BuffDefensePolicy(),
-        SpellAbility.DESTROY_TRAP: DestroyTrapPolicy(),
-        SpellAbility.EXTRA_SUMMON: ExtraSummonPolicy(),
+        SpellAbility.DRAW_CARD: DrawCardPolicy,
+        SpellAbility.BUFF_ATTACK: BuffAttackPolicy,
+        SpellAbility.BUFF_DEFEND: BuffDefensePolicy,
+        SpellAbility.DESTROY_TRAP: DestroyTrapPolicy,
+        SpellAbility.EXTRA_SUMMON: ExtraSummonPolicy,
     }
 
     def __init__(self, engine: GameEngine):
@@ -217,7 +219,7 @@ class SpellEngine:
         # Execute all abilities
         success = True
         for i, ability in enumerate(spell.abilities):
-            policy = self.SPELL_POLICIES.get(ability)
+            policy = self.SPELL_POLICIES[ability]
             eff = spell.effectiveness[i] if spell.effectiveness and i < len(
                 spell.effectiveness) else 0
             dur = spell.duration[i] if spell.duration and i < len(

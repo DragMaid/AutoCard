@@ -3,6 +3,7 @@ from __future__ import annotations
 from core.cards.monster_card import MonsterCard
 from core.data.events import MergeEvent
 from .utils import log_action
+from core.utils import load_by_type_and_level
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,10 +18,12 @@ class UpgradeEngine:
     def __init__(self, game_engine: GameEngine):
         self.game_engine = game_engine
 
-    def upgrade_monster(self,
-                        player_id: str,
-                        own_card_id: str,
-                        target_card_id: str) -> bool:
+    def upgrade_monster(
+        self,
+        player_id: str,
+        own_card_id: str,
+        target_card_id: str
+    ) -> bool:
         """
         Processes an upgrade request for two monsters.
 
@@ -67,8 +70,13 @@ class UpgradeEngine:
         self.game_engine.move_card_to_graveyard(target_card_id)
 
         # Create the upgraded monster
-        upgraded_monster = self.game_engine.draw_system.monster_factory.load_by_type_and_level(
-            player_id, own_card.monster_type, new_level)
+        monster_factory = self.game_engine.draw_system.monster_factory
+        upgraded_monster = load_by_type_and_level(
+            factory=monster_factory,
+            player_id=player_id,
+            monster_type=own_card.monster_type,
+            star=new_level
+        )
 
         if upgraded_monster is None:
             log_action("UPGRADE", player_id, {

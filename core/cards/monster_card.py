@@ -1,10 +1,9 @@
 from core.cards.card import Card, CardType
-from typing import Optional
 from enum import Enum
-from pydantic import Field
+from typing import Literal
 
 
-class MonsterType(Enum):
+class MonsterType(str, Enum):
     SCHOLAR = "SCHOLAR"
     CONQUEROR = "CONQUEROR"
     FOREST_MONSTER = "FOREST_MONSTER"
@@ -12,13 +11,13 @@ class MonsterType(Enum):
     FOREST_GUARD = "FOREST_GUARD"
 
 
-class CardMode(Enum):
+class CardMode(str, Enum):
     ATTACK = "ATTACK"
     DEFEND = "DEFEND"
 
 
 class MonsterCard(Card):
-    card_type: CardType = Field(default=CardType.MONSTER, frozen=True)
+    card_type: Literal[CardType.MONSTER] = CardType.MONSTER
 
     monster_type: MonsterType
 
@@ -28,8 +27,10 @@ class MonsterCard(Card):
 
     mode: CardMode = CardMode.ATTACK
 
-    image_path: Optional[str] = None
-
     has_attacked: bool = False
     is_summoned: bool = False
     is_alive: bool = True
+
+    def switch_position(self):
+        self.mode = CardMode.DEFEND if self.mode is CardMode.ATTACK else CardMode.ATTACK
+        return self.mode

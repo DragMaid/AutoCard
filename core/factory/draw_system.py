@@ -7,7 +7,7 @@ from core.factory.trap_factory import TrapFactory
 from core.cards.card import CardType
 from core.utils import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 class DrawSystem:
@@ -45,9 +45,13 @@ class DrawSystem:
     }
 
     def __init__(self):
-        MonsterFactory().build()
-        SpellFactory().build()
-        TrapFactory().build()
+        self.monster_factory = MonsterFactory()
+        self.spell_factory = SpellFactory()
+        self.trap_factory = TrapFactory()
+
+        self.monster_factory.build()
+        self.spell_factory.build()
+        self.trap_factory.build()
 
     def draw(self, player_id: str):
         """

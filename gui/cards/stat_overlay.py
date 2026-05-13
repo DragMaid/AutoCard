@@ -32,9 +32,9 @@ class CardStatOverlay:
             return
 
         # Then draw the ATK/DEF overlay
-        atk = getattr(self._card.logic_card, "atk", 0)
+        atk = getattr(self._card.logic_card, "attack", 0)
         defe = getattr(self._card.logic_card, "defend", 0)
-        star = getattr(self._card.logic_card, "level_star", 0)
+        star = getattr(self._card.logic_card, "star", 0)
 
         stat_text = f"{
             atk}/{defe}/{star}*" if not self._card.is_face_down else ""

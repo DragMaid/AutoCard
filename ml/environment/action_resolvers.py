@@ -58,10 +58,10 @@ class AttackResolver(LegalActionResolver):
         opp_id = gs.get_opponent_id(player.id)
 
         # Get attackers that are in attack mode and haven't attacked yet
-        my_attackers = [c for c in gs.get_player_cards(player.id)
+        my_attackers = [c for c in gs.get_player_field_cards(player.id)
                         if c.card_type == CardType.MONSTER
                         and c.mode == CardMode.ATTACK
-                        and not c.has_attack]
+                        and not c.has_attacked]
 
         if not my_attackers or tm.turn_count <= 1:
             return {}
@@ -94,6 +94,7 @@ class AttackResolver(LegalActionResolver):
         return results
 
 
+# TODO: fix this later this is outdated
 class CastSpellResolver(LegalActionResolver):
     def resolve(self, env, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve castable spells and their target field slots."""

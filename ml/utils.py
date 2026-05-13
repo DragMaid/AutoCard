@@ -21,6 +21,7 @@ def epsilon_scheduler(eps_start=1.0, eps_final=0.01, eps_decay=50000):
     return function
 
 
+# TODO: rewrite this
 def log_training_metrics(frame_idx,
                          max_frames,
                          rewards,

@@ -35,14 +35,17 @@ class SocketClientGame(GameApp):
 
         @self._sio.event
         def connect():
+            print("[Client] Connected to server")
             self.connected = True
 
         @self._sio.on("connect_error")
         def on_connect_error(data):
+            print(f"[Client] Connection error: {data}")
             self.connection_error = str(data)
 
         @self._sio.event
         def disconnect():
+            print("[Client] Disconnected from server")
             if not self.game_over:
                 self.exit_reason = "Disconnected from server"
                 self.running = False
@@ -66,9 +69,20 @@ class SocketClientGame(GameApp):
         if self._pending_data is None:
             return
         self.game_engine.deserialize(self._pending_data)
-        self.field_matrix.set_game_state(
+
+        # Fix perspective: client is index 1, server is index 0
+        for player in self.game_engine.game_state.players:
+            player.is_opponent = (player.player_index == 0)
+
+        # Update all cards to match the new perspective
+        for card in self.game_engine.game_state.entity_lookup.values():
+            owner = self.game_engine.game_state.players_lookup.get(card.owner_id)
+            if owner:
+                card.is_opponent = owner.is_opponent
+
+        self.matrix.set_game_state(
             self.game_engine.game_state, force=True)
-        self.render_engine.align_cards(self.field_matrix)
+        self.render_engine.align_cards(self.matrix)
         self._pending_data = None
 
     def _tick_rendering(self):

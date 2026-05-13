@@ -5,12 +5,12 @@ from core.cards.monster_card import MonsterCard
 from core.cards.trap_card import ActivateCondition
 from core.factory.draw_system import DrawSystem
 from core.data.player import Player
-from core.data.game_state import GameState
+from core.data.game_state import GameState, ModifyMode, AttackEntry
 from core.logic.rule_engine import RuleEngine
 from core.logic.turn_manager import TurnManager
 from core.data.effects import EffectTracker
 from core.data.events import EventLogger, ToggleEvent
-from core.utils import setup_logger
+from core.utils import get_logger
 from core.logic.trap_engine import TrapEngine
 from core.logic.spell_engine import SpellEngine
 from .battle_engine import BattleEngine
@@ -39,6 +39,8 @@ class GameEngine:
             socket_io: Socket interface for synchronization.
         """
         self.game_state = GameState(players=players)
+        self.game_state.reset()
+
         self.effect_tracker = EffectTracker()
         self.turn_manager = TurnManager(self.game_state, self.effect_tracker)
         self.rule_engine = RuleEngine(self.game_state, self.turn_manager)
@@ -55,11 +57,12 @@ class GameEngine:
         self.start_hand_count = 5
         self.socket_io = socket_io
 
-        log_path = None
-        if log_to_file:
-            timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
-            log_path = f"logs/game_run_{timestamp}.log"
-        self.logger = setup_logger(log_path=log_path, console=True)
+        # log_path = None
+        # if log_to_file:
+            # timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+            # log_path = f"logs/game_run_{timestamp}.log"
+        # self.logger = setup_logger(log_path=log_path, console=True)
+        self.logger = get_logger("GameEngine")
 
     def synchronize(self) -> None:
         """Synchronizes game state across the network."""
@@ -84,8 +87,7 @@ class GameEngine:
         self.game_state.deserialize(serialized["game_state"])
         self.effect_tracker.deserialize(serialized["effect_tracker"])
         self.event_logger.deserialize(serialized["event_logger"])
-        self.turn_manager.deserialize(
-            serialized["turn_manager"], self.game_state)
+        self.turn_manager.deserialize(serialized["turn_manager"])
 
     def reset(self) -> None:
         """Resets the game state and trackers."""
@@ -158,7 +160,7 @@ class GameEngine:
             new_mode = card.switch_position()
             self.event_logger.add_event(
                 ToggleEvent(card_id=card.id, mode=new_mode))
-            self.game_state.player_info[owner_id]["has_toggled"] = True
+            self.game_state.player_info[owner_id].has_toggled = True
 
             if self.trap_engine.check_traps(
                 condition=ActivateCondition.TOGGLE,
@@ -222,27 +224,22 @@ class GameEngine:
         if not can_attack:
             return False
 
+        attack = AttackEntry(
+            attacker_id=attacker_id,
+            defender_id=defender_id,
+            card_id=card_id,
+            target_id=target_id,
+            target_is_player=target_is_player
+        )
         # Check for trap triggers
         if not self.trap_engine.check_traps(
             condition=ActivateCondition.ATTACK,
             target_id=card_id,
         ):
-            self.battle_engine.resolve_battle(
-                attacker_id=attacker_id,
-                defender_id=defender_id,
-                card_id=card_id,
-                target_id=target_id,
-                target_is_player=target_is_player
-            )
+            self.battle_engine.resolve_battle(attack)
         else:
             self.turn_manager.toggle_trap_stage(state=True)
-            self.game_state.attack_queue.append({
-                "attacker_id": attacker_id,
-                "defender_id": defender_id,
-                "card_id": card_id,
-                "target_id": target_id,
-                "target_is_player": target_is_player
-            })
+            self.game_state.attack_queue.append(attack)
 
         self.synchronize()
         return True
@@ -250,14 +247,13 @@ class GameEngine:
     def move_card_to_graveyard(self, card_id: str) -> None:
         """Moves a card from the field or hand to the graveyard."""
         card = self.game_state.get_card_by_id(card_id)
-
-        if not card:
-            return
+        assert card is not None
 
         if card.pos_in_matrix:
-            self.game_state.modify_field("remove", card, card.pos_in_matrix)
+            self.game_state.modify_field(
+                ModifyMode.REMOVE, card, card.pos_in_matrix)
 
-        self.game_state.player_info[card.owner_id]["graveyard_cards"].add(
+        self.game_state.player_info[card.owner_id].graveyard_cards.add(
             card_id)
         self.logger.info(
             "Card moved to graveyard",
@@ -273,13 +269,13 @@ class GameEngine:
         owner_id = self.game_state.get_card_by_id(trap_id).owner_id
         if self.rule_engine.can_activate(owner_id, trap_id):
             if activated:
-                self.game_state.activated_traps.add(trap_id)
+                self.game_state.activated_traps.append(trap_id)
             else:
-                self.game_state.activated_traps.discard(trap_id)
+                self.game_state.activated_traps.remove(trap_id)
 
-    def resolve_battle(self, **kwargs) -> None:
+    def resolve_battle(self, attack: AttackEntry) -> None:
         """Delegates battle resolution to BattleEngine."""
-        self.battle_engine.resolve_battle(**kwargs)
+        self.battle_engine.resolve_battle(attack)
 
     def upgrade_monster(self, player_id: str, own_card_id: str, target_card_id: str) -> bool:
         """Delegates upgrade logic to UpgradeEngine."""
@@ -314,7 +310,7 @@ class GameEngine:
             self.turn_manager.toggle_trap_stage(state=False)
         else:
             current_player = self.turn_manager.get_current_player()
-            for card in self.game_state.get_player_cards(current_player.id):
+            for card in self.game_state.get_player_field_cards(current_player.id):
                 if isinstance(card, MonsterCard):
                     card.has_attacked = False
 

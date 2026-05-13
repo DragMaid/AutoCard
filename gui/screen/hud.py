@@ -1,6 +1,6 @@
 import pygame
 from gui.cache import get_font
-from .ui_components import Button
+from .components import Button
 
 
 # TODO: move these to config
@@ -44,7 +44,7 @@ class GameHUD:
 
     def _draw_panel(self, screen):
         font = get_font(24)
-        turn_count = self.game_engine.turn_manager.turn_count
+        turn_count = self.game_engine.turn_manager.turn_state.turn_count
         is_local_turn = self.game_engine.is_local_turn()
         is_trap_stage = self.game_engine.turn_manager.is_trap_stage()
 

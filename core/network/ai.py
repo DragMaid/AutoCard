@@ -39,7 +39,7 @@ class AIGame(GameApp):
                 target=self.ai_manager.execute_ai_turn,
                 kwargs={
                     "on_complete": lambda: setattr(self, "_ai_running", False),
-                    "callback": lambda: self.render_engine.align_cards(self.field_matrix),
+                    "callback": lambda: self.render_engine.align_cards(self.matrix),
                 },
                 daemon=True,
             )

@@ -29,7 +29,7 @@ class SpellFactory(BaseFactory):
                 "Unsupported JSON format for spells (expected list)")
 
         for card_info in data:
-            image_path = config.ASSET_DIR / card_info["texture"]
+            image_path = str(config.ASSET_DIR / card_info["texture"].lstrip('/'))
             card_info["_image_path"] = image_path
             self._cards[card_info["name"]] = card_info
 
@@ -49,8 +49,8 @@ class SpellFactory(BaseFactory):
             name=prototype["name"],
             description=prototype.get("description", ""),
             owner_id=owner_id,
-            image_path=str(prototype.get("_image_path")),
-            ability=prototype.get("abilities", []),
+            image_path=prototype.get("_image_path"),
+            abilities=prototype.get("abilities", []),
             effectiveness=prototype.get("effectiveness"),
             duration=prototype.get("duration")
         )

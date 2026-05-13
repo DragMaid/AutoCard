@@ -1,19 +1,20 @@
 from collections import defaultdict
-import logging
-from gui.cards_gui.monster_card import MonsterCardGUI
-from gui.cards_gui.spell_card import SpellCardGUI
-from gui.cards_gui.trap_card import TrapCardGUI
-from gui.cards_gui.stat_overlay import CardStatOverlay
+from gui.cards.monster_card import MonsterCardGUI
+from gui.cards.spell_card import SpellCardGUI
+from gui.cards.trap_card import TrapCardGUI
+from gui.cards.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
 from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
-from core.game_info.events import (
+from core.data.events import (
     AttackEvent, TrapTriggerEvent, ToggleEvent,
     SpellActiveEvent, MergeEvent, TrapTriggerableEvent
 )
-from gui.arrow import DragArrow
-from gui.sprite_manager import SpriteManager
+from gui.screen.arrow import DragArrow
+from gui.sprites.sprite_manager import SpriteManager
 from core.utils import get_logger
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
 
 
 # TODO: remove all the AI written slops with weird icons
@@ -23,16 +24,15 @@ class RenderEngine:
     def __init__(
         self,
         *,
-        field_matrix,
+        matrix,
         screen,
         game_state,
         event_logger,
         turn_manager,
         train_mode=False,
-        player_idx=0
     ):
         self.screen = screen
-        self.field_matrix = field_matrix
+        self.matrix = matrix
         self.sprite_manager = SpriteManager()
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges = []
@@ -63,11 +63,11 @@ class RenderEngine:
         self.attack_indicators.clear()
         for attack in self.game_state.attack_queue:
             attack_indicator = DragArrow(color=(255, 0, 0))
-            source_id, target_id = attack["card_id"], attack["target_id"]
+            source_id, target_id = attack.card_id, attack.target_id
 
-            if attack["target_is_player"]:
+            if attack.target_is_player:
                 target_ui = next(
-                    (h for h in getattr(self.field_matrix, "hands", [])
+                    (h for h in getattr(self.matrix, "hands", [])
                      if getattr(h, "player_id") == target_id),
                     None
                 )
@@ -106,8 +106,8 @@ class RenderEngine:
                 extc.pop(key, None)
 
     def register_cards(self):
-        self.register_hand(self.game_state, self.field_matrix)
-        self.register_matrix(self.game_state, self.field_matrix,
+        self.register_hand(self.game_state, self.matrix)
+        self.register_matrix(self.game_state, self.matrix,
                              self.animation_mgr.create_place_animation)
 
     # TODO: refactor this to policy based
@@ -123,7 +123,7 @@ class RenderEngine:
 
                     if event.target_is_player:
                         opponent_hand = next(
-                            (h for h in getattr(self.field_matrix, "hands", [])
+                            (h for h in getattr(self.matrix, "hands", [])
                              if getattr(h, "player_id") == event.target_id),
                             None
                         )
@@ -141,7 +141,7 @@ class RenderEngine:
                     trap = self.sprite_manager.get_sprite(event.card_id)
                     if trap:
                         self.animation_mgr.create_trigger_animation(trap)
-                        self.field_matrix.areas["preview_card_table"].set_card(
+                        self.matrix.areas["preview_card_table"].set_card(
                             trap, self.game_state)
 
                 elif et is TrapTriggerableEvent:
@@ -225,7 +225,7 @@ class RenderEngine:
                     # Sync visual state if not animating
                     if not self.animation_mgr.is_animating(sprite, ToggleRotateAnimation):
                         if hasattr(card, "mode"):
-                            sprite.angle = 90 if card.mode == "defense" else 0
+                            sprite.angle = 90 if card.mode == CardMode.DEFEND else 0
 
         if align_fn and (to_add or to_remove):
             align_fn()
@@ -239,7 +239,7 @@ class RenderEngine:
         """Create GUI card with proper orientation"""
         is_opponent = self.game_state.players_lookup[card.owner_id].is_opponent
 
-        if card.ctype == "monster":
+        if card.card_type == CardType.MONSTER:
             card_gui = CardStatOverlay(MonsterCardGUI(
                 monster_info=card,
                 size=(
@@ -248,12 +248,12 @@ class RenderEngine:
                 )),
                 game_state=self.game_state,
                 position="top" if is_opponent else "bottom")
-        elif card.ctype == "spell":
+        elif card.card_type == CardType.SPELL:
             card_gui = SpellCardGUI(card, size=(
                 matrix.grid["slot_width"] / 2,
                 matrix.grid["slot_height"]
             ))
-        elif card.ctype == "trap":
+        elif card.card_type == CardType.TRAP:
             card_gui = TrapCardGUI(card, size=(
                 matrix.grid["slot_width"] / 2,
                 matrix.grid["slot_height"]
@@ -269,8 +269,8 @@ class RenderEngine:
     def register_hand(self, game_state, matrix):
         current_cards = []
         for player in game_state.players:
-            held_cards = game_state.player_info[player.id]["held_cards"]
-            for cid in held_cards.cards:
+            held_cards = game_state.player_info[player.id].held_cards
+            for cid in held_cards.card_ids:
                 card = game_state.get_card_by_id(cid)
                 if card:
                     current_cards.append(card)
@@ -291,20 +291,20 @@ class RenderEngine:
             align_fn=lambda: self.align_cards(matrix, check=False)
         )
 
+    # TODO: add type hint after
     def register_matrix(self, game_state, matrix, animation=None):
-        current_cards = {
-            game_state.get_card_by_id(card_id)
+        current_cards = [
+            game_state.get_card_by_id(str(card_id))
             for row in game_state.field_matrix
             for card_id in row if card_id
-        }
-        current_cards = {c for c in current_cards if c is not None}
+        ]
 
         def make_matrix_sprite(card):
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
-            card.is_face_down = card.ctype == "trap"
+            card.is_face_down = card.card_type == CardType.TRAP
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
 
-            if hasattr(card, "mode") and card.mode == "defense":
+            if hasattr(card, "mode") and card.mode == CardMode.DEFEND:
                 sprite.angle = 90
 
             row, col = card.pos_in_matrix

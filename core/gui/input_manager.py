@@ -12,6 +12,7 @@ class InputManager:
     """
     Manages user input events (mouse clicks, movement) and maps them to game actions.
     """
+
     def __init__(self, matrix, game_engine, render_engine):
         """
         Initializes the InputManager.
@@ -43,7 +44,9 @@ class InputManager:
         if self.game_engine.turn_manager.is_trap_stage() and \
                 not self.game_engine.is_local_turn():
             return
-        self.INPUT_MAP[event.type](event)
+        handler = self.INPUT_MAP.get(event.type)
+        if handler:
+            handler(event)
 
     def draw(self, screen):
         """
@@ -123,7 +126,7 @@ class InputManager:
             pos (tuple): Mouse coordinates.
         """
         for hand in reversed(self.matrix.hands):
-            for card_id in hand.hand_info.cards:
+            for card_id in hand.hand_info.card_ids:
                 card = self.render_engine.sprite_manager.get_sprite(card_id)
                 if not card:
                     continue

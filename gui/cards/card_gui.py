@@ -4,6 +4,8 @@ from typing import Tuple
 from gui.sprites.sprite import Sprite
 from gui.sprites.draggable import Draggable
 from gui.cache import get_font
+from core.config import config
+from gui.cache import load_image
 
 
 class CardGUI(Sprite, Draggable):
@@ -34,7 +36,8 @@ class CardGUI(Sprite, Draggable):
 
         self.card_surface = None
 
-        self.image_face_down = pygame.image.load("assets/card-back.png")
+        back_path = config.ASSET_DIR / "card-back.png"
+        self.image_face_down = load_image(back_path)
         self.is_face_down = False
         self.show_text = False
         self.flip = False
@@ -76,8 +79,8 @@ class CardGUI(Sprite, Draggable):
 
         # Draw description in padded textbox
         description = getattr(self.logic_card, "description", "")
-        level_star = getattr(self.logic_card, "level_star", None)
-        monster_type = getattr(self.logic_card, "type", None)
+        level_star = getattr(self.logic_card, "star", None)
+        monster_type = getattr(self.logic_card, "monster_type", None)
 
         if level_star and monster_type:
             description = (
@@ -167,8 +170,7 @@ class CardGUI(Sprite, Draggable):
     def update(self):
         if self.logic_card.is_face_down:
             surface = pygame.transform.smoothscale(
-                self.image_face_down, self.display_size
-            )
+                self.image_face_down, self.display_size)
         else:
             # use the already-rendered card with text
             surface = self.annotated_image.copy()

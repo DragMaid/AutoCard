@@ -7,7 +7,7 @@ from core.data.player import Player
 
 class TurnManagerState(BaseModel):
     current_player_index: int = 0
-    _is_trap_stage: bool = False
+    is_trap_stage: bool = False
     turn_count: int = 1
 
 
@@ -70,7 +70,8 @@ class TurnManager:
         Returns:
             int: The index of the next player in the game state's players list.
         """
-        return (self.turn_state.current_player_index + 1) % len(self.game_state.players)
+        player_count = len(self.game_state.players)
+        return (self.turn_state.current_player_index + 1) % player_count
 
     def is_trap_stage(self) -> bool:
         """
@@ -79,7 +80,7 @@ class TurnManager:
         Returns:
             bool: True if in trap stage, False otherwise.
         """
-        return self.turn_state._is_trap_stage
+        return self.turn_state.is_trap_stage
 
     def toggle_trap_stage(self, state: Optional[bool] = None) -> None:
         """
@@ -88,7 +89,11 @@ class TurnManager:
         Args:
             state (bool, optional): Force set the trap stage state.
         """
-        self.turn_state._is_trap_stage = state if state is not None else not self.turn_state._is_trap_stage
+        assert state is None or isinstance(state, bool)
+        if state is not None:
+            self.turn_state.is_trap_stage = state
+        else:
+            self.turn_state.is_trap_stage = not self.turn_state.is_trap_stage
 
     def end_turn(self) -> None:
         """
@@ -96,11 +101,11 @@ class TurnManager:
         and increments the turn count.
         """
         current_player = self.get_current_player()
-        self.game_state.player_info[current_player.id]["has_summoned_monster"] = False
-        self.game_state.player_info[current_player.id]["has_summoned_trap"] = False
-        self.game_state.player_info[current_player.id]["has_toggled"] = False
-        self.current_player_index = self.get_next_player_index()
-        self.turn_count += 1
+        self.game_state.player_info[current_player.id].has_summoned_monster = False
+        self.game_state.player_info[current_player.id].has_summoned_trap = False
+        self.game_state.player_info[current_player.id].has_toggled = False
+        self.turn_state.current_player_index = self.get_next_player_index()
+        self.turn_state.turn_count += 1
         self.effect_tracker.update_round(self.game_state)
 
     def get_phase_count(self) -> int:
@@ -110,7 +115,7 @@ class TurnManager:
         Returns:
             int: The number of completed turn cycles.
         """
-        return self.turn_count // len(self.game_state.players)
+        return self.turn_state.turn_count // len(self.game_state.players)
 
     def reset(self) -> None:
         """
