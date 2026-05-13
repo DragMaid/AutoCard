@@ -1,3 +1,4 @@
+# TODO: add docstring and stuff here and type hint here
 class TurnManager:
     def __init__(self, game_state, effect_tracker):
         self.game_state = game_state

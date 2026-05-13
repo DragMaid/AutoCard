@@ -30,6 +30,6 @@ class MonsterCard(Card):
 
     image_path: Optional[str] = None
 
-    has_attack: bool = False
+    has_attacked: bool = False
     is_summoned: bool = False
     is_alive: bool = True

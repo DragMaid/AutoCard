@@ -1,191 +1,425 @@
 from core.utils import get_logger
-from core.handle_game_logic.turn_manager import TurnManager
-from core.cards.trap_card import ActivateCondition
-from core.game_info.game_state import GameState
-from typing import Tuple, List
+from core.cards.monster_card import CardMode
+from core.cards.card import CardType
+from core.logic.turn_manager import TurnManager
+from core.data.game_state import GameState
+from typing import Tuple
+from core.config import config
 
 
 class RuleEngine:
+    """
+    Handles game rule logic, validation of player actions, and turn-based state updates.
+    """
+
     def __init__(self, game_state: GameState, turn_manager: TurnManager):
+        """
+        Initializes the RuleEngine with the current game state and turn manager.
+
+        Args:
+            game_state (GameState): The current state of the game.
+            turn_manager (TurnManager): The manager responsible for handling turn transitions.
+        """
         self.turn_manager = turn_manager
         self.game_state = game_state
-        self.max_hand_cards = 10
-        self.max_stats = 9999
 
-        self.logger = get_logger()
+        self.logger = get_logger("RuleEngine")
         self.logger.info("RuleEngine initialized")
 
     def can_draw(self, player_id: str) -> bool:
-        """Check if player can draw a card."""
+        """
+        Validates if a player is allowed to draw a card from their deck.
+
+        Args:
+            player_id (str): The ID of the player attempting to draw.
+
+        Returns:
+            bool: True if the action is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
         hand_size = len(
             self.game_state.player_info[player_id]["held_cards"].cards)
 
-        # Validation checks
         if current_player.id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot draw: Not their turn (current: {
-                              current_player.id})")
+            self.logger.debug(
+                "Draw denied",
+                extra={
+                    "reason": "Not player's turn yet",
+                    "playerID": player_id,
+                    "currentID": current_player.id
+                }
+            )
             return False
 
-        if hand_size >= self.max_hand_cards:
-            self.logger.debug(f"[RULE] {player_id} cannot draw: Hand full ({
-                              hand_size}/{self.max_hand_cards})")
+        if hand_size >= config.MAX_HAND_CARDS:
+            self.logger.debug(
+                "Draw denied",
+                extra={
+                    "reason": "Player hand is already full",
+                    "playerID": player_id,
+                    "handCount": f"{hand_size} / {config.MAX_HAND_CARDS}"
+                }
+            )
             return False
 
         return True
 
-    def can_activate(self,
-                     player_id: str,
-                     trap_id: str) -> bool:
+    def can_activate(
+        self,
+        player_id: str,
+        trap_id: str
+    ) -> bool:
+        """
+        Validates if a player is allowed to activate a trap card.
+
+        Args:
+            player_id (str): The ID of the player attempting the activation.
+            trap_id (str): The ID of the trap card being activated.
+
+        Returns:
+            bool: True if the activation is valid, False otherwise.
+        """
         trapper = self.turn_manager.get_trapper()
         card = self.game_state.get_card_by_id(trap_id)
 
         if trapper.id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot activate {
-                              card.name} since its not their trap turn")
+            self.logger.debug(
+                "Activation denied",
+                extra={
+                    "reason": "Not trapper's turn",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         if trap_id not in list(self.game_state.triggerable_traps.keys()):
-            self.logger.debug(f"[RULE] {player_id} cannot activate {
-                              card.name}: card not currently triggerable")
+            self.logger.debug(
+                "Activation denied",
+                extra={
+                    "reason": "Card not currently triggerable",
+                    "cardName": card.name
+                }
+            )
             return False
 
         if card.owner_id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot activate {
-                              card.name}: card not does not belong to the player")
+            self.logger.debug(
+                "Activation denied",
+                extra={
+                    "reason": "Card does not belong to player",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
-        self.logger.debug(f"[RULE] ✓ {player_id} can activate {card.name}")
+        self.logger.debug(
+            "Activation allowed",
+            extra={
+                "playerID": player_id,
+                "cardName": card.name
+            }
+        )
         return True
 
-    def can_summon(self,
-                   player_id: str,
-                   card_id: str,
-                   matrix: List[List[None | str]],
-                   pos: Tuple[int, int]) -> bool:
-        """Check if player can summon a card."""
+    def can_summon(
+        self,
+        player_id: str,
+        card_id: str,
+        pos: Tuple[int, int]
+    ) -> bool:
+        """
+        Validates if a player is allowed to summon a card to the specified field position.
+
+        Args:
+            player_id (str): The ID of the player attempting to summon.
+            card_id (str): The ID of the card being summoned.
+            pos (Tuple[int, int]): The target position on the field (row, column).
+
+        Returns:
+            bool: True if the summon action is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
         card = self.game_state.get_card_by_id(card_id)
 
         if not card:
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Provided card ID does not exist",
+                    "cardID": card_id
+                }
+            )
             return False
 
         # Check if it's player's turn
         if current_player.id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot summon {
-                              card.name}: Not their turn (current: {current_player.id})")
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Not player's turn",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         # Check if card is in hand
-        if card_id not in self.game_state.player_info[player_id]["held_cards"].cards:
-            self.logger.debug(f"[RULE] {player_id} cannot summon {
-                              card.name}: Card not in hand")
+        if card_id not in self.game_state.get_player_held_cards(player_id):
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Card not in hand",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         # Check summon type restrictions
-        if card.ctype == "monster":
+        if card.card_type == CardType.MONSTER:
             if self.game_state.player_info[player_id]["has_summoned_monster"]:
-                self.logger.debug(f"[RULE] {player_id} cannot summon {
-                                  card.name}: Already summoned monster this turn")
+                self.logger.debug(
+                    "Summon denied",
+                    extra={
+                        "reason": "Already summoned monster this turn",
+                        "playerID": player_id,
+                        "cardName": card.name
+                    }
+                )
                 return False
-        elif card.ctype == "trap":
+        elif card.card_type == CardType.TRAP:
             if self.game_state.player_info[player_id]["has_summoned_trap"]:
-                self.logger.debug(f"[RULE] {player_id} cannot summon {
-                                  card.name}: Already summoned trap this turn")
+                self.logger.debug(
+                    "Summon denied",
+                    extra={
+                        "reason": "Already summoned trap this turn",
+                        "playerID": player_id,
+                        "cardName": card.name
+                    }
+                )
                 return False
         else:
-            self.logger.warning(f"[RULE] Unknown card type for {
-                                card.name}: {card.ctype}")
+            self.logger.warning(
+                "Invalid card type for summon action",
+                extra={
+                    "cardName": card.name,
+                    "cardType": card.card_type
+                }
+            )
             return False
 
         # Check position validity
         if pos is None:
-            # Pos of None is handled by caller wrapper
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "No slot specified",
+                    "playerID": player_id,
+                    "cardName": card.name,
+                    "position": pos
+                }
+            )
             return False
 
+        card_matrix = self.game_state.field_matrix
+        ownership_matrix = self.game_state.field_matrix_ownership
         row, col = pos
-        if not (0 <= row < len(matrix) and 0 <= col < len(matrix[0])):
-            self.logger.debug(f"[RULE] {player_id} cannot summon {
-                              card.name}: Position {pos} out of bounds")
+        if not (0 <= row < len(card_matrix) and 0 <= col < len(card_matrix[0])):
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Position out of bounds",
+                    "playerID": player_id,
+                    "cardName": card.name,
+                    "position": pos
+                }
+            )
             return False
 
-        if matrix[row][col] is not None:
-            existing_id = matrix[row][col]
+        if card_matrix[row][col] is not None:
+            existing_id = card_matrix[row][col]
             existing = self.game_state.get_card_by_id(existing_id)
-            self.logger.debug(f"[RULE] {player_id} cannot summon {
-                              card.name}: Position {pos} occupied by {existing.name if existing else existing_id}")
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Position occupied",
+                    "playerID": player_id,
+                    "cardName": card.name,
+                    "position": pos,
+                    "existingCard": existing.name if existing else existing_id
+                }
+            )
+            return False
+
+        slot_owner_id = ownership_matrix[col][row]
+        if slot_owner_id != player_id:
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Slot isn't owned by player",
+                    "playerID": player_id,
+                    "ownerID": slot_owner_id,
+                    "position": pos,
+                }
+            )
             return False
 
         # Check max cards on field
-        player_card_count = len(
-            self.game_state._player_cards.get(player_id, []))
-        if player_card_count >= 10:
-            self.logger.debug(f"[RULE] {player_id} cannot summon {
-                              card.name}: Field full ({player_card_count}/10)")
+        empty_count = len(self.game_state.get_empty_slots(player_id))
+        if empty_count <= 0:
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Field full",
+                    "playerID": player_id,
+                    "cardName": card.name,
+                    "remaining": empty_count
+                }
+            )
             return False
 
-        self.logger.debug(f"[RULE] ✓ {player_id} can summon {
-                          card.name} at {pos}")
+        self.logger.debug(
+            "Summon allowed",
+            extra={
+                "playerID": player_id,
+                "cardName": card.name,
+                "position": pos
+            }
+        )
         return True
 
     def can_change_mode(self, player_id: str, card_id: str) -> bool:
-        """Check if player can change card mode."""
+        """
+        Validates if a player is allowed to change the mode of a card on the field.
+
+        Args:
+            player_id (str): The ID of the player attempting to change the mode.
+            card_id (str): The ID of the card being changed.
+
+        Returns:
+            bool: True if the mode change is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
 
         if current_player.id != player_id:
             self.logger.debug(
-                f"[RULE] {player_id} cannot change mode: Not their turn")
+                "Mode change denied",
+                extra={
+                    "reason": "Not player's turn",
+                    "playerID": player_id
+                }
+            )
             return False
 
-        if card_id not in self.game_state._player_cards.get(player_id, []):
-            self.logger.debug(f"[RULE] {player_id} cannot change mode for {
-                              card_id}: Card not in field")
+        if card_id not in self.game_state.get_player_field_cards(player_id):
+            self.logger.debug(
+                "Mode change denied",
+                extra={
+                    "reason": "Card not on field",
+                    "playerID": player_id,
+                    "cardID": card_id
+                }
+            )
             return False
 
         return True
 
-    def can_attack(self,
-                   attacker_id: str,
-                   defender_id: str,
-                   card_id: str,
-                   target_id: str,
-                   target_is_player: bool = False) -> bool:
-        """Check if an attack is valid."""
+    def can_attack(
+        self,
+        attacker_id: str,
+        defender_id: str,
+        card_id: str,
+        target_id: str,
+        target_is_player: bool = False
+    ) -> bool:
+        """
+        Validates if an attack action is permitted.
+
+        Args:
+            attacker_id (str): The ID of the player initiating the attack.
+            defender_id (str): The ID of the player being attacked.
+            card_id (str): The ID of the card being used to attack.
+            target_id (str): The ID of the target card or player.
+            target_is_player (bool, optional): Whether the target is a player. Defaults to False.
+
+        Returns:
+            bool: True if the attack action is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
         card = self.game_state.get_card_by_id(card_id)
 
-        # If no source card
         if not card:
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Provided card ID does not exist",
+                    "cardID": card_id
+                }
+            )
             return False
 
         # Cannot attack on first turn
         if self.turn_manager.turn_count == 1:
-            self.logger.debug(f"[RULE] {attacker_id} cannot attack with {
-                              card.name}: Cannot attack on turn 1")
+            self.logger.debug(
+                "Attack denied",
+                extra={
+                    "reason": "Cannot attack on turn 1",
+                    "attackerID": attacker_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         # Must be attacker's turn
         if current_player.id != attacker_id:
-            self.logger.debug(f"[RULE] {
-                              attacker_id} cannot attack: Not their turn (current: {current_player.id})")
+            self.logger.debug(
+                "Attack denied",
+                extra={
+                    "reason": "Not attacker's turn",
+                    "attackerID": attacker_id,
+                    "currentID": current_player.id
+                }
+            )
             return False
 
         # Card must belong to attacker
         if card.owner_id != attacker_id:
-            self.logger.debug(f"[RULE] {attacker_id} cannot attack with {
-                              card.name}: Card belongs to {card.owner_id}")
+            self.logger.debug(
+                "Attack denied",
+                extra={
+                    "reason": "Card belongs to another player",
+                    "attackerID": attacker_id,
+                    "cardName": card.name,
+                    "ownerID": card.owner_id
+                }
+            )
             return False
 
         # Card must be in attack position
-        if card.mode != "attack":
-            self.logger.debug(f"[RULE] {attacker_id} cannot attack with {
-                              card.name}: Card in {card.mode} mode")
+        if card.mode != CardMode.ATTACK:
+            self.logger.debug(
+                "Attack denied",
+                extra={
+                    "reason": "Card not in attack mode",
+                    "attackerID": attacker_id,
+                    "cardName": card.name,
+                    "mode": card.mode
+                }
+            )
             return False
 
         # Card cannot have already attacked
-        if card.has_attack:
-            self.logger.debug(f"[RULE] {attacker_id} cannot attack with {
-                              card.name}: Already attacked this turn")
+        if card.has_attacked:
+            self.logger.debug(
+                "Attack denied",
+                extra={
+                    "reason": "Already attacked this turn",
+                    "attackerID": attacker_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         # If attacking a monster
@@ -195,17 +429,36 @@ class RuleEngine:
             if not target:
                 return False
 
-            if target.ctype != "monster":
+            if target.card_type != CardType.MONSTER:
                 self.logger.debug(
-                    f"[RULE] {card.name} cannot attack a trap card {target.name}")
+                    "Attack denied",
+                    extra={
+                        "reason": "Cannot attack trap card",
+                        "cardName": card.name,
+                        "targetName": target.name
+                    }
+                )
                 return False
 
             if target.owner_id != defender_id:
-                self.logger.debug(f"[RULE] {attacker_id} cannot attack {
-                                  target.name}: Target belongs to {target.owner_id}, not defender {defender_id}")
+                self.logger.debug(
+                    "Attack denied",
+                    extra={
+                        "reason": "Target belongs to different defender",
+                        "attackerID": attacker_id,
+                        "targetName": target.name,
+                        "defenderID": defender_id
+                    }
+                )
                 return False
-            self.logger.debug(f"[RULE] ✓ {attacker_id} can attack {
-                              target.name} with {card.name}")
+            self.logger.debug(
+                "Attack allowed",
+                extra={
+                    "attackerID": attacker_id,
+                    "cardName": card.name,
+                    "targetName": target.name
+                }
+            )
             return True
 
         # If direct attack to player
@@ -213,220 +466,225 @@ class RuleEngine:
             # Check if defender has any monsters
             defender_cards = self.game_state.get_player_cards(defender_id)
             for def_card in defender_cards:
-                if def_card.ctype == "monster":
-                    self.logger.debug(f"[RULE] {attacker_id} cannot direct attack: {
-                                      defender_id} has monsters on field")
+                if def_card.card_type == CardType.MONSTER:
+                    self.logger.debug(
+                        "Direct attack denied",
+                        extra={
+                            "reason": "Defender has monsters on field",
+                            "attackerID": attacker_id,
+                            "defenderID": defender_id
+                        }
+                    )
                     return False
 
-            self.logger.debug(f"[RULE] ✓ {attacker_id} can direct attack {
-                              defender_id} with {card.name}")
+            self.logger.debug(
+                "Direct attack allowed",
+                extra={
+                    "attackerID": attacker_id,
+                    "defenderID": defender_id,
+                    "cardName": card.name
+                }
+            )
             return True
 
         self.logger.debug(
-            f"[RULE] {attacker_id} cannot attack: Invalid target")
+            "Attack denied",
+            extra={
+                "reason": "Invalid target",
+                "attackerID": attacker_id
+            }
+        )
         return False
 
     def can_toggle(self, player_id: str, card_id: str) -> bool:
-        """Check if player can toggle card position."""
+        """
+        Validates if a player is allowed to toggle the state of a card.
+
+        Args:
+            player_id (str): The ID of the player attempting the action.
+            card_id (str): The ID of the card being toggled.
+
+        Returns:
+            bool: True if the toggle is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
         card = self.game_state.get_card_by_id(card_id)
 
         if not card:
+            self.logger.debug(
+                "Summon denied",
+                extra={
+                    "reason": "Provided card ID does not exist",
+                    "cardID": card_id
+                }
+            )
             return False
 
         if current_player.id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot toggle {
-                              card.name}: Not their turn")
+            self.logger.debug(
+                "Toggle denied",
+                extra={
+                    "reason": "Not player's turn",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
         if card.owner_id != player_id:
-            self.logger.debug(f"[RULE] {player_id} cannot toggle {
-                              card.name}: Card belongs to {card.owner_id}")
+            self.logger.debug(
+                "Toggle denied",
+                extra={
+                    "reason": "Card belongs to another player",
+                    "playerID": player_id,
+                    "cardName": card.name,
+                    "ownerID": card.owner_id
+                }
+            )
             return False
 
-        if self.game_state.player_info[player_id]["has_toggled"]:
-            self.logger.debug(f"[RULE] {player_id} cannot toggle {
-                              card.name}: Already toggled this turn")
+        if self.game_state.player_info[player_id].has_toggled:
+            self.logger.debug(
+                "Toggle denied",
+                extra={
+                    "reason": "Already toggled this turn",
+                    "playerID": player_id,
+                    "cardName": card.name
+                }
+            )
             return False
 
-        self.logger.debug(f"[RULE] ✓ {player_id} can toggle {card.name}")
+        self.logger.debug(
+            "Toggle allowed",
+            extra={
+                "playerID": player_id,
+                "cardName": card.name
+            }
+        )
         return True
 
     def can_upgrade(self, player_id: str, own_card_id: str, target_card_id: str) -> bool:
-        """Check if player can upgrade monsters of given type to target level."""
+        """
+        Validates if a player is allowed to upgrade a monster card.
+
+        Args:
+            player_id (str): The ID of the player initiating the upgrade.
+            own_card_id (str): The ID of the player's card to be used for the upgrade.
+            target_card_id (str): The ID of the target monster card.
+
+        Returns:
+            bool: True if the upgrade is valid, False otherwise.
+        """
         current_player = self.turn_manager.get_current_player()
         own_card = self.game_state.get_card_by_id(own_card_id)
         target_card = self.game_state.get_card_by_id(target_card_id)
 
         if not own_card or not target_card:
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Either owned card or target card could not be found",
+                    "playerID": player_id,
+                    "ownCard": f"{own_card_id}: {own_card}",
+                    "targetCard": f"{target_card_id}: {target_card}"
+                }
+            )
             return False
 
         if current_player.id != player_id:
-            self.logger.debug(f"[RULE] {
-                              player_id} cannot upgrade: Not their turn (current: {current_player.id})")
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Not player's turn",
+                    "playerID": player_id,
+                    "currentID": current_player.id
+                }
+            )
             return False
 
-        if own_card.ctype != 'monster' or target_card.ctype != 'monster':
-            self.logger.debug(f"[RULE] {player_id} cannot upgrade: Cards are not monsters ({
-                              own_card.ctype}, {target_card.ctype})")
+        if own_card.card_type != CardType.MONSTER \
+                or target_card.card_type != CardType.MONSTER:
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Cards are not monsters",
+                    "playerID": player_id,
+                    "card1Type": own_card.ctype,
+                    "card2Type": target_card.ctype
+                }
+            )
             return False
 
-        if own_card.level_star != target_card.level_star:
-            self.logger.debug(f"[RULE] {player_id} cannot upgrade {own_card.name} + {target_card.name}: "
-                              f"Level mismatch (Lv{own_card.level_star} vs Lv{target_card.level_star})")
+        if own_card.star != target_card.star:
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Level mismatch",
+                    "playerID": player_id,
+                    "ownCard": own_card.name,
+                    "targetCard": target_card.name,
+                    "ownLevel": own_card.star,
+                    "targetLevel": target_card.star
+                }
+            )
             return False
 
         if own_card.owner_id != player_id or target_card.owner_id != player_id:
-            owners = f"{own_card.owner_id}, {target_card.owner_id}"
-            self.logger.debug(f"[RULE] {
-                              player_id} cannot upgrade: Cards don't belong to player (owners: {owners})")
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Cards don't belong to player",
+                    "playerID": player_id,
+                    "ownOwner": own_card.owner_id,
+                    "targetOwner": target_card.owner_id
+                }
+            )
             return False
 
-        if own_card.type != target_card.type:
-            self.logger.debug(f"[RULE] {player_id} cannot upgrade {own_card.name} + {target_card.name}: "
-                              f"Type mismatch ({own_card.type} vs {target_card.type})")
+        if own_card.card_type != target_card.card_type:
+            self.logger.debug(
+                "Upgrade denied",
+                extra={
+                    "reason": "Type mismatch",
+                    "playerID": player_id,
+                    "ownCard": own_card.name,
+                    "targetCard": target_card.name,
+                    "ownType": own_card.card_type,
+                    "targetType": target_card.card_type
+                }
+            )
             return False
 
         if own_card_id == target_card_id:
             self.logger.debug(
-                f"[RULE] {player_id} cannot upgrade: Same card instance")
+                "Upgrade denied",
+                extra={
+                    "reason": "Same card instance",
+                    "playerID": player_id
+                }
+            )
             return False
 
-        self.logger.debug(f"[RULE] ✓ {player_id} can upgrade {own_card.name} + {target_card.name} "
-                          f"(Type: {own_card.type}, Lv{own_card.level_star} → Lv{own_card.level_star + 1})")
+        self.logger.debug(
+            "Upgrade allowed",
+            extra={
+                "playerID": player_id,
+                "ownCard": own_card.name,
+                "targetCard": target_card.name,
+                "type": own_card.type,
+                "oldLevel": own_card.star,
+                "newLevel": own_card.star + 1
+            }
+        )
         return True
 
     def next_turn(self):
-        """Advance to next turn and reset turn-based flags."""
+        """
+        Advances the game turn and resets all turn-dependent flags.
+        """
         # Reset toggles for all players at the start of a new turn
         self.has_toggled = {
             player: False for player in self.turn_manager.players}
 
-        self.logger.info("[RULE] Turn advanced, flags reset")
+        self.logger.info("Turn advanced, flags reset")
         self.turn_manager.end_turn()
-
-    def validate_game_rules(self) -> List[str]:
-        """Validate overall game rules and return any violations found."""
-        violations = []
-
-        # Check each player's state
-        for player in self.game_state.players:
-            info = self.game_state.player_info[player]
-
-            # Check hand size
-            hand_size = len(info["held_cards"].cards)
-            if hand_size > self.max_hand_cards:
-                violations.append(f"{player.name} has {
-                                  hand_size} cards in hand (max: {self.max_hand_cards})")
-
-            # Check field card count
-            field_count = len(self.game_state.get_player_cards(player))
-            if field_count > 10:
-                violations.append(f"{player.name} has {
-                                  field_count} cards on field (max: 10)")
-
-            # Validate card positions
-            for card in self.game_state.get_player_cards(player):
-                if card.pos_in_matrix is None:
-                    violations.append(
-                        f"{card.name} on field but pos_in_matrix is None")
-                else:
-                    row, col = card.pos_in_matrix
-                    field_card = self.game_state.field_matrix[row][col]
-                    if field_card != card:
-                        violations.append(f"{card.name} position mismatch: reports {
-                                          card.pos_in_matrix} but field has {field_card.name if field_card else 'None'}")
-
-        if violations:
-            self.logger.warning("[RULE] Game rule violations detected:")
-            for violation in violations:
-                self.logger.warning(f"  - {violation}")
-
-        return violations
-
-    def get_attack_traps(self, attacker_id: str, defender_id: str) -> List[Tuple[str, dict]]:
-        """Identify traps that can be triggered by an attack.
-
-        Returns list of (trap_id, context_dict) tuples where context includes:
-        - trigger_type: 'attack'
-        - attacker_id: the attacking card's owner
-        - target_id: the defending card/player
-        """
-        defender_cards = self.game_state.get_player_cards(defender_id)
-        triggerable = []
-
-        for card in defender_cards:
-            # Bypass if the trap is already triggered or card is not a trap
-            if card.ctype != "trap" or card.is_trigger:
-                continue
-
-            # Traps that trigger on attack
-            if card.ability in ["debuff_enemy_atk", "debuff_enemy_def", "dodge_attack", "reflect_attack"]:
-                triggerable.append(
-                    (card.id, attacker_id, ActivateCondition.ATTACK))
-
-        return triggerable
-
-    def get_summon_traps(self, summoned_card_id: str) -> List[Tuple[str, dict]]:
-        """Identify traps that can be triggered by a card summon.
-
-        Returns list of (trap_id, context_dict) tuples where context includes:
-        - trigger_type: 'summon'
-        - summoned_card_id: the card that was summoned
-        """
-        summoned_card = self.game_state.get_card_by_id(summoned_card_id)
-        if not summoned_card or summoned_card.ctype != "monster":
-            return []
-
-        triggerable = []
-        opponents_ids = [
-            pid for pid in self.game_state.player_info.keys()
-            if pid != summoned_card.owner_id
-        ]
-
-        for opponent_id in opponents_ids:
-            opponent_cards = self.game_state.get_player_cards(opponent_id)
-            for card in opponent_cards:
-                if card.ctype != "trap" or card.is_trigger:
-                    continue
-
-                # Traps that trigger on summon
-                if card.ability == "debuff_summon":
-                    triggerable.append(
-                        (card.id, summoned_card_id, ActivateCondition.SUMMON))
-
-        return triggerable
-
-    def get_toggle_traps(self, toggled_card_id: str) -> List[Tuple[str, dict]]:
-        """Identify traps that can be triggered by a card toggle.
-
-        Returns list of (trap_id, context_dict) tuples where context includes:
-        - trigger_type: 'toggle'
-        - toggled_card_id: the card that was toggled
-        """
-        toggled_card = self.game_state.get_card_by_id(toggled_card_id)
-        if not toggled_card or toggled_card.ctype != "monster":
-            return []
-
-        # Only trigger if toggled to defense mode
-        if toggled_card.mode != "defense":
-            return []
-
-        triggerable = []
-        opponents_ids = [
-            pid for pid in self.game_state.player_info.keys()
-            if pid != toggled_card.owner_id
-        ]
-
-        for opponent_id in opponents_ids:
-            opponent_cards = self.game_state.get_player_cards(opponent_id)
-            for card in opponent_cards:
-                if card.ctype != "trap" or card.is_trigger:
-                    continue
-
-                # Traps that trigger on toggle to defense
-                if card.ability == "debuff_defend_toggle":
-                    triggerable.append(
-                        (card.id, toggled_card_id, ActivateCondition.TOGGLE))
-
-        return triggerable

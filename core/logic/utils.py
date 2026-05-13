@@ -15,19 +15,17 @@ def draw_specific_card(engine, player_id: str, name: str, ctype: str):
 
 def log_action(action_type: str, player_id: str, details: dict, success: bool):
     """Central logging method for all game actions"""
-    status = "SUCCESS" if success else "FAILED"
-    log_msg = f"[Action [{status}] {action_type} by {player_id}"
     logger = get_logger()
+    logger = logger.info if success else logger.error
 
-    # Add relevant details
-    detail_parts = []
-    for key, value in details.items():
-        detail_parts.append(f"{key}={value}")
+    payload = {
+        "event": action_type,
+        "player_id": player_id,
+        "success": success,
+        **details,
+    }
 
-    if detail_parts:
-        log_msg += f" | {', '.join(detail_parts)}"
-
-    logger.info(log_msg) if success else logger.error(log_msg)
+    logger(payload)
 
 
 def is_local_turn(turn_manager, players) -> bool:

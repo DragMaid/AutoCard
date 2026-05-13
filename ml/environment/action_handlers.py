@@ -38,7 +38,10 @@ class ActivateHandler(ActionHandler):
         if card_id in gs.triggerable_traps:
             # We use toggle_trap_activation to mark it for resolution
             env.engine.toggle_trap_activation(card_id, activated=True)
-            self.logger.debug(f"[HANDLER] ✓ Activated trap {card_id}")
+            self.logger.debug(
+                "Trap activated",
+                extra={"card_id": card_id}
+            )
             return True
 
         return False

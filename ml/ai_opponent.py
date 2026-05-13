@@ -54,7 +54,10 @@ class AIOpponent:
         self.actions_taken = 0
         self.action_pointer = 0
 
-        self.logger.info(f"AI Opponent loaded from {checkpoint_path}")
+        self.logger.info(
+            "AI Opponent loaded",
+            extra={"checkpoint_path": str(checkpoint_path)}
+        )
 
     def _load_checkpoint(self, checkpoint_path: Path, agent_id: int):
         """Load model weights from checkpoint."""
@@ -84,13 +87,25 @@ class AIOpponent:
                            list(checkpoint.keys())}")
 
         self.agent.dqn.load_state_dict(checkpoint[model_key])
-        self.logger.info(f"Loaded {model_key} from {checkpoint_file}")
+        self.logger.info(
+            "Loaded model state",
+            extra={
+                "model_key": model_key,
+                "checkpoint_file": str(checkpoint_file)
+            }
+        )
 
         # Load policy network
         policy_key = f"agent_{agent_id}_policy"
         if policy_key in checkpoint and hasattr(self.agent, 'policy') and self.agent.policy is not None:
             self.agent.policy.load_state_dict(checkpoint[policy_key])
-            self.logger.info(f"Loaded {policy_key} from {checkpoint_file}")
+            self.logger.info(
+                "Loaded policy state",
+                extra={
+                    "policy_key": policy_key,
+                    "checkpoint_file": str(checkpoint_file)
+                }
+            )
         elif hasattr(self.agent, 'policy') and self.agent.policy is not None:
             self.logger.warning(f"Policy network expected but {
                                 policy_key} not found in checkpoint")
@@ -125,7 +140,9 @@ class AIOpponent:
         )
 
         self.logger.info(
-            f"AI selected action ID: {action_id}")
+            "AI selected action",
+            extra={"action_id": int(action_id)}
+        )
 
         return int(action_id), None
 
@@ -166,8 +183,13 @@ class HumanVsAIManager:
         self.ai_actions_this_turn = 0
         self.max_ai_actions_per_turn = 10
 
-        self.logger.info(f"Human vs AI initialized: Human={
-                         self.human_player.name}, AI={self.ai_player.name}")
+        self.logger.info(
+            "Human vs AI initialized",
+            extra={
+                "human_player": self.human_player.name,
+                "ai_player": self.ai_player.name
+            }
+        )
 
     def is_ai_turn(self) -> bool:
         """Check if it's currently the AI's turn."""
@@ -185,11 +207,16 @@ class HumanVsAIManager:
         """
         if not self.is_ai_turn():
             self.logger.warning(
-                "Called execute_ai_turn but it's not AI's turn!")
+                "Invalid turn call",
+                extra={"reason": "Called execute_ai_turn but it's not AI's turn!"}
+            )
             return True
 
         if self.game_engine.game_state.is_game_over():
-            self.logger.info("Game over during AI turn")
+            self.logger.info(
+                "Game over",
+                extra={"phase": "AI turn"}
+            )
             return False
 
         action_id, _ = self.ai_opponent.get_action(

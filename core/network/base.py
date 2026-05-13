@@ -10,9 +10,7 @@ from core.handle_logic_gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
 from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
-
-# TODO: move this to config
-SCREEN_SIZE = (1280, 720)
+from core.config import config
 
 
 class GameApp(ABC):
@@ -33,9 +31,9 @@ class GameApp(ABC):
         self._setup_ui()
 
         self.background = pygame.transform.scale(
-            load_image("assets/background.png"), SCREEN_SIZE
-        )
+            load_image("assets/background.png"), config.SCREEN_SIZE)
 
+    # TODO: consider not doing this weird ass player thing
     def _setup_players(self):
         self.player1 = Player(0, "p1")
         self.player2 = Player(1, "p2", is_opponent=True)
@@ -67,15 +65,15 @@ class GameApp(ABC):
             on_surrender=self._on_surrender_requested,
         )
         self.surrender_overlay = SurrenderOverlay(
-            SCREEN_SIZE,
+            config.SCREEN_SIZE,
             on_confirm=self._on_surrender_confirmed,
             on_cancel=self._on_surrender_cancelled,
         )
         self.game_over_overlay = GameOverOverlay(
-            SCREEN_SIZE,
+            config.SCREEN_SIZE,
             on_continue=self._on_return_to_menu,
         )
-        self.trap_overlay = TrapStageOverlay(SCREEN_SIZE)
+        self.trap_overlay = TrapStageOverlay(config.SCREEN_SIZE)
 
     def _on_surrender_requested(self):
         self.surrender_overlay.show()
@@ -96,7 +94,8 @@ class GameApp(ABC):
 
     def _get_local_player(self):
         return next(
-            (p for p in self.game_engine.game_state.players if not p.is_opponent), None
+            (p for p in self.game_engine.game_state.players
+             if not p.is_opponent), None
         )
 
     def step(self, dt) -> bool:
@@ -175,6 +174,7 @@ class GameApp(ABC):
         self.field_matrix.draw()
         self.input_manager.draw(self.screen)
         self.render_engine.draw()
+        # TODO: should move these to a centralized hub
         EffectManager.draw(self.screen)
         self.hud.draw(self.screen)
         self.trap_overlay.draw(self.screen)
