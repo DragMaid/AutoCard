@@ -3,44 +3,44 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from core.data.effects import EffectType
 from core.data.events import SpellActiveEvent
-from core.cards.spell_card import SpellCard
-from typing import Optional
+from core.cards.spell_card import SpellCard, SpellAbility
+from core.cards.card import CardType
+from typing import Optional, Dict
 from .game_engine import GameEngine
 from .utils import log_action
 
 
-# TODO: refactor this
 class SpellPolicy(ABC):
     """
     Abstract base class defining the policy interface for spell execution.
     """
     @abstractmethod
-    def can_execute(self, engine: GameEngine, spell: SpellCard, target_id: str) -> bool:
+    def can_execute(self, engine: GameEngine, spell: SpellCard, target_id: Optional[str]) -> bool:
         """
         Determines if a spell can be executed given the current state.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def execute(self, engine: GameEngine, spell: SpellCard, target_id: str, details: dict) -> bool:
+    def execute(self, engine: GameEngine, spell: SpellCard, target_id: Optional[str], details: dict, effectiveness: int, duration: int) -> bool:
         """
         Executes the spell effect.
         """
         raise NotImplementedError
 
 
-class DrawTwoCardsPolicy(SpellPolicy):
+class DrawCardPolicy(SpellPolicy):
     """
-    Policy for drawing two cards from the player's deck.
+    Policy for drawing cards from the player's deck.
     """
 
     def can_execute(self, engine, spell, target_id):
         return True
 
-    def execute(self, engine, spell, target_id, details):
-        engine.draw_card(spell.owner_id, check=True)
-        engine.draw_card(spell.owner_id, check=True)
-        details["effect"] = "Drew 2 cards"
+    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+        for _ in range(effectiveness):
+            engine.draw_card(spell.owner_id, check=True)
+        details.setdefault("effects", []).append(f"Drew {effectiveness} cards")
         return True
 
 
@@ -53,7 +53,7 @@ class BuffAttackPolicy(SpellPolicy):
         if not target_id:
             return False
         target = engine.game_state.get_card_by_id(target_id)
-        if target and target.ctype == "monster" and spell.owner_id != target.owner_id:
+        if target and target.card_type == CardType.MONSTER and spell.owner_id != target.owner_id:
             log_action("CAST_SPELL", spell.owner_id, {
                 "spell": spell.name,
                 "reason": "Cannot target enemy monsters with buff spells"
@@ -61,12 +61,13 @@ class BuffAttackPolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details):
+    def execute(self, engine, spell, target_id, details, effectiveness, duration):
         engine.effect_tracker.add_effect(
-            EffectType.BUFF, target_id, "atk", spell.value, spell.duration, engine.game_state)
+            EffectType.BUFF, target_id, "atk", effectiveness, duration, engine.game_state)
         target = engine.game_state.get_card_by_id(target_id)
         details["target"] = target.name if target else target_id
-        details["effect"] = f"+{spell.value} ATK for {spell.duration} turns"
+        details.setdefault("effects", []).append(
+            f"+{effectiveness} ATK for {duration} turns")
         return True
 
 
@@ -80,7 +81,7 @@ class BuffDefensePolicy(SpellPolicy):
             return False
 
         target = engine.game_state.get_card_by_id(target_id)
-        if target and target.ctype == "monster" and spell.owner_id != target.owner_id:
+        if target and target.card_type == CardType.MONSTER and spell.owner_id != target.owner_id:
             log_action("CAST_SPELL", spell.owner_id, {
                 "spell": spell.name,
                 "reason": "Cannot target enemy monsters with buff spells"
@@ -88,12 +89,13 @@ class BuffDefensePolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details):
+    def execute(self, engine, spell, target_id, details, effectiveness, duration):
         engine.effect_tracker.add_effect(
-            EffectType.BUFF, target_id, "defend", spell.value, spell.duration, engine.game_state)
+            EffectType.BUFF, target_id, "defend", effectiveness, duration, engine.game_state)
         target = engine.game_state.get_card_by_id(target_id)
         details["target"] = target.name if target else target_id
-        details["effect"] = f"+{spell.value} DEF for {spell.duration} turns"
+        details.setdefault("effects", []).append(
+            f"+{effectiveness} DEF for {duration} turns")
         return True
 
 
@@ -106,7 +108,7 @@ class DestroyTrapPolicy(SpellPolicy):
         if not target_id:
             return False
         target = engine.game_state.get_card_by_id(target_id)
-        if target and target.ctype == "trap" and spell.owner_id == target.owner_id:
+        if target and target.card_type == CardType.TRAP and spell.owner_id == target.owner_id:
             log_action("CAST_SPELL", spell.owner_id, {
                 "spell": spell.name,
                 "target": target.name,
@@ -115,53 +117,44 @@ class DestroyTrapPolicy(SpellPolicy):
             return False
         return True
 
-    def execute(self, engine, spell, target_id, details):
+    def execute(self, engine, spell, target_id, details, effectiveness, duration):
         target = engine.game_state.get_card_by_id(target_id)
-        if target and target.ctype == "trap":
+        if target and target.card_type == CardType.TRAP:
             engine.move_card_to_graveyard(target_id)
             details["target"] = target.name
-            details["effect"] = "Trap destroyed"
+            details.setdefault("effects", []).append("Trap destroyed")
             return True
         details["reason"] = f"Invalid trap target - {target_id}"
         log_action("CAST_SPELL", spell.owner_id, details, False)
         return False
 
 
-class CallOfBravePolicy(SpellPolicy):
+class ExtraSummonPolicy(SpellPolicy):
     """
     Policy that enables an extra summon for the current turn.
     """
 
     def can_execute(self, engine, spell, target_id):
-        # Only allow the usage if the player has already summoned a monster this turn
-        able = not engine.game_state.player_info[spell.owner_id]['has_summoned_monster']
-        if not able:
-            log_action("CAST_SPELL", spell.owner_id, {
-                "spell": spell.name,
-                "reason": "User need to summon first before using this card"
-            }, False)
-        return able
-
-    def execute(self, engine, spell, target_id, details):
-        engine.game_state.player_info[spell.owner_id]['has_summoned_monster'] = False
-        details["effect"] = "Extra summon enabled"
         return True
 
-
-# spell_engine.py
-SPELL_POLICIES: dict[str, SpellPolicy] = {
-    "draw_two_cards": DrawTwoCardsPolicy(),
-    "buff_attack": BuffAttackPolicy(),
-    "buff_defense": BuffDefensePolicy(),
-    "destroy_trap": DestroyTrapPolicy(),
-    "summon_monster_from_hand": CallOfBravePolicy(),
-}
+    def execute(self, engine, spell, target_id, details, effectiveness, duration):
+        # Reset the summon flag to allow another monster summon
+        engine.game_state.player_info[spell.owner_id]['has_summoned_monster'] = False
+        details.setdefault("effects", []).append("Extra summon enabled")
+        return True
 
 
 class SpellEngine:
     """
     Handles spell casting logic and orchestration with policies.
     """
+    SPELL_POLICIES: Dict[SpellAbility, SpellPolicy] = {
+        SpellAbility.DRAW_CARD: DrawCardPolicy(),
+        SpellAbility.BUFF_ATTACK: BuffAttackPolicy(),
+        SpellAbility.BUFF_DEFEND: BuffDefensePolicy(),
+        SpellAbility.DESTROY_TRAP: DestroyTrapPolicy(),
+        SpellAbility.EXTRA_SUMMON: ExtraSummonPolicy(),
+    }
 
     def __init__(self, engine: GameEngine):
         """
@@ -183,8 +176,8 @@ class SpellEngine:
         Returns:
             bool: True if the spell was successfully cast, False otherwise.
         """
-        spell = self.engine.game_state.get_card_by_id(spell_id)
-        if not spell or spell.ctype != "spell":
+        spell: SpellCard = self.engine.game_state.get_card_by_id(spell_id)
+        if not spell or spell.card_type != CardType.SPELL:
             log_action("CAST_SPELL", None, {
                 "reason": "Not a spell card"
             }, False)
@@ -198,34 +191,49 @@ class SpellEngine:
             }, False)
             return False
 
-        policy = SPELL_POLICIES.get(spell.ability)
-        if not policy:
-            log_action("CAST_SPELL", spell.owner_id, {
-                "spell": spell.name,
-                "reason": f"Unknown ability: {spell.ability}"
-            }, False)
-            return False
+        details = {
+            "spell": spell.name,
+            "abilities": [a.value for a in spell.abilities]
+        }
 
-        details = {"spell": spell.name, "ability": spell.ability}
+        # Validate all abilities can be executed
+        for i, ability in enumerate(spell.abilities):
+            policy = self.SPELL_POLICIES.get(ability)
+            if not policy:
+                log_action("CAST_SPELL", spell.owner_id, {
+                    "spell": spell.name,
+                    "reason": f"Unknown ability: {ability}"
+                }, False)
+                return False
+            if not policy.can_execute(self.engine, spell, target_id):
+                return False
 
-        if not policy.can_execute(self.engine, spell, target_id):
-            return False
+        # Remove card from hand before execution
+        held_collection = self.engine.game_state.player_info[spell.owner_id]["held_cards"]
+        held_collection.remove(spell_id)
 
-        # Remove card from hand before execution so it doesn't count towards hand size limits
-        self.engine.game_state.player_info[spell.owner_id]["held_cards"].remove(
-            spell_id)
+        # Execute all abilities
+        success = True
+        for i, ability in enumerate(spell.abilities):
+            policy = self.SPELL_POLICIES.get(ability)
+            eff = spell.effectiveness[i] if spell.effectiveness and i < len(
+                spell.effectiveness) else 0
+            dur = spell.duration[i] if spell.duration and i < len(
+                spell.duration) else 0
 
-        if not policy.execute(self.engine, spell, target_id, details):
+            if not policy.execute(self.engine, spell, target_id, details, eff, dur):
+                success = False
+                break
+
+        if not success:
             # If execution fails, return card to hand
-            self.engine.game_state.player_info[spell.owner_id]["held_cards"].add(
-                spell_id)
+            held_collection.add(spell_id)
             return False
 
         self.engine.event_logger.add_event(SpellActiveEvent(
             spell_id=spell.id, target_id=target_id))
 
-        self.engine.game_state.player_info[spell.owner_id]["graveyard_cards"].add(
-            spell_id)
+        self.engine.move_card_to_graveyard(spell_id)
 
         log_action("CAST_SPELL", spell.owner_id, details, True)
         return True

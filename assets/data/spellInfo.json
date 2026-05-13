@@ -2,40 +2,37 @@
   {
     "name": "Mystical Space Typhoon",
     "description": "Destroy 1  trap card your opponent controls.",
-    "ability": ["DESTROY_TRAP"],
-    "targets": ["TRAP"],
+    "abilities": ["DESTROY_TRAP"],
     "texture": "/images/SPELL/typhoon.png"
   },
   {
     "name": "Call of the Brave",
     "description": "Summon 1 monster from your hand directly to the field.",
-    "ability": ["EXTRA_SUMMON"],
+    "abilities": ["EXTRA_SUMMON"],
     "texture": "/images/SPELL/call_of_brave.png",
-    "value": [1]
+    "effectiveness": [1]
   },
   {
     "name": "Maniac War",
     "description": "Increase a monster's ATK by 500 points.",
-    "ability": ["BUFF_ATTACK"],
+    "abilities": ["BUFF_ATTACK"],
     "texture": "/images/SPELL/buff_damage.png",
-    "targets": ["MONSTER"],
-    "value": [500],
+    "effectiveness": [500],
     "duration": [5]
   },
   {
     "name": "Aura Shield",
     "description": "Increase a monster's DEF by 500 points.",
-    "ability": ["BUFF_DEFEND"],
+    "abilities": ["BUFF_DEFEND"],
     "texture": "/images/SPELL/buff_defend.png",
-    "targets": ["MONSTER"],
-    "value": [500],
+    "effectiveness": [500],
     "duration": [5]
   },
   {
     "name": "Reinforcement",
     "description": "Draw 2 cards.",
-    "ability": ["DRAW_CARD"],
+    "abilities": ["DRAW_CARD"],
     "texture": "/images/SPELL/reinforcement.png",
-    "value": [2]
+    "effectiveness": [2]
   }
 ]

@@ -50,8 +50,8 @@ class SpellFactory(BaseFactory):
             description=prototype.get("description", ""),
             owner_id=owner_id,
             image_path=str(prototype.get("_image_path")),
-            ability=prototype.get("ability", []),
-            effectiveness=prototype.get("value"),
+            ability=prototype.get("abilities", []),
+            effectiveness=prototype.get("effectiveness"),
             duration=prototype.get("duration")
         )
 

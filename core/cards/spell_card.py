@@ -15,7 +15,7 @@ class SpellAbility(Enum):
 class SpellCard(Card):
     card_type: CardType = Field(default=CardType.SPELL, frozen=True)
 
-    ability: List[SpellAbility]
+    abilities: List[SpellAbility]
 
     effectiveness: Optional[List[int]] = None
     duration: Optional[List[int]] = None
