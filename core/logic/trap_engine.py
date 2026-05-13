@@ -1,192 +1,171 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from core.cards.card import CardType
+from core.cards.monster_card import MonsterCard
+from core.logic.game_engine import GameEngine
 from core.game_info.effect_tracker import EffectType
 from core.game_info.events import TrapTriggerEvent, TrapTriggerableEvent
-from core.cards.trap_card import ActivateCondition
-from typing import Tuple
+from core.cards.trap_card import ActivateCondition, TrapAbility
+from typing import Tuple, List, Optional
 from .utils import log_action
 
 
 class TrapPolicy(ABC):
+    """
+    Abstract base class defining the resolution strategy for a trap's effect.
+    """
     @abstractmethod
-    def can_handle(self, ability: str) -> bool:
-        ...
+    def resolve(self, engine: GameEngine, target: MonsterCard, **kwargs) -> tuple[bool, Optional[str]]:
+        """
+        Resolves the trap effect against a target.
 
-    @abstractmethod
-    def resolve(self, engine, trap, target) -> tuple[bool, str | None]:
-        """Returns (result, effect_desc)"""
-        ...
+        Args:
+            engine (GameEngine): The main game engine instance.
+            target (MonsterCard): The card being targeted by the trap.
+            **kwargs: Additional parameters such as effect value or duration.
+
+        Returns:
+            tuple[bool, Optional[str]]: A tuple containing a boolean indicating if the 
+            attack should be cancelled and a description of the resolution.
+        """
+        raise NotImplementedError
 
 
-class DebuffEnemyAtkPolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "debuff_enemy_atk"
+class DebuffAttackPolicy(TrapPolicy):
+    """Policy to apply an attack debuff."""
 
-    def resolve(self, engine, trap, attacker):
+    def resolve(self, engine, target, value, duration):
         engine.effect_tracker.add_effect(
-            EffectType.DEBUFF, attacker.id, "atk", trap.value, trap.duration, engine.game_state)
-        trap.reveal()
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, attacker.id))
-        engine.move_card_to_graveyard(trap.id)
-        return False, f"{attacker.name} ATK -{trap.value} for {trap.duration} turns"
+            EffectType.DEBUFF, target.id, "atk", value, duration, engine.game_state)
+        return False, f"{target.name} ATK -{value} for {duration} turns"
 
 
-class DebuffEnemyDefPolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "debuff_enemy_def"
+class DebuffDefendPolicy(TrapPolicy):
+    """Policy to apply a defense debuff."""
 
-    def resolve(self, engine, trap, attacker):
+    def resolve(self, engine, target, value, duration):
         engine.effect_tracker.add_effect(
-            EffectType.DEBUFF, attacker.id, "defend", trap.value, trap.duration, engine.game_state)
-        trap.reveal()
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, attacker.id))
-        engine.move_card_to_graveyard(trap.id)
-        return False, f"{attacker.name} DEF -{trap.value} for {trap.duration} turns"
+            EffectType.DEBUFF, target.id, "defend", value, duration, engine.game_state)
+        return False, f"{target.name} DEF -{value} for {duration} turns"
 
 
 class DodgeAttackPolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "dodge_attack"
+    """Policy to negate an incoming attack."""
 
-    def resolve(self, engine, trap, attacker):
-        attacker.has_attack = True
-        engine.move_card_to_graveyard(trap.id)
-        trap.reveal()
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, attacker.id))
-        return True, "Attack negated"
+    def resolve(self, engine, attacker):
+        attacker.has_attacked = True
+        return True, f"Attack negated from {attacker.name}"
 
 
 class ReflectAttackPolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "reflect_attack"
+    """Policy to destroy the attacking card."""
 
     def resolve(self, engine, trap, attacker):
         engine.move_card_to_graveyard(attacker.id)
-        engine.move_card_to_graveyard(trap.id)
-        trap.reveal()
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, attacker.id))
-        return True, "Attack reflected, attacker destroyed"
-
-
-class DebuffDefendTogglePolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "debuff_defend_toggle"
-
-    def resolve(self, engine, trap, toggled_card):
-        engine.effect_tracker.add_effect(
-            EffectType.DEBUFF, toggled_card.id, "defend",
-            trap.value, trap.duration, engine.game_state)
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, toggled_card.id))
-        engine.move_card_to_graveyard(trap.id)
-        engine.logger.info(f"[TRAP] {trap.name} debuffed {
-                           toggled_card.name} DEF")
-        return True, None
-
-
-class DebuffSummonPolicy(TrapPolicy):
-    def can_handle(self, ability: str) -> bool:
-        return ability == "debuff_summon"
-
-    def resolve(self, engine, trap, summoned_card):
-        for stat in ("atk", "defend"):
-            engine.effect_tracker.add_effect(
-                EffectType.DEBUFF, summoned_card.id, stat,
-                trap.value, trap.duration, engine.game_state)
-        engine.event_logger.add_event(
-            TrapTriggerEvent(trap.id, summoned_card.id))
-        engine.move_card_to_graveyard(trap.id)
-        engine.logger.info(f"[TRAP] {trap.name} debuffed {summoned_card.name}")
-        return True, None
-
-
-ATTACK_POLICIES: list[TrapPolicy] = [
-    DebuffEnemyAtkPolicy(),
-    DebuffEnemyDefPolicy(),
-    DodgeAttackPolicy(),
-    ReflectAttackPolicy(),
-]
-
-TOGGLE_POLICIES: list[TrapPolicy] = [
-    DebuffDefendTogglePolicy(),
-]
-
-SUMMON_POLICIES: list[TrapPolicy] = [
-    DebuffSummonPolicy(),
-]
+        return True, f"Attack reflected, attacker {attacker.name} destroyed"
 
 
 class TrapEngine:
-    def __init__(self, game_engine):
+    """
+    Orchestrates trap placement, trigger checking, and effect resolution.
+    """
+
+    def __init__(self, game_engine: GameEngine):
+        """
+        Initializes the TrapEngine.
+
+        Args:
+            game_engine (GameEngine): The main game engine instance.
+        """
         self.game_engine = game_engine
-        self.condition_rule_map = {
-            ActivateCondition.TOGGLE: self.game_engine.rule_engine.get_toggle_traps,
-            ActivateCondition.ATTACK: self.game_engine.rule_engine.get_attack_traps,
-            ActivateCondition.SUMMON: self.game_engine.rule_engine.get_summon_traps,
-        }
-        self.condition_resolve_map = {
-            ActivateCondition.TOGGLE: self._resolve_toggle_trap,
-            ActivateCondition.ATTACK: self._resolve_attack_trap,
-            ActivateCondition.SUMMON: self._resolve_summon_trap
+        self.ABILITY_POLICY = {
+            TrapAbility.REFLECT_ATTACK: ReflectAttackPolicy,
+            TrapAbility.DODGE_ATTACK: DodgeAttackPolicy,
+            TrapAbility.DEBUFF_ATTACK: DebuffAttackPolicy,
+            TrapAbility.DEBUFF_DEFEND: DebuffDefendPolicy
         }
 
-    def _resolve_with_policies(self, policies: list[TrapPolicy], trap_id: str, target_id: str) -> bool:
+    def resolve(self, trap_id: str, target_id: str) -> Tuple[bool, Optional[str]]:
+        """
+        Resolves a triggered trap's effect.
+
+        Args:
+            trap_id (str): The ID of the trap card being resolved.
+            target_id (str): The ID of the target card.
+
+        Returns:
+            Tuple[bool, Optional[str]]: Whether the action was cancelled and the resolution description.
+        """
         trap = self.game_engine.game_state.get_card_by_id(trap_id)
-        target = self.game_engine.game_state.get_card_by_id(target_id)
+        target = self.game_engine.game_state.get_card_by_id(trap_id)
 
+        # NOTE: Just stop if this is the case
         if not trap or not target:
-            return False, "Targetted trap or card does not exists"
+            raise
 
-        for policy in policies:
-            if policy.can_handle(trap.ability):
-                result, effect_desc = policy.resolve(
-                    self.game_engine, trap, target)
-                return result, effect_desc
+        if not (trap.effectiveness and trap.duration):
+            cancel, desc = self.ABILITY_POLICY[trap.ability[0]].resolve(
+                self.game_engine, target)
+        else:
+            for ability, effectiveness, duration in zip(trap.abilities, trap.effectiveness, trap.duration):
+                cancel, desc = self.ABILITY_POLICY[ability].resolve(
+                    self.game_engine, target, effectiveness, duration)
 
-        return False, "No policy can resolve this scenario"
+        trap.reveal()
+        self.game_engine.event_logger.add_event(
+            TrapTriggerEvent(trap_id, target_id))
+        self.game_engine.move_card_to_graveyard(trap_id)
+        return cancel, desc
 
-    def _resolve_attack_trap(self, trap_id: str, attacker_id: str) -> bool:
-        trap = self.game_engine.game_state.get_card_by_id(trap_id)
-        attacker = self.game_engine.game_state.get_card_by_id(attacker_id)
+    def check_traps(
+        self,
+        *,
+        target_id: str,
+        condition: ActivateCondition,
+        **kwargs
+    ) -> bool:
+        """
+        Identifies and marks potential traps that can be triggered.
 
-        if not trap or trap.ctype != "trap" or not attacker:
-            return False
+        Args:
+            target_id (str): The ID of the targeted card or player.
+            condition (ActivateCondition): The game event condition.
 
-        return self._resolve_with_policies(ATTACK_POLICIES, trap_id, attacker_id)
-
-    def _resolve_toggle_trap(self, trap_id: str, toggled_card_id: str) -> bool:
-        return self._resolve_with_policies(TOGGLE_POLICIES, trap_id, toggled_card_id)
-
-    def _resolve_summon_trap(self, trap_id: str, summoned_card_id: str) -> bool:
-        return self._resolve_with_policies(SUMMON_POLICIES, trap_id, summoned_card_id)
-
-    def check_traps(self, condition: ActivateCondition, **kwargs) -> bool:
-        triggerable = self.condition_rule_map[condition](**kwargs)
-        for trap_id, target_id, trigger_type in triggerable:
+        Returns:
+            bool: True if traps were found to be triggerable, False otherwise.
+        """
+        triggerables = self._get_triggerable_traps(
+            target_id=target_id, activation=condition)
+        for trap_id, target_id in triggerables:
             self.game_engine.game_state.triggerable_traps[trap_id] = {
-                "target_id": target_id, "trigger_type": trigger_type}
-
+                "target_id": target_id}
             trap = self.game_engine.game_state.get_card_by_id(trap_id)
             trap.triggerable = True
-            self.game_engine.event_logger.add_event(TrapTriggerableEvent(trap_id))
-        return len(triggerable) > 0
+            self.game_engine.event_logger.add_event(
+                TrapTriggerableEvent(trap_id))
+        return len(triggerables) > 0
 
     def get_triggerable_traps(self) -> list:
+        """Returns IDs of currently triggerable traps."""
         return list(self.game_engine.game_state.triggerable_traps.keys())
 
     def has_triggerable_traps(self) -> bool:
+        """Checks if there are any pending triggerable traps."""
         return len(self.game_engine.game_state.triggerable_traps) > 0
 
     def resolve_traps(self):
+        """
+        Processes all traps currently activated by the player.
+
+        Returns:
+            bool: Whether any trap cancelled the triggering action.
+        """
         cancel_resolve = False
-        for card_id in list(self.game_engine.game_state.activated_traps):
-            target_id, trigger_type = self.game_engine.game_state.triggerable_traps[card_id].values(
-            )
-            status, log = self.condition_resolve_map[trigger_type](
-                card_id, target_id)
+        trigger_map = self.game_engine.game_state.triggerable_traps
+        for card_id in self.game_engine.game_state.activated_traps:
+            target_id = trigger_map[card_id]["target_id"]
+            status, log = self.resolve(card_id, target_id)
             cancel_resolve = cancel_resolve or status
             trap = self.game_engine.game_state.get_card_by_id(card_id)
             log_action(**{
@@ -195,9 +174,9 @@ class TrapEngine:
                 "success": True,
                 "details": {"description": log}
             })
-            del self.game_engine.game_state.triggerable_traps[card_id]
+            del trigger_map[card_id]
 
-        for card_id in self.game_engine.game_state.triggerable_traps:
+        for card_id in trigger_map.keys():
             trap = self.game_engine.game_state.get_card_by_id(card_id)
             trap.triggerable = False
 
@@ -210,7 +189,7 @@ class TrapEngine:
         trap = self.game_engine.game_state.get_card_by_id(trap_id)
         log = {"action_type": "SET_TRAP",
                "player_id": trap.owner_id, "success": False}
-        if not trap or trap.ctype != "trap":
+        if not trap or trap.card_type != CardType.TRAP:
             log["details"] = {
                 "trap": trap.name,
                 "reason": "This is not a trap"
@@ -262,3 +241,45 @@ class TrapEngine:
         }
         log_action(**log)
         return True
+
+    def _get_triggerable_traps(
+        self,
+        *,
+        target_id: str,
+        activation: ActivateCondition,
+    ) -> List[Tuple[str, str]]:
+        """
+        Finds traps owned by opponents matching the activation condition.
+
+        Args:
+            target_id (str): The ID of the triggering target.
+            activation (ActivateCondition): The activation trigger.
+
+        Returns:
+            List[Tuple[str, str]]: A list of tuples containing (trap_id, target_id).
+        """
+
+        triggerable = []
+
+        owner_id = self.game_engine.game_state.get_card_by_id(target_id)
+        opponent_ids = [
+            pid
+            for pid in self.game_state.player_info
+            if pid != owner_id
+        ]
+
+        for opponent_id in opponent_ids:
+            for card in self.game_state.get_player_cards(opponent_id):
+
+                if card.card_type != CardType.TRAP:
+                    continue
+
+                if card.is_triggered:
+                    continue
+
+                if card.activation != activation:
+                    continue
+
+                triggerable.append((card.id, target_id))
+
+        return triggerable

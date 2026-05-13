@@ -7,7 +7,18 @@ RIGHT_CLICK = 3
 
 
 class InputManager:
+    """
+    Manages user input events (mouse clicks, movement) and maps them to game actions.
+    """
     def __init__(self, matrix, game_engine, render_engine):
+        """
+        Initializes the InputManager.
+
+        Args:
+            matrix: The game matrix object.
+            game_engine: The game engine instance.
+            render_engine: The rendering engine instance.
+        """
         self.matrix = matrix
         self.game_engine = game_engine
         self.render_engine = render_engine
@@ -21,16 +32,29 @@ class InputManager:
         }
 
     def handle_event(self, event):
+        """
+        Processes a Pygame event and dispatches it to the appropriate handler.
+
+        Args:
+            event: The Pygame event object.
+        """
         if self.game_engine.turn_manager.is_trap_stage() and \
                 not self.game_engine.is_local_turn():
             return
         self.INPUT_MAP[event.type](event)
 
     def draw(self, screen):
+        """
+        Draws visual elements managed by input, like drag arrows.
+
+        Args:
+            screen: The Pygame screen surface.
+        """
         if self.drag_arrow:
             self.drag_arrow.draw(screen)
 
     def _handle_mouse_down(self, event):
+        """Handles mouse button down events."""
         if event.button == LEFT_CLICK:
             self._handle_trap_activation(event)
             if not self.dragging_card:
@@ -42,6 +66,7 @@ class InputManager:
             self._handle_right_click(event.pos)
 
     def _handle_mouse_motion(self, event):
+        """Handles mouse motion events."""
         if self.dragging_card:
             self.dragging_card.on_drag(event.pos)
         elif self.drag_arrow and self.drag_arrow.dragging:
@@ -49,6 +74,7 @@ class InputManager:
         self._handle_trap_activation(event)
 
     def _handle_mouse_up(self, event):
+        """Handles mouse button up events."""
         if event.button == LEFT_CLICK:
             if self.dragging_card:
                 self.dragging_card.on_drop(self.matrix, self.game_engine)
@@ -59,7 +85,15 @@ class InputManager:
                 self.drag_arrow = None
 
     def _handle_trap_activation(self, event):
-        """Toggle trap activation when its button is pressed. Returns True if handled."""
+        """
+        Toggles trap activation when its button is pressed.
+
+        Args:
+            event: The mouse event.
+
+        Returns:
+            bool: True if the event was handled, False otherwise.
+        """
         for trap_id in self.game_engine.game_state.triggerable_traps:
             trap_ui = self.render_engine.sprite_manager.get_sprite(trap_id)
             if not trap_ui:
@@ -80,7 +114,12 @@ class InputManager:
         return False
 
     def _try_start_drag_card(self, pos):
-        """Pick up the top-most draggable hand card under pos."""
+        """
+        Pick up the top-most draggable hand card under the given mouse position.
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         for hand in reversed(self.matrix.hands):
             for card_id in hand.hand_info.cards:
                 card = self.render_engine.sprite_manager.get_sprite(card_id)
@@ -93,7 +132,12 @@ class InputManager:
                     return
 
     def _try_start_drag_arrow(self, pos):
-        """Begin dragging an attack arrow from a valid attacker under pos."""
+        """
+        Begins dragging an attack arrow from a valid attacker card.
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         current_player_id = self.game_engine.turn_manager.get_current_player().id
 
         for card_id in self._iter_field_card_ids():
@@ -117,7 +161,12 @@ class InputManager:
                 return
 
     def _finish_drag_arrow(self, pos):
-        """Resolve an arrow drop: attack a field card, merge, or hit the opponent directly."""
+        """
+        Resolves an arrow drop (attack, merge, or direct attack).
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         self.drag_arrow.dragging = False
 
         if self._try_resolve_arrow_on_field(pos):
@@ -126,7 +175,13 @@ class InputManager:
 
     def _try_resolve_arrow_on_field(self, pos):
         """
-        Returns True if the arrow landed on a field card and an action was taken.
+        Checks if the arrow was dropped on a valid field target card.
+
+        Args:
+            pos (tuple): Mouse coordinates.
+
+        Returns:
+            bool: True if an action was taken, False otherwise.
         """
         attacker = self.drag_arrow.targets[0]
         current_player_id = self.game_engine.turn_manager.get_current_player().id
@@ -160,7 +215,12 @@ class InputManager:
         return False
 
     def _try_resolve_arrow_on_player(self, pos):
-        """Direct attack on the opponent when the arrow is dropped on their hand area."""
+        """
+        Performs a direct attack if the arrow is dropped on the opponent area.
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         opponent_hand = self.matrix.areas["opponent_hand_area"]
         if not opponent_hand.rect.collidepoint(pos):
             return
@@ -178,6 +238,12 @@ class InputManager:
         )
 
     def _handle_right_click(self, pos):
+        """
+        Handles right-click events (e.g., toggling a card's defense/attack mode).
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         for card_id in self._iter_field_card_ids():
             card = self.render_engine.sprite_manager.get_sprite(card_id)
             if not card.rect.collidepoint(pos):
@@ -188,6 +254,12 @@ class InputManager:
             return
 
     def _handle_click_card(self, pos):
+        """
+        Updates the preview card table when a card is clicked.
+
+        Args:
+            pos (tuple): Mouse coordinates.
+        """
         preview = self.matrix.areas["preview_card_table"]
 
         for card_ui in self.render_engine.sprite_manager.sprites["matrix"].values():
@@ -201,7 +273,9 @@ class InputManager:
                 return
 
     def _iter_field_card_ids(self):
-        """Yield every non-empty card_id from the field matrix."""
+        """
+        Generator yielding every non-empty card_id from the field matrix.
+        """
         for row in self.game_engine.game_state.field_matrix:
             for card_id in row:
                 if card_id:

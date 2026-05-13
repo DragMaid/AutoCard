@@ -29,8 +29,6 @@ class GameEngine:
         self.trap_engine = TrapEngine(self)
         self.spell_engine = SpellEngine(self)
 
-        self.players = players
-
         self.start_hand_count = 5
         self.socket_io = socket_io
 
@@ -50,29 +48,10 @@ class GameEngine:
                 self.logger.debug(data)
                 raise
 
-    def serialize(self):
-        return {
-            "effect_tracker": self.effect_tracker.serialize(),
-            "event_logger": self.event_logger.serialize(),
-            "game_state": self.game_state.serialize(),
-            "start_hand_count": self.start_hand_count,
-            "turn_manager": self.turn_manager.serialize()
-        }
-
-    def deserialize(self, content):
-        self.effect_tracker.deserialize(content["effect_tracker"])
-        self.event_logger.deserialize(content["event_logger"])
-        self.game_state.deserialize(content["game_state"])
-        self.start_hand_count = content["start_hand_count"]
-        self.turn_manager.deserialize(content["turn_manager"])
-        self.players = self.game_state.players
-
     def reset(self):
         self.effect_tracker.clear_all_effects(self.game_state)
         self.event_logger.clear_events()
         self.game_state.reset()
-        for player in self.players:
-            player.reset()
 
     def start_game(self):
         self.give_init_cards(self.start_hand_count)

@@ -677,14 +677,3 @@ class RuleEngine:
             }
         )
         return True
-
-    def next_turn(self):
-        """
-        Advances the game turn and resets all turn-dependent flags.
-        """
-        # Reset toggles for all players at the start of a new turn
-        self.has_toggled = {
-            player: False for player in self.turn_manager.players}
-
-        self.logger.info("Turn advanced, flags reset")
-        self.turn_manager.end_turn()

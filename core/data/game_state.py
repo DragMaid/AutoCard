@@ -24,9 +24,6 @@ class PlayerInfo(BaseModel):
     deck_cards: CollectionInfo
     active_traps: List[str] = Field(default_factory=list)
 
-    class Config:
-        arbitrary_types_allowed = True
-
 
 class TrapContext(BaseModel):
     trigger_type: ActivateCondition
@@ -59,8 +56,12 @@ class GameState(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         self._logger = get_logger()
 
+    # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
         """Reset the game state instance to its original state."""
+        for player in self.players:
+            player.reset()
+
         self.player_info = {
             player.id: PlayerInfo(
                 held_cards=CollectionInfo([], player.id),
