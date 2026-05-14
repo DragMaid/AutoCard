@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Optional, Any
+from core.cards.card import Card
 
 
 class BaseFactory(ABC):
@@ -9,7 +10,7 @@ class BaseFactory(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def load(self, owner_id: str, name: Optional[str] = None) -> Any:
+    def load(self, owner_id: str, name: Optional[str] = None) -> Card:
         """Creates a card instance.
 
         Args:
@@ -17,15 +18,15 @@ class BaseFactory(ABC):
             name (Optional[str]): The name of the card to create.
 
         Returns:
-            Any: A card instance.
+            Card: A card instance.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def get_cards(self) -> Dict[str, Any]:
+    def get_cards(self) -> Dict[str, Dict[str, Any]]:
         """Returns raw card data.
 
         Returns:
-            Dict[str, Any]: A dictionary of card data.
+            Dict[str, Dict[str, Any]]: A dictionary of card data.
         """
         raise NotImplementedError

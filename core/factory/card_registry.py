@@ -1,5 +1,6 @@
 from typing import Dict, Optional, Any
 from core.factory.base_factory import BaseFactory
+from core.cards.card import Card
 
 
 class CardRegistry:
@@ -38,7 +39,7 @@ class CardRegistry:
         return factory
 
     @classmethod
-    def create(cls, card_type: str, owner_id: str, name: Optional[str] = None) -> Any:
+    def create(cls, card_type: str, owner_id: str, name: Optional[str] = None) -> Card:
         """Creates a card instance using the registered factory.
 
         Args:
@@ -47,18 +48,18 @@ class CardRegistry:
             name (Optional[str]): The name of the card.
 
         Returns:
-            Any: A new card instance.
+            Card: A new card instance.
         """
         return cls.get_factory(card_type).load(owner_id, name)
 
     @classmethod
-    def list_cards(cls, card_type: str) -> Dict[str, Any]:
+    def list_cards(cls, card_type: str) -> Dict[str, Dict[str, Any]]:
         """Lists raw cards for a given type.
 
         Args:
             card_type (str): The type of card.
 
         Returns:
-            Dict[str, Any]: A dictionary of card data.
+            Dict[str, Dict[str, Any]]: A dictionary of card data.
         """
         return cls.get_factory(card_type).get_cards()
