@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
 from typing import Tuple, List, Optional, TYPE_CHECKING
 from core.cards.card import CardType
@@ -103,7 +104,8 @@ class TrapEngine:
 
         # NOTE: Just stop if this is the case
         if not trap or not target:
-            raise ValueError(f"Trap {trap_id} or Target {target_id} not found.")
+            raise ValueError(f"Trap {trap_id} or Target {
+                             target_id} not found.")
 
         cancel = False
         desc = ""
@@ -217,8 +219,8 @@ class TrapEngine:
             return False
 
         if position is None:
-            position = self.game_engine.game_state.get_random_empty_slot(
-                trap.owner_id)
+            position = random.choice(
+                self.game_engine.game_state.get_empty_slots(trap.owner_id))
             if position is None:
                 log["details"] = {
                     "trap": trap.name,

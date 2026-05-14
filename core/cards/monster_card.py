@@ -27,8 +27,6 @@ class MonsterCard(Card):
         star: Monster star rating (level).
         mode: Current field mode (ATTACK or DEFEND).
         has_attacked: Whether the monster has already attacked this turn.
-        is_summoned: Whether the monster has been summoned.
-        is_alive: Whether the monster is still in play.
     """
     card_type: Literal[CardType.MONSTER] = CardType.MONSTER
 
@@ -41,8 +39,6 @@ class MonsterCard(Card):
     mode: CardMode = CardMode.ATTACK
 
     has_attacked: bool = False
-    is_summoned: bool = False
-    is_alive: bool = True
 
     def switch_position(self) -> CardMode:
         """Switches the monster's current mode between ATTACK and DEFEND.

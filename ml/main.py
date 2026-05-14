@@ -12,8 +12,8 @@ def new_players() -> Tuple[Player, Player]:
     Returns:
         Tuple[Player, Player]: A tuple containing the two players.
     """
-    p1 = Player(0, "p1")
-    p2 = Player(1, "p2", is_opponent=True)
+    p1 = Player(player_index=0, name="p1")
+    p2 = Player(player_index=1, name="p2", is_opponent=True)
     return p1, p2
 
 

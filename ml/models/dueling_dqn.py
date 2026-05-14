@@ -2,28 +2,25 @@ import random
 import torch
 import torch.nn as nn
 from ml.models.mlp_base import MLPBase
-
-
-import random
-import torch
-import torch.nn as nn
-from ml.models.mlp_base import MLPBase
 from typing import List
 
 
-class DuelingDQN(nn.Module):
-    """Dueling DQN architecture."""
+from ml.models.state_encoder import GameStateEncoder
 
-    def __init__(self, input_dim: int, num_actions: int, hidden_dims: List[int] = [256, 256]):
+class DuelingDQN(nn.Module):
+    """Dueling DQN architecture with Attention-based state encoding."""
+
+    def __init__(self, encoder: GameStateEncoder, num_actions: int, hidden_dims: List[int] = [256, 256]):
         """Initializes Dueling DQN.
 
         Args:
-            input_dim: Dimension of input state.
+            encoder: GameStateEncoder instance.
             num_actions: Number of possible actions.
             hidden_dims: List of hidden layer dimensions.
         """
         super().__init__()
-        self.feature_net = MLPBase(input_dim, hidden_dims)
+        self.encoder = encoder
+        self.feature_net = MLPBase(encoder.output_dim, hidden_dims)
         self.num_actions = num_actions
 
         self.advantage = nn.Linear(self.feature_net.output_dim, num_actions)
@@ -36,25 +33,21 @@ class DuelingDQN(nn.Module):
         """Forward pass.
 
         Args:
-            x: Input state tensor.
+            x: Input state tensor (flat).
 
         Returns:
             Q-values for each action.
         """
-        # Handle both 1D and 2D inputs
-        is_single_state = (x.dim() == 1)
-        if is_single_state:
-            x = x.unsqueeze(0)  # (state_dim,) -> (1, state_dim)
-
+        # Encode state using the attention-based encoder
+        # GameStateEncoder handles 1D/2D inputs automatically
+        x = self.encoder(x)
+        
+        # Pass through feature network
         x = self.feature_net(x)
+        
         value = self.value(x)
         advantage = self.advantage(x)
         q_values = value + advantage - advantage.mean(dim=1, keepdim=True)
-
-        # Remove batch dimension if input was 1D
-        if is_single_state:
-            # (1, num_actions) -> (num_actions,)
-            q_values = q_values.squeeze(0)
 
         return q_values
 

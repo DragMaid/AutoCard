@@ -56,8 +56,9 @@ class SummonResolver(LegalActionResolver):
         card_ids = gs.player_info[player.id].held_cards.card_ids
 
         results = {}
-        if gs.player_info[player.id].get("has_summoned_monster", False) or \
-                not gs.has_slot_available(player.id):
+        empty_count = len(gs.get_empty_slots(player.id))
+        if gs.player_info[player.id].has_summoned_monster or \
+                empty_count <= 0:
             return {}
 
         for i, cid in enumerate(card_ids):
@@ -88,7 +89,7 @@ class AttackResolver(LegalActionResolver):
         if not my_attackers or tm.turn_state.turn_count <= 1:
             return {}
 
-        opp_monsters = gs.get_cards_typed(opp_id, CardType.MONSTER)
+        opp_monsters = get_cards_typed(gs, opp_id, CardType.MONSTER)
         results = {}
 
         for attacker in my_attackers:

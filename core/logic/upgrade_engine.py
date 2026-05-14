@@ -4,7 +4,8 @@ from core.cards.monster_card import MonsterCard
 from core.data.events import MergeEvent
 from .utils import log_action
 from core.utils import load_by_type_and_level
-from typing import TYPE_CHECKING
+from core.data.game_state import ModifyMode
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from core.logic.game_engine import GameEngine
@@ -53,21 +54,6 @@ class UpgradeEngine:
             target_card_id)
 
         if not can_upgrade:
-            reasons: list[str] = []
-            if own_card.monster_type != target_card.monster_type:
-                reasons.append(f"Type mismatch: {own_card.monster_type.value} vs {
-                               target_card.monster_type.value}")
-            if own_card.star != target_card.star:
-                reasons.append(f"Level mismatch: {
-                               own_card.star} vs {target_card.star}")
-            if own_card.owner_id != player_id or target_card.owner_id != player_id:
-                reasons.append("Not your cards")
-
-            log_action("UPGRADE", player_id, {
-                "card1": f"{own_card.name} (Lv{own_card.star})",
-                "card2": f"{target_card.name} (Lv{target_card.star})",
-                "reason": ", ".join(reasons) if reasons else "Rule check failed"
-            }, False)
             return False
 
         upgrade_position: Optional[tuple[int, int]] = target_card.pos_in_matrix
@@ -100,7 +86,7 @@ class UpgradeEngine:
         self.game_engine.game_state.entity_lookup[upgraded_monster.id] = upgraded_monster
         if upgrade_position:
             self.game_engine.game_state.modify_field(
-                "add", upgraded_monster, upgrade_position)
+                ModifyMode.ADD, upgraded_monster, upgrade_position)
             upgraded_monster.is_placed = True
             upgraded_monster.pos_in_matrix = upgrade_position
 
