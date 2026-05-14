@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import random
 from typing import Any, Dict, List, Optional, Tuple
@@ -41,9 +42,9 @@ from ml.environment.reward_system import (
 from core.logic.game_engine import GameEngine
 from core.data.player import Player
 from ml.config import Config
-from core.utils import get_logger
 from .action_codec import ActionCodec
 
+logger = logging.getLogger(__name__)
 # TODO: refactor this shit for god sake
 # Constants
 CARD_FEATURES = 6
@@ -70,7 +71,6 @@ class GameEnv:
     ) -> None:
         self.render = render
         self.engine: GameEngine = engine
-        self.logger = get_logger()
         self.reward_calculator = RewardCalculator(config=reward_config)
         self._init_handlers_and_resolvers()
         if self.render:
@@ -116,7 +116,7 @@ class GameEnv:
 
     def step(self, actions: Optional[Dict[str, action_type]] = None):
         """Execute a segment for the currently acting player.
-        
+
         If actions are provided, it executes actions for the acting player from their queue.
         If no actions are provided, it performs a random segment for the acting player.
         """
@@ -135,7 +135,7 @@ class GameEnv:
         provided_actions = actions is not None
 
         tm = self.engine.turn_manager
-        
+
         # Determine acting player (trapper or current)
         if tm.is_trap_stage():
             acting_player = tm.get_trapper()
@@ -152,7 +152,7 @@ class GameEnv:
             if player.id == acting_player.id:
                 acting_idx = i
                 break
-        
+
         if acting_idx == -1:
             states = tuple(self._get_state(p) for p in players)
             return states, rewards, self.engine.game_state.is_game_over(), info
@@ -162,8 +162,9 @@ class GameEnv:
 
         # Execute a segment for the acting player
         segment_actions_list = action_queues.get(player_id_str, [])
-        
-        self.logger.info(f"[STAGE] {acting_player.name}'s {'TRAP ' if tm.is_trap_stage() else ''}SEGMENT START (Turn {tm.turn_count})")
+
+        logger.info(f"[STAGE] {acting_player.name}'s {
+                         'TRAP ' if tm.is_trap_stage() else ''}SEGMENT START (Turn {tm.turn_count})")
 
         total_turn_reward, actions_taken, consumed_from_list, done = self.step_single(
             acting_player, segment_actions_list, use_random=not provided_actions)
@@ -172,19 +173,22 @@ class GameEnv:
         rewards[acting_idx] += total_turn_reward
         info[f"player_{acting_idx + 1}_actions"] += actions_taken
 
-        self.logger.info(f"{acting_player.name}'s segment summary: {actions_taken} actions, {total_turn_reward:+.4f} segment reward")
+        logger.info(f"{acting_player.name}'s segment summary: {
+                         actions_taken} actions, {total_turn_reward:+.4f} segment reward")
 
         # Handle turn/stage ending if no more actions or forced end
         if not done and not self.engine.game_state.is_game_over():
             # If we are in trap stage and finished our actions, we must resolve traps
             if tm.is_trap_stage() and tm.get_trapper() == acting_player:
-                if not segment_actions_list or actions_taken >= 10: # Assuming 10 is max actions per turn
-                    before_snap = create_enhanced_snapshot(self.engine, acting_player)
+                if not segment_actions_list or actions_taken >= 10:  # Assuming 10 is max actions per turn
+                    before_snap = create_enhanced_snapshot(
+                        self.engine, acting_player)
                     num_activated = len(self.engine.game_state.activated_traps)
                     if num_activated > 0:
                         self.reward_calculator.set_trap_triggers(num_activated)
                     self.engine.end_turn()
-                    after_snap = create_enhanced_snapshot(self.engine, acting_player)
+                    after_snap = create_enhanced_snapshot(
+                        self.engine, acting_player)
                     breakdown = self.reward_calculator.calculate_action_reward(
                         "end_turn", acting_player, None, True, before_snap, after_snap
                     )
@@ -371,7 +375,7 @@ class GameEnv:
         try:
             success = handler.perform(self, player, params)
         except Exception as e:
-            self.logger.error(
+            logger.error(
                 f"Action '{action_name}' failed with error: {e}")
             success = False
 

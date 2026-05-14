@@ -1,3 +1,4 @@
+import logging
 import random
 from typing import Any, Dict
 from core.factory.card_registry import CardRegistry
@@ -5,9 +6,8 @@ from core.factory.monster_factory import MonsterFactory
 from core.factory.spell_factory import SpellFactory
 from core.factory.trap_factory import TrapFactory
 from core.cards.card import CardType
-from core.utils import get_logger
 
-logger = get_logger()
+logger = logging.getLogger(__name__)
 
 
 class DrawSystem:

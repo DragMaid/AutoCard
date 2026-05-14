@@ -1,9 +1,11 @@
+import logging
 from multiprocessing import Process, Queue
 from core.network.discovery import DiscoveryServer
 from gui.effects.manager import EffectManager
 from .base import GameApp
 from .utils import run_socketio_server
-from core.utils import get_logger
+
+logger = logging.getLogger(__name__)
 
 
 class SocketIOWrapper:
@@ -56,18 +58,20 @@ class SocketServerGame(GameApp):
             key, value = next(iter(msg.items()))
 
             if key == "connected":
-                print(f"[Server Main] Client connected. Total: {self.connected_clients + 1}")
+                print(f"[Server Main] Client connected. Total: {
+                      self.connected_clients + 1}")
                 self.connected_clients += 1
                 self.game_engine.start_game()
                 # TODO: remove debug
                 from core.logic.utils import draw_specific_card
                 from core.cards.card import CardType
-                draw_specific_card(self.game_engine, self.player1.id, "Mirror Strike", CardType.TRAP)
+                draw_specific_card(
+                    self.game_engine, self.player1.id, "Mirror Strike", CardType.TRAP)
                 self.game_started = True
-                print("[Server Main] Game started, sync signals should have been sent to out_queue")
 
             elif key == "disconnected":
-                print(f"[Server Main] Client disconnected. Total: {self.connected_clients - 1}")
+                print(f"[Server Main] Client disconnected. Total: {
+                      self.connected_clients - 1}")
                 self.connected_clients -= 1
                 if self.game_started and not self.game_over:
                     self.exit_reason = "Client disconnected"
@@ -87,7 +91,8 @@ class SocketServerGame(GameApp):
 
         # Update all cards to match the perspective
         for card in self.game_engine.game_state.entity_lookup.values():
-            owner = self.game_engine.game_state.players_lookup.get(card.owner_id)
+            owner = self.game_engine.game_state.players_lookup.get(
+                card.owner_id)
             if owner:
                 card.is_opponent = owner.is_opponent
 
@@ -102,7 +107,6 @@ class SocketServerGame(GameApp):
         EffectManager.update()
 
     def cleanup(self):
-        logger = get_logger()
         logger.info("Stopping SocketServerGame…")
         try:
             self._discovery.stop()

@@ -1,4 +1,5 @@
 import pygame
+from datetime import datetime
 from gui.screen.matchmaking import MatchmakingScreen, ScreenState
 from core.network.server import SocketServerGame
 from core.network.client import SocketClientGame
@@ -111,9 +112,8 @@ class GameApp:
                 self.game_app = AIGame(self.screen)
         except Exception as e:
             print(f"Failed to create game: {e}")
-            # self.matchmaker.show_error(str(e))
-            raise
             self.matchmaker.set_state(ScreenState.MENU)
+            self.matchmaker.show_error(str(e))
 
     def _cleanup_game(self):
         if self.game_app is None:
@@ -163,6 +163,11 @@ def run_headless_game(args):
 
 
 if __name__ == "__main__":
+    from core.utils import setup_logging
+    timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+    file = f"logs/{timestamp}.log"
+    setup_logging(file, debug=True)
+
     args = parse_args()
     if args.client or args.server or args.ai:
         run_headless_game(args)

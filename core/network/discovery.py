@@ -1,11 +1,12 @@
+import logging
 import socket
 import threading
 import json
 import time
-from core.utils import get_logger
 
 DISCOVERY_PORT = 55555
 MAGIC_WORD = "AUTOCARD_SERVER"
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryServer:
@@ -48,7 +49,7 @@ class DiscoveryServer:
             except socket.timeout:
                 continue
             except Exception as e:
-                get_logger().error(f"Discovery Server Error: {e}")
+                logger.error(f"Discovery Server Error: {e}")
         sock.close()
 
 
@@ -89,7 +90,7 @@ class DiscoveryClient:
                     except socket.timeout:
                         break
             except Exception as e:
-                get_logger().error(f"Discovery Client Error: {e}")
+                logger.error(f"Discovery Client Error: {e}")
         sock.close()
 
     def get_servers(self):

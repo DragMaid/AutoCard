@@ -3,41 +3,37 @@ import logging
 from core.cards.monster_card import MonsterType, MonsterCard
 from core.factory.base_factory import BaseFactory
 from typing import Optional
+from logging.handlers import RotatingFileHandler
 
 
-# TODO: fix this later
-def get_logger(name="GameEngine"):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    return logger
+def setup_logging(file: Optional[str] = None, debug: bool = False):
+    level = logging.DEBUG if debug else logging.INFO
 
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-# def setup_logger(log_path: str | None = None, console=True, level=logging.DEBUG):
-    # logger = get_logger()
-    # logger.setLevel(level)
+    root = logging.getLogger()
+    root.setLevel(level)
 
-    # # Avoid adding multiple handlers (happens when reloading engine)
-    # if not logger.handlers:
-        # formatter = logging.Formatter(
-            # "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-        # )
+    root.handlers.clear()
 
-        # if console:
-            # console_handler = logging.StreamHandler()
-            # console_handler.setFormatter(formatter)
-            # logger.addHandler(console_handler)
+    # Console output
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    console.setFormatter(formatter)
 
-        # if log_path:
-            # import os
-            # os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            # log_handler = logging.FileHandler(
-                # log_path, mode="a", encoding="utf-8")
-            # log_handler.setFormatter(formatter)
-            # logger.addHandler(log_handler)
+    # File output
+    if file is not None:
+        file_handler = RotatingFileHandler(
+            "game.log",
+            maxBytes=5_000_000,
+            backupCount=3
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
 
-        # logger.propagate = True
-
-    # return logger
+    root.addHandler(console)
 
 
 def load_by_type_and_level(

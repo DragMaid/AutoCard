@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from gui.cards.monster_card import MonsterCardGUI
 from gui.cards.spell_card import SpellCardGUI
@@ -12,13 +13,11 @@ from core.data.events import (
 )
 from gui.screen.arrow import DragArrow
 from gui.sprites.sprite_manager import SpriteManager
-from core.utils import get_logger
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
 
+logger = logging.getLogger(__name__)
 
-# TODO: remove all the AI written slops with weird icons
-# TODO: after the trap trigger stage then the trap does not flip down again
 
 class RenderEngine:
     def __init__(
@@ -165,7 +164,7 @@ class RenderEngine:
 
             self.event_logger.clear_events()
         except Exception as e:
-            get_logger().error(f"[ERROR] handle_events failed: {e}")
+            logger.error(f"[ERROR] handle_events failed: {e}")
 
     def process_pending_merges(self):
         still_pending = []

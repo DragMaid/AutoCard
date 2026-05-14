@@ -1,14 +1,16 @@
+import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Annotated
+from typing import Dict, List, Optional, Tuple, Union, Annotated
 from pydantic import BaseModel, Field, TypeAdapter
 from core.cards.card import Card
 from core.cards.monster_card import MonsterCard
 from core.cards.spell_card import SpellCard
 from core.cards.trap_card import TrapCard
 from core.data.player import Player
-from core.utils import get_logger
 from gui.background.hand import CollectionInfo
 from core.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class ModifyMode(str, Enum):
@@ -106,9 +108,6 @@ class GameState(BaseModel):
     def players_lookup(self) -> Dict[str, Player]:
         return {p.id: p for p in self.players}
 
-    def model_post_init(self, __context: Any) -> None:
-        self._logger = get_logger("GameState")
-
     # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
         """Reset the game state instance to its original state."""
@@ -157,7 +156,7 @@ class GameState(BaseModel):
 
         if mode is ModifyMode.ADD:
             if not (0 <= row < config.ROWS and 0 <= col < config.COLS):
-                self._logger.error(
+                logger.error(
                     "Field modify failed",
                     extra={
                         "reason": "Invalid position",
@@ -169,7 +168,7 @@ class GameState(BaseModel):
 
             if self.field_matrix[row][col] is not None:
                 existing = self.entity_lookup.get(self.field_matrix[row][col])
-                self._logger.warning(
+                logger.warning(
                     "Field modify warning",
                     extra={
                         "reason": "Position already occupied",
@@ -181,7 +180,7 @@ class GameState(BaseModel):
 
             expected_owner_id = self.field_matrix_ownership[row][col]
             if card.owner_id != expected_owner_id:
-                self._logger.error(
+                logger.error(
                     "Field modify failed",
                     extra={
                         "reason": "Ownership mismatch",
@@ -197,7 +196,7 @@ class GameState(BaseModel):
             self.entity_lookup[card.id] = card
             card.pos_in_matrix = pos
 
-            self._logger.info(
+            logger.info(
                 "Field modified: card placed",
                 extra={
                     "cardName": card.name,
@@ -208,7 +207,7 @@ class GameState(BaseModel):
 
         elif mode is ModifyMode.REMOVE:
             if not (0 <= row < config.ROWS and 0 <= col < config.COLS):
-                self._logger.error(
+                logger.error(
                     "Field modify failed",
                     extra={
                         "reason": "Invalid position for removal",
@@ -222,7 +221,7 @@ class GameState(BaseModel):
                 existing_card = self.entity_lookup.get(existing_card_id)
                 if existing_card:
                     try:
-                        self._logger.info(
+                        logger.info(
                             "Field modified: card removed",
                             extra={
                                 "cardName": existing_card.name,
@@ -231,7 +230,7 @@ class GameState(BaseModel):
                             },
                         )
                     except ValueError:
-                        self._logger.error(
+                        logger.error(
                             "Field modify error",
                             extra={
                                 "reason": "Card not found in player's field list",
@@ -242,7 +241,7 @@ class GameState(BaseModel):
                         )
                     existing_card.pos_in_matrix = None
                 else:
-                    self._logger.error(
+                    logger.error(
                         "Field modify error",
                         extra={
                             "reason": "Card ID not found in entity_lookup",

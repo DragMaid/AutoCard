@@ -5,6 +5,8 @@ from typing import Optional, Dict, Tuple
 from ml.trainer.agent import Agent
 from core.data.player import Player
 
+logger = logging.getLogger(__name__)
+
 
 class AIOpponent:
     """
@@ -33,7 +35,6 @@ class AIOpponent:
         self.config = config
         self.device = device
         self.agent_id = agent_id
-        self.logger = logging.getLogger("AIOpponent")
 
         # Initialize agent
         self.agent = Agent(
@@ -54,7 +55,7 @@ class AIOpponent:
         self.actions_taken = 0
         self.action_pointer = 0
 
-        self.logger.info(
+        logger.info(
             "AI Opponent loaded",
             extra={"checkpoint_path": str(checkpoint_path)}
         )
@@ -87,7 +88,7 @@ class AIOpponent:
                            list(checkpoint.keys())}")
 
         self.agent.dqn.load_state_dict(checkpoint[model_key])
-        self.logger.info(
+        logger.info(
             "Loaded model state",
             extra={
                 "model_key": model_key,
@@ -99,7 +100,7 @@ class AIOpponent:
         policy_key = f"agent_{agent_id}_policy"
         if policy_key in checkpoint and hasattr(self.agent, 'policy') and self.agent.policy is not None:
             self.agent.policy.load_state_dict(checkpoint[policy_key])
-            self.logger.info(
+            logger.info(
                 "Loaded policy state",
                 extra={
                     "policy_key": policy_key,
@@ -107,8 +108,8 @@ class AIOpponent:
                 }
             )
         elif hasattr(self.agent, 'policy') and self.agent.policy is not None:
-            self.logger.warning(f"Policy network expected but {
-                                policy_key} not found in checkpoint")
+            logger.warning(f"Policy network expected but {
+                policy_key} not found in checkpoint")
 
     def get_action(
         self,
@@ -139,7 +140,7 @@ class AIOpponent:
             state, mask, epsilon, best_response=True
         )
 
-        self.logger.info(
+        logger.info(
             "AI selected action",
             extra={"action_id": int(action_id)}
         )
@@ -174,8 +175,6 @@ class HumanVsAIManager:
         self.human_player_idx = human_player_idx
         self.ai_player_idx = 1 - human_player_idx
 
-        self.logger = logging.getLogger("HumanVsAI")
-
         self.human_player = game_engine.game_state.players[human_player_idx]
         self.ai_player = game_engine.game_state.players[self.ai_player_idx]
 
@@ -183,7 +182,7 @@ class HumanVsAIManager:
         self.ai_actions_this_turn = 0
         self.max_ai_actions_per_turn = 10
 
-        self.logger.info(
+        logger.info(
             "Human vs AI initialized",
             extra={
                 "human_player": self.human_player.name,
@@ -206,14 +205,14 @@ class HumanVsAIManager:
         Returns True if turn completed, False if game over.
         """
         if not self.is_ai_turn():
-            self.logger.warning(
+            logger.warning(
                 "Invalid turn call",
                 extra={"reason": "Called execute_ai_turn but it's not AI's turn!"}
             )
             return True
 
         if self.game_engine.game_state.is_game_over():
-            self.logger.info(
+            logger.info(
                 "Game over",
                 extra={"phase": "AI turn"}
             )

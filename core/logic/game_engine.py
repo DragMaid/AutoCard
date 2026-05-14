@@ -1,4 +1,4 @@
-from datetime import datetime
+import logging
 from typing import Tuple, List, Optional
 from core.cards.card import CardType
 from core.cards.monster_card import MonsterCard
@@ -10,7 +10,6 @@ from core.logic.rule_engine import RuleEngine
 from core.logic.turn_manager import TurnManager
 from core.data.effects import EffectTracker
 from core.data.events import EventLogger, ToggleEvent
-from core.utils import get_logger
 from core.logic.trap_engine import TrapEngine
 from core.logic.spell_engine import SpellEngine
 from .battle_engine import BattleEngine
@@ -18,24 +17,20 @@ from .summon_engine import SummonEngine
 from .upgrade_engine import UpgradeEngine
 from .utils import log_action, is_local_turn
 
+logger = logging.getLogger(__name__)
+
 
 class GameEngine:
     """
     The main orchestrator for game logic, integrating various specialized engines.
     """
 
-    def __init__(
-        self,
-        players: List[Player],
-        log_to_file: bool = False,
-        socket_io=None
-    ):
+    def __init__(self, players: List[Player], socket_io=None):
         """
         Initializes the GameEngine.
 
         Args:
             players (List[Player]): The list of players in the game.
-            log_to_file (bool): Whether to log game actions to a file.
             socket_io: Socket interface for synchronization.
         """
         self.game_state = GameState(players=players)
@@ -57,13 +52,6 @@ class GameEngine:
         self.start_hand_count = 5
         self.socket_io = socket_io
 
-        # log_path = None
-        # if log_to_file:
-            # timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
-            # log_path = f"logs/game_run_{timestamp}.log"
-        # self.logger = setup_logger(log_path=log_path, console=True)
-        self.logger = get_logger("GameEngine")
-
     def synchronize(self) -> None:
         """Synchronizes game state across the network."""
         if self.socket_io:
@@ -71,7 +59,7 @@ class GameEngine:
                 data = self.serialize()
                 self.socket_io.emit("synchronize", data)
             except Exception as e:
-                self.logger.error(e)
+                logger.error(e)
                 raise
 
     def serialize(self) -> dict:
@@ -255,7 +243,7 @@ class GameEngine:
 
         self.game_state.player_info[card.owner_id].graveyard_cards.add(
             card_id)
-        self.logger.info(
+        logger.info(
             "Card moved to graveyard",
             extra={
                 "card_name": card.name,

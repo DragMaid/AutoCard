@@ -1,13 +1,15 @@
+import logging
 import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.data.player import Player
-from core.utils import get_logger
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
 
 # TODO: rework this later
 # TODO: especially rework the reward system for card count
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -98,7 +100,6 @@ class RewardCalculator:
     def __init__(self, config: Optional[RewardConfig] = None, max_stats: float = 9999.0):
         self.config = config or RewardConfig()
         self.max_stats = max_stats
-        self.logger = get_logger()
 
         # Track rewards per episode for analysis
         self.episode_rewards: Dict[str, List[float]] = {}
@@ -547,10 +548,10 @@ class RewardCalculator:
     def _log_reward(self, player: Player, breakdown: RewardBreakdown, terminal: bool = False):
         """Log reward details."""
         if terminal:
-            self.logger.info(f"ERMINAL REWARD for {player.name}")
-            self.logger.info(f"{breakdown.get_summary()}")
+            logger.info(f"ERMINAL REWARD for {player.name}")
+            logger.info(f"{breakdown.get_summary()}")
         elif breakdown.total != 0:
-            self.logger.info(f"REWARD ({breakdown.action_type}): {
+            logger.info(f"REWARD ({breakdown.action_type}): {
                              breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
@@ -571,14 +572,14 @@ class RewardCalculator:
         """Log episode reward summary."""
         summary = self.get_episode_summary()
 
-        self.logger.info("EPISODE REWARD SUMMARY")
+        logger.info("EPISODE REWARD SUMMARY")
 
         for category, stats in summary.items():
-            self.logger.info(f"\n{category.upper()}:")
-            self.logger.info(f"Total: {stats['total']:+.4f}")
-            self.logger.info(f"Mean:  {stats['mean']:+.4f}")
-            self.logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
-            self.logger.info(f"Count: {stats['count']}")
+            logger.info(f"\n{category.upper()}:")
+            logger.info(f"Total: {stats['total']:+.4f}")
+            logger.info(f"Mean:  {stats['mean']:+.4f}")
+            logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
+            logger.info(f"Count: {stats['count']}")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:

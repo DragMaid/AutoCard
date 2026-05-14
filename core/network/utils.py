@@ -1,8 +1,9 @@
+import logging
 import socket
 import urllib.parse
 import socketio
-import logging
-from core.utils import get_logger
+
+logger = logging.getLogger(__name__)
 
 
 def run_socketio_server(host, port, password, sub_queue, out_queue):
@@ -37,11 +38,12 @@ def run_socketio_server(host, port, password, sub_queue, out_queue):
         if password:
             client_pass = extract_password(environ)
             if client_pass != password:
-                get_logger().warning(
+                logger.warning(
                     f"Rejected connection from {sid}: bad password")
                 return False
         sub_queue.put({"connected": {}})
-        print(f"[Server Process] Client {sid} connection signal sent to main process")
+        print(f"[Server Process] Client {
+              sid} connection signal sent to main process")
         return True
 
     @sio.event

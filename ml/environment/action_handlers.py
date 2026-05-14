@@ -1,7 +1,9 @@
+import logging
 from core.data.player import Player
 from typing import Optional, Dict
-from core.utils import get_logger
 from core.cards.card import CardType
+
+logger = logging.getLogger(__name__)
 
 
 class ActionHandler:
@@ -10,11 +12,7 @@ class ActionHandler:
     Subclasses must implement :meth:`perform` to execute the action.
     Returns True if action was successful, False otherwise.
     """
-
-    def __init__(self):
-        self.logger = get_logger()
-
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
+    def perform(env, player: Player, params: Optional[Dict]) -> bool:
         """Perform the action. Return True if successful."""
         return True
 
@@ -39,7 +37,7 @@ class ActivateHandler(ActionHandler):
         if card_id in gs.triggerable_traps:
             # We use toggle_trap_activation to mark it for resolution
             env.engine.toggle_trap_activation(card_id, activated=True)
-            self.logger.debug(
+            logger.debug(
                 "Trap activated",
                 extra={"card_id": card_id}
             )
@@ -73,7 +71,7 @@ class SummonHandler(ActionHandler):
             player.id, card.id, cell=None, check=False)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Summoned {card.name}")
+            logger.debug(f"[HANDLER] ✓ Summoned {card.name}")
         return success
 
 
@@ -114,7 +112,7 @@ class AttackHandler(ActionHandler):
             player.id, opp_id, attacker.id, target_id, target_is_player)
 
         if success:
-            self.logger.debug(
+            logger.debug(
                 f"[HANDLER] ✓ {attacker.name} attacked {target_id}")
         return success
 
@@ -152,7 +150,7 @@ class CastSpellHandler(ActionHandler):
         success = env.engine.cast_spell(spell_card.id, target_id)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Cast {spell_card.name}")
+            logger.debug(f"[HANDLER] ✓ Cast {spell_card.name}")
         return success
 
 
@@ -180,7 +178,7 @@ class SetTrapHandler(ActionHandler):
         success = env.engine.set_trap(trap_card.id, position=None, check=False)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Set trap {trap_card.name}")
+            logger.debug(f"[HANDLER] ✓ Set trap {trap_card.name}")
         return success
 
 
@@ -206,7 +204,9 @@ class ToggleHandler(ActionHandler):
         success = card.mode != old_mode
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Toggled {card.name} to {card.mode}")
+            logger.debug(f"[HANDLER] ✓ Toggled {
+                              card.name} to {card.mode}")
+
 
 class CombineHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
@@ -231,7 +231,7 @@ class CombineHandler(ActionHandler):
         success = env.engine.upgrade_monster(player.id, card1_id, card2_id)
 
         if success:
-            self.logger.debug(f"[HANDLER] ✓ Combined {
+            logger.debug(f"[HANDLER] ✓ Combined {
                               card1_id} and {card2_id}")
         return success
 
@@ -240,5 +240,5 @@ class EndTurnHandler(ActionHandler):
     def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
         """End the current player's turn."""
         env.engine.end_turn()
-        self.logger.debug(f"[HANDLER] ✓ {player.name} ends turn")
+        logger.debug(f"[HANDLER] ✓ {player.name} ends turn")
         return True
