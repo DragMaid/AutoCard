@@ -6,6 +6,7 @@ from typing import List
 
 from ml.models.state_encoder import GameStateEncoder
 
+
 class AveragePolicy(nn.Module):
     """Policy network for NFSP with Attention-based state encoding."""
 
@@ -40,7 +41,7 @@ class AveragePolicy(nn.Module):
         """
         # Encode state
         x = self.encoder(x)
-        
+
         # Feature extraction
         x = self.feature_net(x)
 

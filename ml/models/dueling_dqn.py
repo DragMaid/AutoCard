@@ -7,6 +7,7 @@ from typing import List
 
 from ml.models.state_encoder import GameStateEncoder
 
+
 class DuelingDQN(nn.Module):
     """Dueling DQN architecture with Attention-based state encoding."""
 
@@ -41,10 +42,10 @@ class DuelingDQN(nn.Module):
         # Encode state using the attention-based encoder
         # GameStateEncoder handles 1D/2D inputs automatically
         x = self.encoder(x)
-        
+
         # Pass through feature network
         x = self.feature_net(x)
-        
+
         value = self.value(x)
         advantage = self.advantage(x)
         q_values = value + advantage - advantage.mean(dim=1, keepdim=True)

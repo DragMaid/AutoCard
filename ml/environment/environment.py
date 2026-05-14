@@ -13,8 +13,8 @@ from core.data.player import Player
 from core.config import config
 from ml.config import Config as MLConfig
 from .action_codec import ActionCodec
+from .encoder import encode_state
 from . import action_handlers
-from . import encoder
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class GameEnv:
 
         tm = self.engine.turn_manager
         if tm.is_trap_stage() and tm.get_trapper() == player:
-            if not remaining_actions or actions_taken >= config.MAX_ACTIONS_PER_TURN:
+            if not remaining_actions or actions_taken >= MLConfig.MAX_ACTIONS_PER_TURN:
                 before_snap = create_enhanced_snapshot(self.engine, player)
                 num_activated = len(self.engine.game_state.activated_traps)
                 if num_activated > 0:
@@ -223,7 +223,7 @@ class GameEnv:
     ) -> Tuple[float, int, int, bool]:
         """Perform a segment of actions for a single player."""
         if max_actions is None:
-            max_actions = config.MAX_ACTIONS_PER_TURN
+            max_actions = MLConfig.MAX_ACTIONS_PER_TURN
 
         total_turn_reward = 0.0
         action_pointer = 0
@@ -335,4 +335,4 @@ class GameEnv:
 
     def _get_state(self, player: Player) -> np.ndarray:
         """Return a flat state vector for a given player."""
-        return encoder.encode_state(self, player.id)
+        return encode_state(self, player.id)

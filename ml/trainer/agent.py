@@ -230,7 +230,9 @@ class Agent:
         mask_tensor: torch.Tensor
     ) -> int:
         """Policy selection using logit masking BEFORE softmax."""
-        logits = self.policy.head(self.policy.feature_net(state_tensor))
+        encoded = self.policy.encoder(state_tensor)
+        feat = self.policy.feature_net(encoded)
+        logits = self.policy.head(feat)
 
         # Sanitize logits
         logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)

@@ -21,8 +21,6 @@ class Config:
     MAX_STATS: int = 9999
     COLS: int = 5
     ROWS: int = 4
-    CARD_FEATURES: int = 6
-    MAX_ACTIONS_PER_TURN: int = 10
 
     # ML Encoder Config
     MAX_EFFECTS: int = 4
