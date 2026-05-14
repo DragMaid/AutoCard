@@ -2,6 +2,7 @@ import os
 import torch
 from dotenv import load_dotenv
 from pathlib import Path
+from typing import Optional
 
 load_dotenv()
 BASE_PATH = Path(os.path.dirname(__file__)).parent

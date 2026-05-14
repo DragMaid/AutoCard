@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from ml.environment .environment import GameEnv
 
 
-# TODO: remove all the Any later
 class LegalActionResolver:
     """Abstract base class for resolving legal actions in the environment."""
 
@@ -40,7 +39,7 @@ class TrapActivateResolver(LegalActionResolver):
         for trap_id in gs.triggerable_traps.keys():
             card = gs.get_card_by_id(trap_id)
             if card.owner_id == player.id and card.id not in gs.activated_traps:
-                slot = env._get_card_slot_idx(player.id, card)
+                slot = env.get_card_slot_idx(player.id, card)
                 action_id = ActionCodec.encode("activate_trap", trap=slot)
                 results[action_id] = (
                     "activate_trap", {"card_id": trap_id, "slot": slot})
@@ -74,7 +73,7 @@ class SummonResolver(LegalActionResolver):
 class AttackResolver(LegalActionResolver):
     """Resolver for attacking with monsters."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve monsters in field slots that can attack."""
         gs = env.engine.game_state
         tm = env.engine.turn_manager
@@ -93,7 +92,7 @@ class AttackResolver(LegalActionResolver):
         results = {}
 
         for attacker in my_attackers:
-            attacker_slot = env._get_card_slot_idx(player.id, attacker)
+            attacker_slot = env.get_card_slot_idx(player.id, attacker)
 
             if not opp_monsters:
                 # Direct attack is target 10
@@ -106,7 +105,7 @@ class AttackResolver(LegalActionResolver):
                 })
             else:
                 for target in opp_monsters:
-                    target_slot = env._get_card_slot_idx(opp_id, target)
+                    target_slot = env.get_card_slot_idx(opp_id, target)
                     action_id = ActionCodec.encode(
                         "attack", attacker=attacker_slot, target=target_slot)
                     results[action_id] = ("attack", {
@@ -120,7 +119,7 @@ class AttackResolver(LegalActionResolver):
 class CastSpellResolver(LegalActionResolver):
     """Resolver for casting spells."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve castable spells and their target field slots."""
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id].held_cards.card_ids
@@ -140,13 +139,13 @@ class CastSpellResolver(LegalActionResolver):
             if ability in (SpellAbility.BUFF_ATTACK, SpellAbility.BUFF_DEFEND):
                 my_monsters = get_cards_typed(gs, player.id, CardType.MONSTER)
                 for m in my_monsters:
-                    s = env._get_card_slot_idx(player.id, m)
+                    s = env.get_card_slot_idx(player.id, m)
                     valid_targets.append((1 + s, m.id, False))
 
             elif ability == SpellAbility.DESTROY_TRAP:
                 opp_traps = get_cards_typed(gs, opp_id, CardType.TRAP)
                 for t in opp_traps:
-                    s = env._get_card_slot_idx(opp_id, t)
+                    s = env.get_card_slot_idx(opp_id, t)
                     valid_targets.append((11 + s, t.id, False))
             else:
                 valid_targets.append((0, None, False))
@@ -167,7 +166,7 @@ class CastSpellResolver(LegalActionResolver):
 class SetTrapResolver(LegalActionResolver):
     """Resolver for setting traps."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve settable traps from hand slots."""
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id].held_cards.card_ids
@@ -190,7 +189,7 @@ class SetTrapResolver(LegalActionResolver):
 class ToggleResolver(LegalActionResolver):
     """Resolver for toggling monster position."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve monsters in field slots that can be toggled."""
         gs = env.engine.game_state
         if gs.player_info[player.id].has_toggled:
@@ -199,7 +198,7 @@ class ToggleResolver(LegalActionResolver):
         my_monsters = get_cards_typed(gs, player.id, CardType.MONSTER)
         results = {}
         for m in my_monsters:
-            s = env._get_card_slot_idx(player.id, m)
+            s = env.get_card_slot_idx(player.id, m)
             action_id = ActionCodec.encode("toggle", toggle=s)
             results[action_id] = ("toggle", {"card_id": m.id, "slot": s})
 
@@ -209,7 +208,7 @@ class ToggleResolver(LegalActionResolver):
 class CombineResolver(LegalActionResolver):
     """Resolver for merging monsters."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve pairs of field slots containing mergeable monsters."""
         gs = env.engine.game_state
         mergeable_groups = gs.get_mergeable_groups(player.id)
@@ -220,8 +219,8 @@ class CombineResolver(LegalActionResolver):
                 for i in range(len(group)):
                     for j in range(i + 1, len(group)):
                         m1, m2 = group[i], group[j]
-                        s1 = env._get_card_slot_idx(player.id, m1)
-                        s2 = env._get_card_slot_idx(player.id, m2)
+                        s1 = env.get_card_slot_idx(player.id, m1)
+                        s2 = env.get_card_slot_idx(player.id, m2)
                         aid1 = ActionCodec.encode(
                             "combine", slot_1=s1, slot_2=s2)
                         results[aid1] = (
@@ -237,6 +236,22 @@ class CombineResolver(LegalActionResolver):
 class EndTurnResolver(LegalActionResolver):
     """Resolver for ending turn."""
 
-    def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
+    def resolve(env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve the end turn action."""
         return {0: ("end_turn", {})}
+
+
+NormalResolvers = {
+    SummonResolver,
+    AttackResolver,
+    CastSpellResolver,
+    SetTrapResolver,
+    ToggleResolver,
+    CombineResolver,
+    EndTurnResolver
+}
+
+TrapStageResolvers = (
+    TrapActivateResolver,
+    EndTurnResolver
+)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
@@ -20,6 +21,8 @@ class Config:
     MAX_STATS: int = 9999
     COLS: int = 5
     ROWS: int = 4
+    CARD_FEATURES: int = 6
+    MAX_ACTIONS_PER_TURN: int = 10
 
 
 config = Config()
