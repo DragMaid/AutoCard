@@ -2,56 +2,78 @@ import logging
 import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
-from core.player import Player
+from core.data.player import Player
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
+from core.utils import get_cards_typed
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class RewardConfig:
-    """Configuration for reward values."""
-    # Action rewards
+    """Configuration for reward values in the reinforcement learning agent.
+
+    Attributes:
+        deploy_monster: Reward for deploying a monster card.
+        deploy_trap: Reward for deploying a trap card.
+        attack_destroy: Reward for destroying an opponent's monster.
+        survive_attack: Reward for surviving an opponent's attack.
+        monster_destroyed: Penalty for losing a monster card.
+        use_spell: Reward for using a spell card.
+        merge_base: Base reward for merging monsters.
+        damage_scale_factor: Scaling factor for damage-based rewards.
+        field_advantage_multiplier: Normalized multiplier for field advantage.
+        field_advantage_cap: Maximum value for field advantage.
+        field_advantage_decay: Decay factor for field advantage smoothing.
+        board_control_bonus: Bonus for having more monsters than the opponent.
+        no_monsters_penalty: Penalty for having no monsters on the field.
+        trap_advantage: Bonus for having a trap advantage.
+        skip_turn: Penalty for skipping a turn.
+        premature_end_penalty: Penalty for ending turn prematurely.
+        invalid_action: Penalty for taking an invalid action.
+        valid_action_bonus: Bonus for taking a valid action.
+        win: Reward for winning the game.
+        lose: Penalty for losing the game.
+        direct_attack_bonus: Bonus for performing a direct attack.
+        trap_trigger_base: Base reward for triggering a trap.
+        trap_trigger_log_scale: Logarithmic scaling for trap trigger rewards.
+        max_trap_trigger_reward: Maximum reward for multiple trap triggers.
+        spell_combo_bonus: Bonus for spell combos.
+        high_level_summon_bonus: Bonus for high-level monster summons.
+        bait_block_bonus: Bonus for blocking a trap with bait.
+        strength_scale_factor: Scaling factor for strength-based rewards.
+        max_step_reward: Maximum allowable reward per step.
+        min_step_reward: Minimum allowable reward per step.
+    """
     deploy_monster: float = 0.5
-    deploy_trap: float = 0.15  # Reduced since main reward is from triggering
+    deploy_trap: float = 0.15
     attack_destroy: float = 1.0
     survive_attack: float = 0.2
     monster_destroyed: float = -0.5
     use_spell: float = 0.3
     merge_base: float = 1.0
-
-    # Damage-based rewards (logarithmic scaling)
     damage_scale_factor: float = 0.05
-
-    # Field advantage
-    field_advantage_multiplier: float = 0.5  # Normalized multiplier
+    field_advantage_multiplier: float = 0.5
     field_advantage_cap: float = 0.5
-    # Smooth sudden swings (0.9-0.99 range)
     field_advantage_decay: float = 0.95
     board_control_bonus: float = 0.2
     no_monsters_penalty: float = -0.3
     trap_advantage: float = 0.1
-
-    # Penalties
     skip_turn: float = -1.0
     premature_end_penalty: float = -0.3
     invalid_action: float = -0.5
     valid_action_bonus: float = 0.1
-
-    # Terminal rewards
     win: float = 2.0
     lose: float = -2.0
-
-    # Bonus rewards
     direct_attack_bonus: float = 0.3
-    trap_trigger_base: float = 0.5  # Base reward per trap trigger
-    trap_trigger_log_scale: float = 1.0  # Controls logarithmic steepness
-    max_trap_trigger_reward: float = 1.5  # Cap for multiple traps
+    trap_trigger_base: float = 0.5
+    trap_trigger_log_scale: float = 1.0
+    max_trap_trigger_reward: float = 1.5
     spell_combo_bonus: float = 0.3
     high_level_summon_bonus: float = 0.1
     bait_block_bonus: float = 0.3
-
-    # Strength-based scaling
     strength_scale_factor: float = 0.1
-
-    # Reward clamping
     max_step_reward: float = 2.0
     min_step_reward: float = -2.0
 
@@ -93,7 +115,6 @@ class RewardCalculator:
     def __init__(self, config: Optional[RewardConfig] = None, max_stats: float = 9999.0):
         self.config = config or RewardConfig()
         self.max_stats = max_stats
-        self.logger = logging.getLogger("GameEngine")
 
         # Track rewards per episode for analysis
         self.episode_rewards: Dict[str, List[float]] = {}
@@ -104,7 +125,8 @@ class RewardCalculator:
 
         # Trap trigger tracking
         self.traps_triggered_this_step: int = 0
-        self.traps_rewarded_this_step: set = set()  # Track to prevent double-counting
+        # Track to prevent double-counting
+        self.traps_rewarded_this_step: set = set()
 
         self.reset_episode_tracking()
 
@@ -266,12 +288,12 @@ class RewardCalculator:
                 breakdown.add("deploy_monster", base_reward)
 
                 # Bonus for summoning stronger monsters (scaled)
-                strength_bonus = (monster.atk / self.max_stats) * \
+                strength_bonus = (monster.attack / self.max_stats) * \
                     self.config.strength_scale_factor
                 breakdown.add("strength_bonus", strength_bonus)
 
                 # High-level monster bonus (2+ stars)
-                if hasattr(monster, 'level_star') and monster.level_star >= 2:
+                if hasattr(monster, 'star') and monster.star >= 2:
                     breakdown.add("high_level_summon",
                                   self.config.high_level_summon_bonus)
 
@@ -317,7 +339,7 @@ class RewardCalculator:
 
             # Bonus based on destroyed monster strength
             for m in opp_monsters_destroyed:
-                stat = m.atk if m.mode == "attack" else m.defend
+                stat = m.attack if m.mode == CardMode.ATTACK else m.defend
                 strength_bonus = (stat / self.max_stats) * \
                     self.config.strength_scale_factor
                 breakdown.add("destroy_strength_bonus", strength_bonus)
@@ -351,7 +373,7 @@ class RewardCalculator:
             for i, before_mon in enumerate(before.get("my_monsters", [])):
                 if i < len(after.get("my_monsters", [])):
                     after_mon = after.get("my_monsters", [])[i]
-                    if getattr(after_mon, "atk", 0) > getattr(before_mon, "atk", 0) or \
+                    if getattr(after_mon, "attack", 0) > getattr(before_mon, "attack", 0) or \
                        getattr(after_mon, "defend", 0) > getattr(before_mon, "defend", 0):
                         cards_changed.append(after_mon)
 
@@ -363,9 +385,9 @@ class RewardCalculator:
 
         # Check for trap destruction (only reward if not already triggered)
         before_traps = [c for c in before.get("opp_cards", [])
-                        if c.ctype == "trap"]
+                        if c.card_type == CardType.TRAP]
         after_traps = [c for c in after.get("opp_cards", [])
-                       if c.ctype == "trap"]
+                       if c.card_type == CardType.TRAP]
 
         # Find destroyed traps
         destroyed_traps = [t for t in before_traps if t not in after_traps]
@@ -404,10 +426,10 @@ class RewardCalculator:
             if toggle_idx < len(after["my_monsters"]):
                 am = after["my_monsters"][toggle_idx]
                 # Reward optimal positioning
-                if (am.mode == "attack" and am.atk > am.defend) \
-                        or (am.mode == "defense" and am.atk < am.defend):
+                if (am.mode == CardMode.ATTACK and am.attack > am.defend) \
+                        or (am.mode == CardMode.DEFEND and am.attack < am.defend):
                     breakdown.add("optimal_toggle", 0.2)
-                elif (am.mode == "defense" and am.atk > am.defend):
+                elif (am.mode == CardMode.DEFEND and am.attack > am.defend):
                     breakdown.add("suboptimal_toggle", -0.5)
 
     def _calculate_combine_reward(
@@ -425,14 +447,14 @@ class RewardCalculator:
         new_monsters = [m for m in after_monsters if m not in before_monsters]
         if new_monsters:
             new_monster = new_monsters[0]
-            level = getattr(new_monster, "level_star", 1)
+            level = getattr(new_monster, "star", 1)
 
             # Logarithmic reward based on level
             merge_reward = self.config.merge_base * math.log(level + 1)
             breakdown.add("merge_combine", merge_reward)
 
             # Strength bonus for powerful merged monster
-            strength_bonus = (new_monster.atk / self.max_stats) * 0.1
+            strength_bonus = (new_monster.attack / self.max_stats) * 0.1
             breakdown.add("merge_strength_bonus", strength_bonus)
 
     def _calculate_field_advantage(self, player: Player, snapshot: Dict[str, Any]) -> float:
@@ -447,20 +469,20 @@ class RewardCalculator:
             - Decay factor prevents over-reaction to single-turn swings
         """
         my_total_stats = sum(
-            (m.atk if m.mode == "attack" else m.defend)
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["my_monsters"]
         )
 
         opp_total_stats = sum(
-            (m.atk if m.mode == "attack" else m.defend)
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["opp_monsters"]
         )
 
         # Trap advantage
         my_traps = len([t for t in snapshot["my_cards"]
-                       if t.ctype == "trap"])
+                       if t.card_type == CardType.TRAP])
         opp_traps = len([t for t in snapshot["opp_cards"]
-                        if t.ctype == "trap"])
+                        if t.card_type == CardType.TRAP])
         trap_diff = (my_traps - opp_traps) * self.config.trap_advantage
 
         # Normalize by total power to get relative advantage
@@ -542,15 +564,11 @@ class RewardCalculator:
     def _log_reward(self, player: Player, breakdown: RewardBreakdown, terminal: bool = False):
         """Log reward details."""
         if terminal:
-            self.logger.info(f"\n{'='*60}")
-            self.logger.info(f"🏆 TERMINAL REWARD for {player.name}")
-            self.logger.info(f"{'='*60}")
-            self.logger.info(f"  {breakdown.get_summary()}")
-            self.logger.info(f"{'='*60}\n")
+            logger.info(f"ERMINAL REWARD for {player.name}")
+            logger.info(f"{breakdown.get_summary()}")
         elif breakdown.total != 0:
-            emoji = "💰" if breakdown.total > 0 else "📉"
-            self.logger.info(f"  {emoji} REWARD ({breakdown.action_type}): {
-                             breakdown.get_summary()}")
+            logger.info(f"REWARD ({breakdown.action_type}): {
+                breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
         """Get summary statistics for the episode."""
@@ -569,20 +587,13 @@ class RewardCalculator:
     def log_episode_summary(self):
         """Log episode reward summary."""
         summary = self.get_episode_summary()
-
-        self.logger.info(f"\n{'='*60}")
-        self.logger.info("EPISODE REWARD SUMMARY")
-        self.logger.info(f"{'='*60}")
-
+        logger.info("EPISODE REWARD SUMMARY")
         for category, stats in summary.items():
-            self.logger.info(f"\n{category.upper()}:")
-            self.logger.info(f"  Total: {stats['total']:+.4f}")
-            self.logger.info(f"  Mean:  {stats['mean']:+.4f}")
-            self.logger.info(
-                f"  Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
-            self.logger.info(f"  Count: {stats['count']}")
-
-        self.logger.info(f"\n{'='*60}\n")
+            logger.info(f"\n{category.upper()}:")
+            logger.info(f"Total: {stats['total']:+.4f}")
+            logger.info(f"Mean:  {stats['mean']:+.4f}")
+            logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
+            logger.info(f"Count: {stats['count']}")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
@@ -594,10 +605,12 @@ def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
     return {
         "my_lp": player.life_points,
         "opp_lp": opp.life_points,
-        "my_monsters": list(gs.get_cards_typed(player.id, "monster")),
-        "opp_monsters": list(gs.get_cards_typed(opp_id, "monster")),
-        "my_cards": list(gs.get_player_cards(player.id)),
-        "opp_cards": list(gs.get_player_cards(opp_id)),
-        "my_hand_size": len(gs.player_info[player.id]["held_cards"].cards),
-        "opp_hand_size": len(gs.player_info[opp_id]["held_cards"].cards),
+        "my_monsters": list(get_cards_typed(gs, player.id, CardType.MONSTER)),
+        "opp_monsters": list(get_cards_typed(gs, opp_id, CardType.MONSTER)),
+        "my_cards": list(gs.get_player_field_cards(player.id)),
+        "opp_cards": list(gs.get_player_field_cards(opp_id)),
+        "my_hand_size": len(gs.player_info[player.id].held_cards.card_ids),
+        "opp_hand_size": len(gs.player_info[opp_id].held_cards.card_ids),
+        "triggerable_traps": list(gs.triggerable_traps.keys()),
+        "activated_traps": list(gs.activated_traps),
     }

@@ -1,66 +1,155 @@
 # tests/test_draw_system.py
-import pytest
 from collections import Counter
+from typing import Counter as TypingCounter
+
+import pytest
+
+from core.cards.card import CardType
 from core.factory.draw_system import DrawSystem
 
 
-class DummyPlayer:
-    """Minimal dummy player object to satisfy factory calls."""
-
-    def __init__(self, name="TestPlayer"):
-        self.name = name
-
-
 @pytest.fixture(scope="module")
-def draw_system():
-    """Fixture that initializes the DrawSystem once for all tests."""
+def draw_system() -> DrawSystem:
+    """Fixture for shared DrawSystem instance.
+
+    Returns:
+        A DrawSystem instance.
+    """
     return DrawSystem()
 
 
-def test_rate_card_draw_returns_valid_card(draw_system):
-    """
-    Ensures that rate_card_draw() always returns a valid (non-None) card.
-    """
-    player = DummyPlayer()
-    failures = 0
-    n = 500
+@pytest.fixture
+def player_id() -> str:
+    """Fixture for dummy player ID.
 
-    for _ in range(n):
-        card = draw_system.rate_card_draw(player)
+    Returns:
+        A test player ID.
+    """
+    return "test_player"
+
+
+def test_draw_returns_card(draw_system: DrawSystem, player_id: str) -> None:
+    """Verifies draw() returns a valid card.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
+        player_id: The ID of the player drawing the card.
+    """
+    draws = 500
+    failures = []
+
+    for i in range(draws):
+        card = draw_system.draw(player_id)
+
         if card is None:
-            failures += 1
+            failures.append(i)
 
-    assert failures == 0, f"{failures}/{n} draws returned None"
+    assert not failures, (
+        f"{len(failures)}/{draws} draws returned None. "
+        f"Failed indices: {failures[:10]}"
+    )
 
 
-def test_distribution_of_card_types(draw_system):
+def test_card_type_distribution(draw_system: DrawSystem) -> None:
+    """Verifies weighted card category distribution.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
     """
-    Ensures the drawn card type distribution roughly matches
-    the configured weights (monster: 50, spell: 25, trap: 25).
+    iterations = 10_000
+    counts: TypingCounter[CardType] = Counter()
+
+    for _ in range(iterations):
+        category = draw_system._weighted_choice(
+            draw_system.CARD_TYPE_WEIGHTS
+        )
+        counts[category] += 1
+
+    monster_ratio = counts[CardType.MONSTER] / iterations
+    spell_ratio = counts[CardType.SPELL] / iterations
+    trap_ratio = counts[CardType.TRAP] / iterations
+
+    assert 0.45 <= monster_ratio <= 0.55
+    assert 0.25 <= spell_ratio <= 0.35
+    assert 0.15 <= trap_ratio <= 0.25
+
+
+def test_monster_level_distribution(draw_system: DrawSystem) -> None:
+    """Verifies monster level weights match expectations.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
     """
-    n = 5000
-    counts = Counter()
+    iterations = 20_000
+    counts: TypingCounter[int] = Counter()
 
-    for _ in range(n):
-        # We'll intercept card type using draw_system.rate()
-        card_type = draw_system.rate(draw_system.generic_draw)
-        counts[card_type] += 1
+    table = draw_system.DRAW_TABLES[CardType.MONSTER]
 
-    total = sum(counts.values())
-    monster_ratio = counts["monster"] / total
-    spell_ratio = counts["spell"] / total
-    trap_ratio = counts["trap"] / total
+    for _ in range(iterations):
+        level = draw_system._weighted_choice(table)
+        counts[level] += 1
 
-    # Expect roughly 0.5, 0.25, 0.25 (±0.1 tolerance)
-    assert 0.4 <= monster_ratio <= 0.6, f"Monster ratio off: {monster_ratio}"
-    assert 0.15 <= spell_ratio <= 0.35, f"Spell ratio off: {spell_ratio}"
-    assert 0.15 <= trap_ratio <= 0.35, f"Trap ratio off: {trap_ratio}"
+    level_1_ratio = counts[1] / iterations
+    level_2_ratio = counts[2] / iterations
+    level_3_ratio = counts[3] / iterations
+    level_4_ratio = counts[4] / iterations
+
+    assert 0.68 <= level_1_ratio <= 0.80
+    assert 0.15 <= level_2_ratio <= 0.25
+    assert 0.03 <= level_3_ratio <= 0.07
+    assert 0.00 <= level_4_ratio <= 0.03
 
 
-def test_check_draw_issues(draw_system):
+def test_draw_returns_expected_card_types(
+    draw_system: DrawSystem,
+    player_id: str,
+) -> None:
+    """Verifies returned cards have valid CardType.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
+        player_id: The ID of the player drawing the card.
     """
-    Ensures no missing or failed draws occur when stress-tested.
+    valid_types = {
+        CardType.MONSTER,
+        CardType.SPELL,
+        CardType.TRAP,
+    }
+
+    for _ in range(500):
+        card = draw_system.draw(player_id)
+
+        assert card is not None
+        assert hasattr(card, "card_type")
+        assert card.card_type in valid_types
+
+
+def test_weighted_choice_rejects_empty_table(
+    draw_system: DrawSystem,
+) -> None:
+    """Verifies empty weighted tables raise ValueError.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
     """
-    player = DummyPlayer()
-    draw_system.check_draw_issues(player, attempts=500)
-    # This function already prints failures; test passes if it runs without exception
+    with pytest.raises(ValueError):
+        draw_system._weighted_choice({})
+
+
+def test_weighted_choice_falls_back_on_invalid_weights(
+    draw_system: DrawSystem,
+) -> None:
+    """Verifies invalid weights do not crash selection.
+
+    Args:
+        draw_system: The shared DrawSystem instance.
+    """
+    table = {
+        "a": "invalid",
+        "b": None,
+        "c": -100,
+    }
+
+    result = draw_system._weighted_choice(table)
+
+    assert result in table

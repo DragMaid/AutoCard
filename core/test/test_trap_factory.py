@@ -1,9 +1,10 @@
 from core.cards.trap_card import TrapCard
 from core.factory.trap_factory import TrapFactory
-from core.player import Player
+from core.data.player import Player
 
 
-def test_trap_factory():
+def test_trap_factory() -> None:
+    """Tests loading traps via TrapFactory."""
     factory = TrapFactory()
     factory.build()
 
@@ -15,10 +16,10 @@ def test_trap_factory():
 
     # Load a specific trap
     sample_name = list(cards.keys())[0]
-    trap = factory.load(player, name=sample_name)
+    trap = factory.load(player.id, name=sample_name)
     assert isinstance(trap, TrapCard)
-    assert trap.owner == player
+    assert trap.owner_id == player.id
 
     # Load random trap
-    random_trap = factory.load(player)
+    random_trap = factory.load(player.id)
     assert isinstance(random_trap, TrapCard)

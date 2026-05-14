@@ -1,156 +1,202 @@
-import random
 import logging
+import random
+from typing import Any, Dict, Optional
+from core.factory.card_registry import CardRegistry
 from core.factory.monster_factory import MonsterFactory
 from core.factory.spell_factory import SpellFactory
 from core.factory.trap_factory import TrapFactory
+from core.cards.card import CardType, Card
 
 logger = logging.getLogger(__name__)
 
 
 class DrawSystem:
-    def __init__(self):
-        # Weighted probabilities for each card category
-        self.generic_draw = {
-            'monster': 50,
-            'spell': 30,
-            'trap': 20
-        }
+    """Handles weighted card draws for monsters, spells, and traps."""
 
-        # Initialize factories
+    CARD_TYPE_WEIGHTS: Dict[str, int] = {
+        CardType.MONSTER: 50,
+        CardType.SPELL: 30,
+        CardType.TRAP: 20,
+    }
+
+    DRAW_TABLES: Dict[str, Dict[CardType, int]] = {
+        CardType.MONSTER: {
+            1: 74,
+            2: 20,
+            3: 5,
+            4: 1,
+        },
+        CardType.SPELL: {
+            "Mystical Space Typhoon": 15,
+            "Call of the Brave": 10,
+            "Maniac War": 15,
+            "Aura Shield": 15,
+            "Reinforcement": 45,
+        },
+        CardType.TRAP: {
+            "Shattered Guard": 20,
+            "Crippling Curse": 20,
+            "Phantom Dodge": 20,
+            "Mirror Strike": 20,
+            "Weaken Summon": 20,
+        },
+    }
+
+    def __init__(self) -> None:
         self.monster_factory = MonsterFactory()
-        self.monster_factory.build()
         self.spell_factory = SpellFactory()
-        self.spell_factory.build()
         self.trap_factory = TrapFactory()
+
+        self.monster_factory.build()
+        self.spell_factory.build()
         self.trap_factory.build()
 
-        # Weighted tables for specific cards (or monster levels)
-        self.draw_table = {
-            "monster": {
-                1: 74,   # Level 1 monsters are common
-                2: 20,   # Level 2 are uncommon
-                3: 5,    # Level 3 are rare
-                4: 1     # Level 4 are very rare
-            },
-            "spell": {
-                "Mystical Space Typhoon": 15,
-                "Call of the Brave": 10,
-                "Maniac War": 15,
-                "Aura Shield": 15,
-                "Reinforcement": 45  # Increased reinforcement draw rate
-            },
-            "trap": {
-                "Shattered Guard": 20,
-                "Crippling Curse": 20,
-                "Phantom Dodge": 20,
-                "Mirror Strike": 20,
-                "Weaken Summon": 20
-            }
-        }
+    def draw(self, player_id: str) -> Optional[Card]:
+        """Draws a card using weighted probabilities.
 
-    # -------------------------------
-    # Utility: Weighted random choice
-    # -------------------------------
-    def rate(self, table: dict):
+        Args:
+            player_id (str): The ID of the player drawing the card.
+
+        Returns:
+            Optional[Card]: The drawn card instance, or None if the draw failed.
         """
-        Weighted random choice from a dictionary {key: weight}.
-        Uses total weight normalization. Falls back to uniform random
-        if weights are invalid or zero.
-        """
-        if not table:
-            raise ValueError("Empty table passed to rate().")
-
-        keys, weights = zip(*table.items())
-        try:
-            weights = [float(w) if float(w) > 0 else 0 for w in weights]
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid weights in table: {e}")
-            weights = [1] * len(keys)
-
-        total = sum(weights)
-        if total <= 0:
-            logger.warning(
-                "All weights are zero or invalid, falling back to uniform choice.")
-            return random.choice(keys)
-
-        return random.choices(keys, weights=weights, k=1)[0]
-
-    # -------------------------------
-    # Core: Draw a single card
-    # -------------------------------
-    def rate_card_draw(self, player_id: str):
-        """
-        Draws a card based on weighted probabilities.
-        """
-        card_type = self.rate(self.generic_draw)
-        card_key = self.rate(self.draw_table[card_type])
-        card = None
+        category = self._weighted_choice(self.CARD_TYPE_WEIGHTS)
+        selection = self._weighted_choice(self.DRAW_TABLES[category])
 
         try:
-            if card_type == 'monster':
-                # Dynamically get available monster types from factory
-                all_monsters = self.monster_factory.get_cards()
-                monster_types = list(set(
-                    info.get("type") for info in all_monsters.values()
-                    if info.get("type")
-                ))
+            if category == CardType.MONSTER:
+                return self._draw_monster(player_id, level=selection)
 
-                if not monster_types:
-                    logger.error("No monster types found in factory!")
-                    return None
+            return self._draw_named_card(
+                player_id=player_id,
+                category=category,
+                card_name=selection,
+            )
 
-                monster_type = random.choice(monster_types)
-                card = self.monster_factory.load_by_type_and_level(
-                    player_id, monster_type, card_key)
+        except Exception:
+            logger.exception(
+                "Failed to draw card",
+                extra={
+                    "category": category,
+                    "selection": selection,
+                    "player_id": player_id,
+                },
+            )
+            return None
 
-                if not card:
-                    # If specific level/type combo fails, try any monster of that level
-                    logger.debug(f"Level {card_key} {
-                                 monster_type} not found, trying any level {card_key} monster")
-                    candidates = [
-                        name for name, info in all_monsters.items()
-                        if info.get("level_star") == card_key
-                    ]
-                    if candidates:
-                        card = self.monster_factory.load(
-                            player_id, random.choice(candidates))
-                    else:
-                        # Absolute fallback: draw any monster
-                        card = self.monster_factory.load(player_id)
+    def _draw_named_card(
+        self,
+        player_id: str,
+        category: CardType,
+        card_name: str,
+    ) -> Optional[Card]:
+        """Draws a spell or trap card by name.
 
-            elif card_type == 'spell':
-                card = self.spell_factory.load(player_id, card_key)
+        Args:
+            player_id (str): The ID of the player.
+            category (CardType): The card category.
+            card_name (str): The name of the card.
 
-            elif card_type == 'trap':
-                card = self.trap_factory.load(player_id, card_key)
+        Returns:
+            Optional[Card]: The drawn card instance, or None if creation failed.
+        """
+        card = CardRegistry.create(category, player_id, card_name)
 
-        except Exception as e:
-            logger.exception(f"Error drawing {card_type} ({card_key}): {e}")
-
-        if not card:
-            logger.error(f"Failed to load {card_type} '{
-                         card_key}' even after fallback.")
+        if card is None:
+            logger.error(
+                "Failed to create card",
+                extra={
+                    "category": category,
+                    "card_name": card_name,
+                },
+            )
 
         return card
 
-    # -------------------------------
-    # Debug / diagnostic
-    # -------------------------------
-    def check_draw_issues(self, player_id: str, attempts=1000):
-        """
-        Perform multiple draws to detect any cards that fail to load.
-        """
-        failures = []
-        for _ in range(attempts):
-            card = self.rate_card_draw(player_id)
-            if not card:
-                # We need to know what failed, but rate_card_draw logs it.
-                # For this diagnostic, we'll re-run a simplified check if needed
-                # or just track null returns.
-                failures.append("Unknown")
+    def _draw_monster(
+        self,
+        player_id: str,
+        level: int,
+    ) -> Optional[Card]:
+        """Draws a monster matching the requested level.
 
-        if failures:
-            logger.warning(f"Found {len(failures)} problematic draws out of {
-                           attempts} attempts.")
-        else:
-            logger.info(f"No draw issues found after {attempts} attempts.")
+        Args:
+            player_id (str): The ID of the player.
+            level (int): The required monster star level.
+
+        Returns:
+            Optional[Card]: The drawn monster card instance, or None if creation failed.
+        """
+        factory = CardRegistry.get_factory(CardType.MONSTER)
+
+        all_monsters = factory.get_cards()
+
+        candidates = [
+            name
+            for name, info in all_monsters.items()
+            if info.get("star") == level
+        ]
+
+        if not candidates:
+            logger.warning(
+                "No monsters found for level",
+                extra={"level": level},
+            )
+
+            return factory.load(player_id)
+
+        monster_name = random.choice(candidates)
+
+        card = factory.load(player_id, monster_name)
+
+        if card is None:
+            logger.error(
+                "Failed to load monster",
+                extra={
+                    "monster_name": monster_name,
+                    "level": level,
+                },
+            )
+
+        return card
+
+    @staticmethod
+    def _weighted_choice(table: Dict[Any, int]) -> Any:
+        """Selects a weighted random item from a mapping.
+
+        Args:
+            table (Dict[Any, int]): A dictionary mapping items to weights.
+
+        Returns:
+            Any: The randomly selected item.
+        """
+        if not table:
+            raise ValueError("Weighted table cannot be empty.")
+
+        normalized: Dict[Any, float] = {}
+
+        for key, weight in table.items():
+            try:
+                normalized[key] = max(float(weight), 0)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Invalid weight encountered",
+                    extra={
+                        "key": key,
+                        "weight": weight,
+                    },
+                )
+                normalized[key] = 0
+
+        total_weight = sum(normalized.values())
+
+        if total_weight <= 0:
+            logger.warning(
+                "All weights invalid or zero. Falling back to uniform random.")
+            return random.choice(list(table.keys()))
+
+        return random.choices(
+            population=list(normalized.keys()),
+            weights=list(normalized.values()),
+            k=1,
+        )[0]

@@ -2,7 +2,7 @@ import math
 import pygame
 from .animation import Animation
 from gui.effects.manager import EffectManager
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 
 
 class SpellAnimation(Animation):

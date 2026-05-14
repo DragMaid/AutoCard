@@ -1,25 +1,48 @@
 import torch
 import torch.nn as nn
-from ml.models.dqn import DQN
 from ml.models.mlp_base import MLPBase
+from typing import List
 
 
-class AveragePolicy(DQN):
-    """Policy network for NFSP (stochastic, NaN-safe version)."""
+from ml.models.state_encoder import GameStateEncoder
 
-    def __init__(self, input_dim, num_actions, hidden_dims=[256, 256]):
-        super().__init__(input_dim, num_actions)
-        self.feature_net = MLPBase(input_dim, hidden_dims)
+
+class AveragePolicy(nn.Module):
+    """Policy network for NFSP with Attention-based state encoding."""
+
+    def __init__(self, encoder: GameStateEncoder, num_actions: int, hidden_dims: List[int] = [256, 256]):
+        """Initializes AveragePolicy.
+
+        Args:
+            encoder: GameStateEncoder instance.
+            num_actions: Number of actions.
+            hidden_dims: List of hidden layer dimensions.
+        """
+        super().__init__()
+        self.encoder = encoder
+        self.feature_net = MLPBase(encoder.output_dim, hidden_dims)
         self.num_actions = num_actions
         self.head = nn.Linear(self.feature_net.output_dim, num_actions)
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
 
-        # Xavier initialization (prevents huge logits early)
+        # Xavier initialization
         nn.init.xavier_uniform_(self.head.weight)
         nn.init.constant_(self.head.bias, 0.0)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x: Input tensor (flat).
+
+        Returns:
+            Action probabilities.
+        """
+        # Encode state
+        x = self.encoder(x)
+
+        # Feature extraction
         x = self.feature_net(x)
 
         # Compute logits
@@ -32,7 +55,15 @@ class AveragePolicy(DQN):
         # Use numerically safe softmax (log-sum-exp trick)
         return self.stable_softmax(logits, dim=1)
 
-    def act(self, state):
+    def act(self, state: torch.Tensor) -> int:
+        """Selects action.
+
+        Args:
+            state: State tensor.
+
+        Returns:
+            Action index.
+        """
         state = state.unsqueeze(0).to(self.device)
         with torch.no_grad():
             probs = self.forward(state)
@@ -40,7 +71,16 @@ class AveragePolicy(DQN):
         return action
 
     @staticmethod
-    def stable_softmax(logits, dim=-1):
+    def stable_softmax(logits: torch.Tensor, dim: int = -1) -> torch.Tensor:
+        """Computes numerically stable softmax.
+
+        Args:
+            logits: Logits.
+            dim: Dimension.
+
+        Returns:
+            Probabilities.
+        """
         z = logits - logits.max(dim=dim, keepdim=True).values
         numerator = torch.exp(z)
         denominator = numerator.sum(dim=dim, keepdim=True)

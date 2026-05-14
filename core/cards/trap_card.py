@@ -1,48 +1,45 @@
-from core.cards.card import Card
-from typing import Any
+from core.cards.card import Card, CardType
+from typing import Optional, List, Literal
 from enum import Enum
 
 
-class ActivateCondition(Enum):
+class TrapAbility(str, Enum):
+    REFLECT_ATTACK = "REFLECT_ATTACK"
+    DODGE_ATTACK = "DODGE_ATTACK"
+    DEBUFF_ATTACK = "DEBUFF_ATTACK"
+    DEBUFF_DEFEND = "DEBUFF_DEFEND"
+
+
+class ActivateCondition(str, Enum):
     TOGGLE = "TOGGLE"
     ATTACK = "ATTACK"
     SUMMON = "SUMMON"
 
 
 class TrapCard(Card):
-    def __init__(self,
-                 name: str,
-                 description: str,
-                 owner_id: str,
-                 ability: str,
-                 value: int | None,
-                 duration: int | None,
-                 image_path: str | None = None,
-                 is_trigger: bool = False,
-                 triggerable: bool = False,
-                 **kwargs: Any
-                 ):
-        params = {
-            "name": name,
-            "description": description,
-            "ctype": "trap",
-            "ability": ability,
-            "owner_id": owner_id,
-            "is_placed": True,  # Traps are placed on field
-            "is_face_down": True,
-        }
-        params.update(kwargs)
-        super().__init__(**params)
-        self.value = value
-        self.duration = duration
-        self.image_path = str(image_path)
-        self.is_trigger = is_trigger
-        self.triggerable = triggerable
+    """Represents a trap card in the game.
 
-    def __str__(self):
-        return f"Trap: {self.name} - {self.description} (Ability: {self.ability})"
+    Attributes:
+        card_type: Category of the card, fixed to TRAP.
+        abilities: List of abilities triggered by the trap.
+        activation: Condition that triggers the trap.
+        effectiveness: Optional list of effectiveness values for abilities.
+        duration: Optional list of durations for abilities.
+        is_triggered: Whether the trap has been activated.
+        triggerable: Whether the trap is currently in a state to be triggered.
+    """
+    card_type: Literal[CardType.TRAP] = CardType.TRAP
 
-    def reveal(self):
-        """Reveal the trap (flip face-up)"""
+    abilities: List[TrapAbility]
+    activation: ActivateCondition
+
+    effectiveness: Optional[List[int]] = None
+    duration: Optional[List[int]] = None
+
+    is_triggered: bool = False
+    triggerable: bool = False
+
+    def reveal(self) -> None:
+        """Reveals the trap and marks it as triggered."""
         self.is_face_down = False
-        self.is_trigger = True
+        self.is_triggered = True

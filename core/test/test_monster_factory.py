@@ -1,9 +1,11 @@
 from core.cards.monster_card import MonsterCard
 from core.factory.monster_factory import MonsterFactory
-from core.player import Player
+from core.data.player import Player
+from core.utils import load_by_type_and_level
 
 
-def test_monster_factory_build_and_load():
+def test_monster_factory_build_and_load() -> None:
+    """Tests building and loading monsters via MonsterFactory."""
     factory = MonsterFactory()
     factory.build()  # load JSON
 
@@ -17,18 +19,19 @@ def test_monster_factory_build_and_load():
 
     # Load a specific monster
     sample_name = list(cards.keys())[0]
-    monster = factory.load(player, name=sample_name)
+    monster = factory.load(player.id, name=sample_name)
     assert isinstance(monster, MonsterCard)
-    assert monster.owner == player
+    assert monster.owner_id == player.id
 
     # Load a random monster
-    random_monster = factory.load(player)
+    random_monster = factory.load(player.id)
     assert isinstance(random_monster, MonsterCard)
 
     # Load by type and level
-    monster_type = list(cards.values())[0]["type"]
-    level = list(cards.values())[0]["level_star"]
-    m = factory.load_by_type_and_level(player, monster_type, level)
+    sample_info = list(cards.values())[0]
+    monster_type = sample_info["monster_type"]
+    level = sample_info["star"]
+    m = load_by_type_and_level(factory, player.id, monster_type, level)
     assert isinstance(m, MonsterCard)
-    assert m.level_star == level
-    assert m.type == monster_type
+    assert m.star == level
+    assert m.monster_type.value == monster_type.upper().replace(" ", "_")

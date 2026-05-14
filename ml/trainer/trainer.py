@@ -2,7 +2,6 @@ import logging
 from typing import List
 
 from ml.trainer.agent import Agent
-from ml.trainer.action_mapper import ActionMapper
 from ml.trainer.mlflow_manager import MLFlowManager
 from ml.trainer.episode_manager import EpisodeManager
 from ml.trainer.training_loop import TrainingLoop
@@ -20,11 +19,25 @@ logging.basicConfig(
 
 
 class Trainer:
-    """
-    Main trainer class coordinating multi-agent RL training.
+    """Main trainer class coordinating multi-agent RL training.
+
+    Attributes:
+        env: The game environment.
+        cfg: Training configuration object.
+        num_agents (int): Number of agents participating in the training.
+        agents (List[Agent]): List of agent instances.
+        episode_manager (EpisodeManager): Manager for handling episode data.
+        mlflow_manager (MLFlowManager): Manager for tracking experiments.
     """
 
-    def __init__(self, env, config, num_agents: int = 2):
+    def __init__(self, env, config, num_agents: int = 2) -> None:
+        """Initializes the Trainer with environment, configuration, and agent count.
+
+        Args:
+            env: The game environment instance.
+            config: Training configuration object.
+            num_agents (int, optional): Number of agents. Defaults to 2.
+        """
         self.env = env
         self.cfg = config
         self.num_agents = num_agents
@@ -32,25 +45,27 @@ class Trainer:
 
         self.episode_manager = EpisodeManager(num_agents)
         self.mlflow_manager = MLFlowManager(config)
-        self.action_mapper = ActionMapper(env)
 
         self._load_checkpoints_if_exist()
         logging.info(f"Currently running on device: {self.cfg.DEVICE}")
 
     def _initialize_agents(self) -> List[Agent]:
-        """Create agent instances with appropriate dimensions."""
+        """Creates agent instances with appropriate dimensions.
+
+        Returns:
+            List[Agent]: A list of initialized agents.
+        """
         return [
             Agent(
                 state_dim=self.env.state_dim,
                 num_actions=self.env.num_actions,
-                param_dim=self.env.param_dim,
                 config=self.cfg
             )
             for _ in range(self.num_agents)
         ]
 
-    def _load_checkpoints_if_exist(self):
-        """Load model checkpoints if available."""
+    def _load_checkpoints_if_exist(self) -> None:
+        """Loads model checkpoints if available."""
         checkpoint_path = self.cfg.CHECKPOINT_PATH
         if not checkpoint_path.exists():
             return
@@ -72,15 +87,14 @@ class Trainer:
             checkpoint_path=self.cfg.CHECKPOINT_PATH,
         )
 
-    def train(self):
-        """Execute the main training loop."""
+    def train(self) -> None:
+        """Executes the main training loop."""
         set_global_seeds(self.cfg.SEED)
         self.mlflow_manager.start_run()
 
         training_loop = TrainingLoop(
             env=self.env,
             agents=self.agents,
-            action_mapper=self.action_mapper,
             episode_manager=self.episode_manager,
             config=self.cfg
         )
@@ -88,8 +102,8 @@ class Trainer:
         training_loop.run()
         self._save_final_models()
 
-    def _save_final_models(self):
-        """Save final trained models."""
+    def _save_final_models(self) -> None:
+        """Saves final trained models."""
         models = {
             f"agent_{i}": agent.dqn
             for i, agent in enumerate(self.agents)

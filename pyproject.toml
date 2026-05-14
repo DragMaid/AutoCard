@@ -10,6 +10,7 @@ dependencies = [
     "gunicorn>=25.3.0",
     "mlflow>=3.11.1",
     "numpy>=2.4.4",
+    "pydantic>=2.13.3",
     "pygame>=2.6.1",
     "pytest>=9.0.3",
     "python-socketio>=5.16.1",

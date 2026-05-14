@@ -1,6 +1,6 @@
 from .animation import Animation
 from gui.effects.manager import EffectManager
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 import pygame
 import math
 

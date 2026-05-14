@@ -1,57 +1,50 @@
-from core.cards.card import Card
+from core.cards.card import Card, CardType
+from enum import Enum
 from typing import Literal
 
-cardMode = Literal["attack", "defense"]
+
+class MonsterType(str, Enum):
+    SCHOLAR = "SCHOLAR"
+    CONQUEROR = "CONQUEROR"
+    FOREST_MONSTER = "FOREST_MONSTER"
+    DEMON = "DEMON"
+    FOREST_GUARD = "FOREST_GUARD"
+
+
+class CardMode(str, Enum):
+    ATTACK = "ATTACK"
+    DEFEND = "DEFEND"
 
 
 class MonsterCard(Card):
-    def __init__(self,
-                 name: str,
-                 description: str,
-                 owner_id: str,
-                 ability: str | None = None,
-                 atk: int = 0,
-                 defend: int = 0,
-                 level_star: int = 1,
-                 mode: cardMode = 'attack',
-                 image_path: str | None = None,
-                 has_attack: bool = False,
-                 type: str = "Unknown",
-                 is_summoned: bool = False,
-                 is_alive: bool = True,
-                 **kwargs,
-                 ):
-        params = {
-            "name": name,
-            "description": description,
-            "ctype": "monster",
-            "ability": ability,
-            "owner_id": owner_id,
-        }
-        params.update(kwargs)
-        super().__init__(**params)
-        self.atk = atk
-        self.defend = defend
-        self.level_star = level_star
-        self.mode = mode  # 'attack' or 'defense'
-        self.image_path = str(image_path)
-        self.is_summoned = is_summoned
-        self.is_alive = is_alive
-        self.has_attack = has_attack
-        # TODO: should create an enum for this instead
-        self.type = type  # Monster type (Scholar, Conqueror, etc.)
+    """Represents a monster card in the game.
 
-    def __str__(self):
-        return f"Name: {self.name} \
-                OwnerID: {self.owner_id} \
-                ATK: {self.atk} \
-                DEF: {self.defend} \
-                Star: {self.level_star}\
-                Mode: {self.mode} \
-                Type: {self.type}"
+    Attributes:
+        card_type: Category of the card, fixed to MONSTER.
+        monster_type: Type of the monster (e.g., SCHOLAR, CONQUEROR).
+        attack: Monster attack power.
+        defend: Monster defense power.
+        star: Monster star rating (level).
+        mode: Current field mode (ATTACK or DEFEND).
+        has_attacked: Whether the monster has already attacked this turn.
+    """
+    card_type: Literal[CardType.MONSTER] = CardType.MONSTER
 
-    def switch_position(self):
-        """Change the card mode to either attack or defense."""
-        self.mode = 'defense' if self.mode == 'attack' else 'attack'
-        print(f"{self.name} switched to {self.mode} position.")
+    monster_type: MonsterType
+
+    attack: int = 0
+    defend: int = 0
+    star: int = 1
+
+    mode: CardMode = CardMode.ATTACK
+
+    has_attacked: bool = False
+
+    def switch_position(self) -> CardMode:
+        """Switches the monster's current mode between ATTACK and DEFEND.
+
+        Returns:
+            The new CardMode after the switch.
+        """
+        self.mode = CardMode.DEFEND if self.mode is CardMode.ATTACK else CardMode.ATTACK
         return self.mode

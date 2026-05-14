@@ -1,49 +1,52 @@
-"""
-Agent module handling RL and IL components.
-"""
 import numpy as np
 import random
-from typing import List
-import logging
+from typing import List, Any
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 
 from ml.storage import ReplayBuffer, ReservoirBuffer
-from ml.models import DuelingDQN, PDQN, AveragePolicy
+from ml.models import DuelingDQN, AveragePolicy
+from ml.models.state_encoder import GameStateEncoder
+from ml.environment.encoder import get_card_feature_dim
+from core.config import config as game_config
 from ml.trainer.buffer_manager import BufferManager
 from ml.utils import update_target
 
 
 class Agent:
-    """
-    RL agent with DQN, policy network, and optional PDQN.
-    """
+    """RL agent with DQN and average policy network."""
 
-    def __init__(
-            self,
-            state_dim: int,
-            num_actions: int,
-            param_dim: int,
-            config,
-            use_pdqn: bool = True
-    ):
+    def __init__(self, state_dim: int, num_actions: int, config: Any):
+        """Initializes Agent.
+
+        Args:
+            state_dim: State dimension.
+            num_actions: Number of actions.
+            config: Configuration object.
+        """
         self.cfg = config
-        self.use_pdqn = use_pdqn
         self.num_actions = num_actions
 
+        # Initialize GameStateEncoder
+        card_dim = get_card_feature_dim()
+        player_dim = 8  # 2 players * 4 features each
+        self.encoder = GameStateEncoder(
+            card_dim=card_dim,
+            player_dim=player_dim,
+            max_hand_cards=game_config.MAX_HAND_CARDS,
+            max_board_cards=game_config.ROWS * game_config.COLS
+        ).to(self.cfg.DEVICE)
+
         # Core networks
-        self.dqn = DuelingDQN(state_dim, num_actions).to(self.cfg.DEVICE)
+        self.dqn = DuelingDQN(self.encoder, num_actions).to(self.cfg.DEVICE)
         self.target_dqn = DuelingDQN(
-            state_dim, num_actions).to(self.cfg.DEVICE)
-        update_target(self.dqn, self.target_dqn)
+            self.encoder, num_actions).to(self.cfg.DEVICE)
+        # Initial sync params to target dqn
+        self.update_target_network()
 
         # Average policy
-        self.policy = AveragePolicy(state_dim, num_actions).to(self.cfg.DEVICE)
-
-        # PDQN components
-        if use_pdqn:
-            self._initialize_pdqn(state_dim, num_actions, param_dim)
+        self.policy = AveragePolicy(self.encoder, num_actions).to(self.cfg.DEVICE)
 
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
@@ -51,83 +54,39 @@ class Agent:
         self.rl_optimizer = optim.Adam(self.dqn.parameters(), lr=1e-4)
         self.sl_optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
 
-        self.buffer_manager = BufferManager(
-            self,
-            self.cfg,
-            param_dim if use_pdqn else 0
-        )
+        # Buffer manager for temporary state, reward containment till
+        # enough samples are met to be flushed into replay and reservoir
+        self.buffer_manager = BufferManager(self, self.cfg)
 
         # Metrics
         self.rl_losses: List[float] = []
         self.sl_losses: List[float] = []
 
-    def _initialize_pdqn(
-            self,
-            state_dim: int,
-            num_actions: int,
-            param_dim: int
-    ):
-        """Initialize PDQN components."""
-        self.pdqn = PDQN(state_dim, num_actions, param_dim).to(self.cfg.DEVICE)
-        self.param_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
+    def select_action(self, state: np.ndarray, epsilon: float, best_response: bool = True) -> int:
+        """Selects action using either DQN or average policy.
 
-        self.pdqn_critic_opt = optim.Adam(
-            self.pdqn.critic.parameters(),
-            lr=1e-4
-        )
-        self.pdqn_actor_opt = optim.Adam(
-            self.pdqn.actor.parameters(),
-            lr=1e-4
-        )
-        self.pdqn_alpha_opt = optim.Adam(
-            [self.pdqn.log_alpha],
-            lr=1e-4
-        )
+        Args:
+            state: Current state.
+            epsilon: Exploration probability.
+            best_response: Use DQN or average policy.
 
-    def select_action(
-            self,
-            state,
-            epsilon: float,
-            best_response: bool = True
-    ) -> int:
-        """Select action using either DQN or average policy."""
+        Returns:
+            Selected action.
+        """
         tensor = torch.FloatTensor(state).to(self.cfg.DEVICE)
 
         if best_response:
             return self.dqn.act(tensor, epsilon)
         return self.policy.act(tensor)
 
-    def select_continuous_params(self, state):
-        """Select continuous parameters using PDQN actor."""
-        if not self.use_pdqn:
-            return None
-
-        state_tensor = torch.FloatTensor(
-            state).unsqueeze(0).to(self.cfg.DEVICE)
-
-        with torch.no_grad():
-            cont_params, _, _ = self.pdqn.actor.sample(state_tensor)
-
-        return cont_params.squeeze(0).cpu().numpy()
-
-    def update_networks(self):
-        """Update all networks if sufficient data available."""
+    def update_networks(self) -> None:
+        """Updates all networks if sufficient data available."""
         if not self._can_update():
             return
 
+        # Normalize the parameters before updating
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
-
-        if self.use_pdqn and hasattr(self, "pqdn"):
-            torch.nn.utils.clip_grad_norm_(
-                self.pqdn.parameters(), max_norm=1.0)
-
-        self._check_and_reset_weights(self.policy, "policy")
-        self._check_and_reset_weights(self.dqn, "dqn")
-
-        if self.use_pdqn and hasattr(self, "pqdn"):
-            self._check_and_reset_weights(self.pdqn.actor, "pdqn.actor")
-            self._check_and_reset_weights(self.pdqn.critic, "pdqn.critic")
 
         rl_loss = self._update_rl_network()
         sl_loss = self._update_sl_network()
@@ -135,30 +94,24 @@ class Agent:
         self.rl_losses.append(rl_loss.item())
         self.sl_losses.append(sl_loss.item())
 
-        if self.use_pdqn:
-            self._update_pdqn_network()
-
-    @staticmethod
-    def _check_and_reset_weights(model, model_name="model"):
-        for name, param in model.named_parameters():
-            if not torch.isfinite(param).all():
-                logging.warning(f"⚠️ NaN detected in {model_name}.{
-                                name}, resetting weights.")
-                if param.ndim >= 2:
-                    torch.nn.init.xavier_uniform_(param)
-                else:
-                    torch.nn.init.zeros_(param)
-
     def _can_update(self) -> bool:
-        """Check if buffers have enough samples."""
+        """Checks if buffers have enough samples.
+
+        Returns:
+            Boolean indicating if update is possible.
+        """
         min_samples = self.cfg.BATCH_SIZE
         return (
             len(self.replay_buffer) > min_samples and
             len(self.reservoir) > min_samples
         )
 
-    def _update_rl_network(self):
-        """Update DQN network."""
+    def _update_rl_network(self) -> torch.Tensor:
+        """Updates DQN network.
+
+        Returns:
+            Loss tensor.
+        """
         batch = self.replay_buffer.sample(self.cfg.BATCH_SIZE)
         state, action, reward, next_state, done = batch
 
@@ -171,15 +124,19 @@ class Agent:
 
         # Compute loss
         q_values = self.dqn(state)
-        next_q_values = self.target_dqn(next_state)
-
         current_q = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
-        max_next_q = next_q_values.max(1)[0]
 
+        # Avoid building grad graph for the target network
+        with torch.no_grad():
+            next_q_values = self.target_dqn(next_state)
+            max_next_q = next_q_values.max(1)[0]
+
+        # Additional discount factor
         discount_factor = self.cfg.GAMMA ** self.cfg.MULTI_STEP
         expected_q = reward + discount_factor * max_next_q * (1 - done)
 
-        loss = F.smooth_l1_loss(current_q, expected_q.detach())
+        # Changed MSE loss for Huber loss, avoid huge spikes
+        loss = F.smooth_l1_loss(current_q, expected_q)
 
         # Optimize
         self.rl_optimizer.zero_grad()
@@ -188,8 +145,12 @@ class Agent:
 
         return loss
 
-    def _update_sl_network(self):
-        """Update average policy network."""
+    def _update_sl_network(self) -> torch.Tensor:
+        """Updates average policy network.
+
+        Returns:
+            Loss tensor.
+        """
         state, action = self.reservoir.sample(self.cfg.BATCH_SIZE)
 
         state = torch.FloatTensor(state).to(self.cfg.DEVICE)
@@ -205,50 +166,39 @@ class Agent:
 
         return loss
 
-    def _update_pdqn_network(self):
-        """Update PDQN networks."""
-        self.pdqn.update(
-            self.param_buffer,
-            critic_optimizer=self.pdqn_critic_opt,
-            actor_optimizer=self.pdqn_actor_opt,
-            alpha_optimizer=self.pdqn_alpha_opt,
-            batch_size=self.cfg.BATCH_SIZE,
-            gamma=self.cfg.GAMMA,
-            tau=self.cfg.TAU
-        )
-
-    def update_target_network(self):
-        """Copy weights from DQN to target DQN."""
+    def update_target_network(self) -> None:
+        """Copies weights from DQN to target DQN."""
         update_target(self.dqn, self.target_dqn)
 
     def select_action_with_mask(
             self,
-            state,
+            state: np.ndarray,
             action_mask: np.ndarray,
             epsilon: float,
             best_response: bool = True
     ) -> int:
-        """
-        Select action with masking.
+        """Selects action with masking.
 
         Args:
-            state: Current state
-            action_mask: Boolean array indicating valid actions
-            epsilon: Exploration rate
-            best_response: Use DQN (True) or policy (False)
+            state: Current state.
+            action_mask: Boolean array indicating valid actions.
+            epsilon: Exploration rate.
+            best_response: Use DQN (True) or policy (False).
+
+        Returns:
+            Selected action.
         """
         if not np.any(action_mask):
             # No valid actions - should never happen, but fallback
             return 0
 
+        # This assume that batch size will be 1
         tensor = torch.FloatTensor(state).unsqueeze(0).to(self.cfg.DEVICE)
         mask_tensor = torch.FloatTensor(
             action_mask).unsqueeze(0).to(self.cfg.DEVICE)
 
         if best_response:
-            return self._select_with_dqn_masked(
-                tensor, mask_tensor, epsilon
-            )
+            return self._select_with_dqn_masked(tensor, mask_tensor, epsilon)
         else:
             return self._select_with_policy_masked(tensor, mask_tensor)
 
@@ -264,69 +214,55 @@ class Agent:
         # Apply mask (set invalid actions to -inf)
         masked_q = q_values.masked_fill(mask_tensor == 0, float('-inf'))
 
+        assert not torch.isinf(masked_q).all()
+
         if random.random() < epsilon:
             # Explore: choose randomly from valid actions
             valid_actions = torch.where(mask_tensor[0] == 1)[0]
             return random.choice(valid_actions.tolist())
-        else:
-            # Exploit: choose best valid action
-            return masked_q[0].argmax().item()
 
-    def _select_with_policy_masked(self, state_tensor: torch.Tensor, mask_tensor: torch.Tensor) -> int:
-        """Policy selection with masking and detailed debug logging."""
-        try:
-            # Step 1: Forward pass
-            probs = self.policy(state_tensor)
+        # Exploit: choose best valid action
+        return masked_q[0].argmax().item()
 
-            # --- DEBUG LOGS ---
-            # logging.info(f"Policy output shape: {probs.shape}, dtype: {probs.dtype}")
-            # logging.info(f"Mask shape: {mask_tensor.shape}, dtype: {mask_tensor.dtype}")
-            # logging.info(f"Mask sum (valid actions): {mask_tensor.sum().item()}")
+    def _select_with_policy_masked(
+        self,
+        state_tensor: torch.Tensor,
+        mask_tensor: torch.Tensor
+    ) -> int:
+        """Policy selection using logit masking BEFORE softmax."""
+        encoded = self.policy.encoder(state_tensor)
+        feat = self.policy.feature_net(encoded)
+        logits = self.policy.head(feat)
 
-            # Step 2: Validate shapes
-            if probs.dim() != 2:
-                logging.error(f"Unexpected policy output shape: {probs.shape}")
-                return 0
-            if probs.shape[-1] != mask_tensor.shape[-1]:
-                logging.error(f"Shape mismatch: probs {
-                              probs.shape} vs mask {mask_tensor.shape}")
-                return 0
+        # Sanitize logits
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)
+        logits = torch.clamp(logits, -10, 10)
 
-            # Step 3: Check for invalid values
-            if not torch.isfinite(probs).all():
-                logging.error(
-                    f"Non-finite values in policy output: min={probs.min().item()}, max={probs.max().item()}")
-                return 0
+        # check for shape mismatches
+        assert logits.dim() == 2
+        assert logits.shape[-1] == mask_tensor.shape[-1]
 
-            # Step 4: Apply masking
-            masked_probs = probs[0] * mask_tensor[0]
-            prob_sum = masked_probs.sum().item()
-            # logging.info(f"Sum of masked probs: {prob_sum:.6f}")
+        # check for finiteness
+        assert torch.isfinite(logits).all(), "Logits must be finite"
 
-            # Step 5: Handle invalid / degenerate cases
-            if mask_tensor.sum().item() == 0:
-                logging.warning(
-                    "Mask tensor has no valid actions! Falling back to random action.")
-                return random.randint(0, probs.shape[-1] - 1)
-
-            if prob_sum < 1e-8:
-                valid_actions = torch.where(mask_tensor[0] == 1)[0]
-                logging.warning(
-                    "All masked probabilities are near zero. Using uniform over valid actions.")
-                return random.choice(valid_actions.cpu().tolist())
-
-            # Step 6: Normalize and sample
-            masked_probs = masked_probs / prob_sum
-            masked_probs = torch.clamp(masked_probs, min=1e-10)
-            masked_probs = masked_probs / masked_probs.sum()
-
-            # --- DEBUG LOGS ---
-            # logging.info(f"Final prob dist: min={masked_probs.min().item():.6f}, max={masked_probs.max().item():.6f}, sum={masked_probs.sum().item():.6f}")
-
-            action = torch.multinomial(masked_probs, 1).item()
-            # logging.info(f"Selected action: {action}")
-            return action
-
-        except Exception as e:
-            logging.exception(f"Exception in _select_with_policy_masked: {e}")
+        # handle edge case: no valid actions
+        if mask_tensor.sum().item() == 0:
             return 0
+
+        # mask the logits with -inf
+        masked_logits = logits.clone()
+        masked_logits = masked_logits.masked_fill(
+            mask_tensor == 0, float("-inf"))
+
+        # In case everything is just masked (should be impossible now)
+        if torch.isinf(masked_logits).all():
+            return 0
+
+        # softmax over valid actions only
+        probs = torch.softmax(masked_logits, dim=1)
+
+        # check for finiteness in probabilities
+        assert torch.isfinite(probs).all(), "Probs must be finite"
+
+        action = torch.multinomial(probs[0], 1).item()
+        return action

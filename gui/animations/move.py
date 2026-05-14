@@ -1,5 +1,5 @@
 from .animation import Animation
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 
 
 class MoveAnimation(Animation):

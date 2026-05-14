@@ -1,31 +1,51 @@
 import pygame
 from abc import ABC, abstractmethod
+from typing import Optional
 from ml.environment.environment import GameEnv
 from ml.config import Config
-from core.player import Player
-from core.handle_game_logic.game_engine import GameEngine
-from core.handle_logic_gui.input_manager import InputManager
-from gui.gui_info.matrix_field import Matrix
-from core.handle_logic_gui.render_engine import RenderEngine
+from core.data.player import Player
+from core.logic.game_engine import GameEngine
+from core.gui.input_manager import InputManager
+from gui.background.matrix_field import Matrix
+from core.gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
-from gui.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
-
-# TODO: move this to config
-SCREEN_SIZE = (1280, 720)
+from gui.screen.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
+from core.config import config
 
 
 class GameApp(ABC):
-    def __init__(self, screen):
-        self.config = Config()
+    """
+    Base class for game applications, handling common engine and UI setup.
+
+    Attributes:
+        screen: The main game screen.
+        config (Config): Configuration instance.
+        clock (pygame.time.Clock): Game clock.
+        running (bool): Whether the application is running.
+        game_started (bool): Whether the game has started.
+        dt (float): Delta time.
+        should_exit_to_menu (bool): Flag to exit to menu.
+        exit_reason (Optional[str]): Reason for exiting.
+        game_over (bool): Flag for game over state.
+    """
+
+    def __init__(self, screen) -> None:
+        """
+        Initializes GameApp.
+
+        Args:
+            screen: The main game screen.
+        """
+        self.config: Config = Config()
         self.screen = screen
         self.clock = pygame.time.Clock()
-        self.running = True
-        self.game_started = True
-        self.dt = 0
-        self.should_exit_to_menu = False
-        self.exit_reason = None
-        self.game_over = False
+        self.running: bool = True
+        self.game_started: bool = True
+        self.dt: float = 0
+        self.should_exit_to_menu: bool = False
+        self.exit_reason: Optional[str] = None
+        self.game_over: bool = False
 
         self._setup_players()
         self._setup_engine()
@@ -33,74 +53,95 @@ class GameApp(ABC):
         self._setup_ui()
 
         self.background = pygame.transform.scale(
-            load_image("assets/background.png"), SCREEN_SIZE
-        )
+            load_image("assets/background.png"), config.SCREEN_SIZE)
 
-    def _setup_players(self):
-        self.player1 = Player(0, "p1")
-        self.player2 = Player(1, "p2", is_opponent=True)
+    def _setup_players(self) -> None:
+        """Sets up the players for the game."""
+        self.player1: Player = Player(player_index=0, name="p1", is_opponent=False)
+        self.player2: Player = Player(player_index=1, name="p2", is_opponent=True)
 
-    def _setup_engine(self):
-        self.game_engine = GameEngine(
-            [self.player1, self.player2], verbose=True, log_to_file=False
-        )
-        self.env = GameEnv(engine=self.game_engine, render=False)
+    def _setup_engine(self) -> None:
+        """Sets up the game engine and environment."""
+        self.game_engine: GameEngine = GameEngine([self.player1, self.player2])
+        self.env: GameEnv = GameEnv(engine=self.game_engine, render=False)
 
-    def _setup_rendering(self):
-        self.field_matrix = Matrix(self.screen, self.game_engine.game_state)
-        self.render_engine = RenderEngine(
-            field_matrix=self.field_matrix,
+    def _setup_rendering(self) -> None:
+        """Sets up rendering-related objects."""
+        self.matrix: Matrix = Matrix(self.screen, self.game_engine.game_state)
+        self.render_engine: RenderEngine = RenderEngine(
+            matrix=self.matrix,
             screen=self.screen,
             event_logger=self.game_engine.event_logger,
             turn_manager=self.game_engine.turn_manager,
             game_state=self.game_engine.game_state
         )
-        self.input_manager = InputManager(
-            self.field_matrix,
+        self.input_manager: InputManager = InputManager(
+            self.matrix,
             self.game_engine,
             self.render_engine
         )
 
-    def _setup_ui(self):
-        self.hud = GameHUD(
+    def _setup_ui(self) -> None:
+        """Sets up the user interface elements."""
+        self.hud: GameHUD = GameHUD(
             self.game_engine,
             on_end_turn=self.game_engine.end_turn,
             on_surrender=self._on_surrender_requested,
         )
-        self.surrender_overlay = SurrenderOverlay(
-            SCREEN_SIZE,
+        self.surrender_overlay: SurrenderOverlay = SurrenderOverlay(
+            config.SCREEN_SIZE,
             on_confirm=self._on_surrender_confirmed,
             on_cancel=self._on_surrender_cancelled,
         )
-        self.game_over_overlay = GameOverOverlay(
-            SCREEN_SIZE,
+        self.game_over_overlay: GameOverOverlay = GameOverOverlay(
+            config.SCREEN_SIZE,
             on_continue=self._on_return_to_menu,
         )
-        self.trap_overlay = TrapStageOverlay(SCREEN_SIZE)
+        self.trap_overlay: TrapStageOverlay = TrapStageOverlay(config.SCREEN_SIZE)
 
-    def _on_surrender_requested(self):
+    def _on_surrender_requested(self) -> None:
+        """Handles surrender request."""
         self.surrender_overlay.show()
 
-    def _on_surrender_cancelled(self):
+    def _on_surrender_cancelled(self) -> None:
+        """Handles cancellation of surrender request."""
         self.surrender_overlay.hide()
 
-    def _on_surrender_confirmed(self):
-        local_player = self._get_local_player()
+    def _on_surrender_confirmed(self) -> None:
+        """Handles confirmation of surrender."""
+        local_player: Optional[Player] = self._get_local_player()
         if local_player:
             local_player.life_points = 0
             self._check_game_over()
         self.surrender_overlay.hide()
         self.game_engine.synchronize()
 
-    def _on_return_to_menu(self):
+    def _on_return_to_menu(self) -> None:
+        """Handles return to menu request."""
         self.should_exit_to_menu = True
 
-    def _get_local_player(self):
+    def _get_local_player(self) -> Optional[Player]:
+        """
+        Returns the local player.
+
+        Returns:
+            Optional[Player]: The local player, or None if not found.
+        """
         return next(
-            (p for p in self.game_engine.game_state.players if not p.is_opponent), None
+            (p for p in self.game_engine.game_state.players
+             if not p.is_opponent), None
         )
 
-    def step(self, dt) -> bool:
+    def step(self, dt: float) -> bool:
+        """
+        Executes a game step.
+
+        Args:
+            dt (float): Delta time.
+
+        Returns:
+            bool: Whether the game is still running.
+        """
         self.dt = dt
         if not self._handle_events():
             return False
@@ -112,6 +153,7 @@ class GameApp(ABC):
         return self.running
 
     def _handle_events(self) -> bool:
+        """Handles input events."""
         if self.game_over:
             return self._handle_game_over_events()
         if self.surrender_overlay.visible:
@@ -119,6 +161,7 @@ class GameApp(ABC):
         return self._handle_gameplay_events()
 
     def _handle_game_over_events(self) -> bool:
+        """Handles events during game over screen."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -127,6 +170,7 @@ class GameApp(ABC):
         return True
 
     def _handle_surrender_overlay_events(self) -> bool:
+        """Handles events during surrender overlay."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -135,7 +179,8 @@ class GameApp(ABC):
         return True
 
     def _handle_gameplay_events(self) -> bool:
-        is_local = self.game_engine.is_local_turn()
+        """Handles gameplay-related events."""
+        is_local: bool = self.game_engine.is_local_turn()
         self.hud.set_local_turn(is_local)
 
         # Show trap overlay if it's the opponent's turn to activate traps
@@ -161,19 +206,21 @@ class GameApp(ABC):
 
         return True
 
-    def _check_game_over(self):
+    def _check_game_over(self) -> None:
+        """Checks for game over state."""
         if self.game_over or not self.game_engine.game_state.is_game_over():
             return
         self.game_over = True
         local_player = self._get_local_player()
-        result = "VICTORY" if (
+        result: str = "VICTORY" if (
             local_player and local_player.life_points > 0) else "DEFEAT"
         self.game_over_overlay.show(result)
 
-    def _draw(self):
+    def _draw(self) -> None:
+        """Draws all game elements."""
         self.screen.blit(self.background, (0, 0))
-        self.field_matrix.areas["preview_card_table"].draw(self.screen)
-        self.field_matrix.draw()
+        self.matrix.areas["preview_card_table"].draw(self.screen)
+        self.matrix.draw()
         self.input_manager.draw(self.screen)
         self.render_engine.draw()
         EffectManager.draw(self.screen)
@@ -184,6 +231,6 @@ class GameApp(ABC):
         pygame.display.flip()
 
     @abstractmethod
-    def update(self):
+    def update(self) -> None:
         """Per-frame game logic — implemented by each game mode."""
         ...

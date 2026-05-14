@@ -1,36 +1,77 @@
-from pathlib import Path
-import math
-import random
-import datetime
-
+import logging
 import torch
 import numpy as np
 import mlflow
+import math
+import random
+import datetime
+from pathlib import Path
+from typing import Sequence, Callable
 
 
-def update_target(current_model, target_model):
-    """Copy weights from current_model to target_model."""
+def update_target(current_model: torch.nn.Module, target_model: torch.nn.Module) -> None:
+    """
+    Copy weights from current_model to target_model.
+
+    Args:
+        current_model: The model to copy weights from.
+        target_model: The model to copy weights to.
+    """
     target_model.load_state_dict(current_model.state_dict())
 
 
-def epsilon_scheduler(eps_start=1.0, eps_final=0.01, eps_decay=50000):
-    """Return a function to get epsilon at a given frame index."""
-    def function(frame_idx):
+def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay: int = 50000) -> Callable[[int], float]:
+    """
+    Return a function to get epsilon at a given frame index.
+
+    Args:
+        eps_start: The initial epsilon value.
+        eps_final: The final epsilon value.
+        eps_decay: The frame index at which to reach the final epsilon.
+
+    Returns:
+        A callable function that returns the epsilon for a given frame index.
+    """
+    def function(frame_idx: int) -> float:
         return eps_final + (eps_start - eps_final) \
             * math.exp(-1. * frame_idx / eps_decay)
     return function
 
 
-def log_training_metrics(frame_idx,
-                         max_frames,
-                         rewards,
-                         lengths,
-                         rl_losses,
-                         sl_losses,
-                         wins,
-                         update_freq,
-                         duration,
-                         logging):
+def log_training_metrics(
+    frame_idx: int,
+    max_frames: int,
+    rewards: Sequence[float],
+    lengths: Sequence[int],
+    rl_losses: Sequence[float],
+    sl_losses: Sequence[float],
+    wins: Sequence[int],
+    update_freq: int,
+    duration: float,
+    logger: logging.Logger,
+) -> None:
+    """
+    Logs training metrics for reinforcement learning and supervised learning progress.
+
+    This function aggregates and reports key training statistics such as reward trends,
+    episode lengths, loss values, and win rates at a given training step. It is typically
+    called at fixed intervals during training to monitor model performance and stability.
+
+    Args:
+        frame_idx (int): Current training step or frame index.
+        max_frames (int): Total number of training frames planned.
+        rewards (Sequence[float]): Reward values collected over recent episodes.
+        lengths (Sequence[int]): Episode lengths (number of steps per episode).
+        rl_losses (Sequence[float]): Reinforcement learning loss values over recent updates.
+        sl_losses (Sequence[float]): Supervised learning loss values over recent updates.
+        wins (Sequence[int]): Binary or count-based win indicators (e.g., 1 for win, 0 for loss).
+        update_freq (int): Number of frames between logging updates.
+        duration (float): Time elapsed since last logging event (in seconds).
+        logger (logging.Logger): Logger instance used for outputting metrics.
+
+    Returns:
+        None
+    """
     def mean_safe(x):
         return np.mean(x) if len(x) > 0 else 0.0
 
@@ -95,77 +136,6 @@ def hard_update(target, source):
 def soft_update(target, source, tau):
     for t, s in zip(target.parameters(), source.parameters()):
         t.data.copy_(t.data * (1.0 - tau) + s.data * tau)
-
-
-def pdqn_select_action_safe(pdqn,
-                            env,
-                            player_state,
-                            action_name,
-                            legal_params,
-                            epsilon=0.0,
-                            train=True):
-    """
-    Wrapper to select a discrete action and valid parameters safely.
-
-    pdqn: your PDQN model
-    env: GameEnv
-    player_state: numpy array (state_dim,)
-    action_name: string, one of env.ACTIONS
-    legal_params: dict from _get_legal_actions for this action
-    """
-    discrete_idx = env.ACTIONS.index(action_name)
-    param_dim = pdqn.param_dim
-
-    # get PDQN raw parameter
-    _, raw_params = pdqn.select_action(
-        player_state, epsilon=epsilon, train=train)
-    # assuming Gaussian outputs in [-1,1], scale if needed
-    raw_params = np.clip(raw_params, 0.0, 1.0)
-
-    if action_name == "combine":
-        # legal pairs: list of tuples [(i,j), ...]
-        pairs = legal_params.get("combine", {}).get("pairs", [])
-        if not pairs:
-            return discrete_idx, None  # fallback, no legal combine
-        # scale raw_params[0:2] to indices range (0..1 -> min-max indices)
-        raw_scaled = raw_params[:2] * len(pairs)
-        raw_scaled = np.clip(raw_scaled, 0, len(pairs)-1)
-        # pick nearest legal pair
-        pair_idx = int(round(raw_scaled[0]))
-        pair_idx = min(pair_idx, len(pairs)-1)
-        selected_param = pairs[pair_idx]
-        return discrete_idx, np.array(selected_param)
-
-    else:
-        # other actions: just return raw_params clipped to legal dimension
-        return discrete_idx, raw_params[:param_dim]
-
-
-def flatten_action_params(action_params, param_dim=2):
-    """
-    Convert structured dict of parameters to a flat numeric vector.
-    Example:
-        {"target_idx": 1, "card_idx": 2} -> np.array([1, 2])
-    """
-    if isinstance(action_params, dict):
-        flat = []
-        for v in action_params.values():
-            if isinstance(v, (list, tuple)):
-                flat.extend(v)
-            elif isinstance(v, (int, float)):
-                flat.append(v)
-            # ignore non-numeric or complex values
-        # pad / truncate to param_dim
-        flat = (flat + [0.0] * param_dim)[:param_dim]
-        return np.array(flat, dtype=np.float32)
-    elif isinstance(action_params, (list, np.ndarray)):
-        flat = np.array(action_params, dtype=np.float32)
-        if flat.shape[0] < param_dim:
-            flat = np.pad(flat, (0, param_dim - flat.shape[0]))
-        return flat[:param_dim]
-    else:
-        # fallback — empty vector
-        return np.zeros(param_dim, dtype=np.float32)
 
 
 def save_model(logging, models, policies, checkpoint_path):
@@ -255,7 +225,7 @@ def load_single_agent(logging, agent_id: int, dqn_model, policy_model=None,
         logging: Logger instance
         agent_id: Which agent to load (0, 1, etc.)
         dqn_model: The DQN model to load weights into
-        policy_model: Optional policy model (for PDQN)
+        policy_model: Optional policy model
         device: Device to load to
         checkpoint_path: Path to checkpoint file
 

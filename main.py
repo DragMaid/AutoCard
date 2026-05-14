@@ -1,28 +1,30 @@
 import pygame
-from gui.matchmaking import MatchmakingScreen, ScreenState
+from datetime import datetime
+from gui.screen.matchmaking import MatchmakingScreen, ScreenState
 from core.network.server import SocketServerGame
 from core.network.client import SocketClientGame
 from core.network.ai import AIGame
+from core.config import config
 
 
 class GameApp:
-    def __init__(self):
+    def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((1280, 720))
+        self.screen = pygame.display.set_mode(config.SCREEN_SIZE)
         self.clock = pygame.time.Clock()
         self.matchmaker = MatchmakingScreen(self.screen)
         self.game_app = None
         self.running = True
 
-    def run(self):
+    def run(self) -> None:
         while self.running:
-            dt = self.clock.tick(60) / 1000.0
+            dt = self.clock.tick(config.FPS) / 1000.0
             self._tick(dt)
 
         self._cleanup_game()
         pygame.quit()
 
-    def _tick(self, dt: float):
+    def _tick(self, dt: float) -> None:
         state = self.matchmaker.state
 
         # User navigated back to the menu while a game existed → clean it up
@@ -45,16 +47,16 @@ class GameApp:
             and self.matchmaker.state == ScreenState.START_GAME
         )
 
-    def _tick_game(self, dt: float):
+    def _tick_game(self, dt: float) -> None:
         keep_running = self.game_app.step(dt)
         if not keep_running or self.game_app.should_exit_to_menu:
             reason = getattr(self.game_app, "exit_reason", None)
             self._cleanup_game()
             self.matchmaker.set_state(ScreenState.MENU)
             if reason:
-                self.matchmaker._show_error(reason)
+                self.matchmaker.show_error(reason)
 
-    def _tick_matchmaking(self, dt: float):
+    def _tick_matchmaking(self, dt: float) -> None:
         self._handle_matchmaking_events()
         self.matchmaker.update(dt)
         self.matchmaker.draw(self.screen)
@@ -65,13 +67,13 @@ class GameApp:
         elif state == ScreenState.START_GAME and self.game_app is None:
             self._create_game_app(self.matchmaker.result)
 
-    def _handle_matchmaking_events(self):
+    def _handle_matchmaking_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
             self.matchmaker.handle_event(event)
 
-    def _poll_waiting(self):
+    def _poll_waiting(self) -> None:
         """Check connection / lobby state and advance to START_GAME when ready."""
         if self.game_app is None:
             self._create_game_app(self.matchmaker.result)
@@ -80,20 +82,20 @@ class GameApp:
             return
 
         if isinstance(self.game_app, SocketServerGame):
-            self.game_app._drain_sub_queue()
+            self.game_app.drain_sub_queue()
             if self.game_app.game_started:
                 self.matchmaker.set_state(ScreenState.START_GAME)
 
         elif isinstance(self.game_app, SocketClientGame):
             if self.game_app.connection_error:
-                self.matchmaker._show_error(
+                self.matchmaker.show_error(
                     f"Failed: {self.game_app.connection_error}")
                 self._cleanup_game()
                 self.matchmaker.set_state(ScreenState.JOIN)
             elif self.game_app.connected and self.game_app.game_started:
                 self.matchmaker.set_state(ScreenState.START_GAME)
 
-    def _create_game_app(self, result):
+    def _create_game_app(self, result: tuple) -> None:
         if not result:
             return
         mode = result[0]
@@ -110,8 +112,8 @@ class GameApp:
                 self.game_app = AIGame(self.screen)
         except Exception as e:
             print(f"Failed to create game: {e}")
-            self.matchmaker._show_error(str(e))
             self.matchmaker.set_state(ScreenState.MENU)
+            self.matchmaker.show_error(str(e))
 
     def _cleanup_game(self):
         if self.game_app is None:
@@ -129,18 +131,20 @@ class GameApp:
 def parse_args():
     from argparse import ArgumentParser
     p = ArgumentParser()
+    p.add_argument("--train",  action="store_true")
+    p.add_argument("--render",  action="store_true")
     p.add_argument("--client", action="store_true")
     p.add_argument("--server", action="store_true")
     p.add_argument("--ai",     action="store_true")
     p.add_argument("--host",   type=str, default="localhost")
-    p.add_argument("--port",   type=int, default=5000)
+    p.add_argument("--port",   type=int, default=5555)
     return p.parse_args()
 
 
 def run_headless_game(args):
     """Bypass matchmaking for direct CLI launches."""
     pygame.init()
-    screen = pygame.display.set_mode((1280, 720))
+    screen = pygame.display.set_mode(config.SCREEN_SIZE)
     clock = pygame.time.Clock()
 
     if args.client:
@@ -152,7 +156,7 @@ def run_headless_game(args):
 
     running = True
     while running:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(config.FPS) / 1000.0
         running = app.step(dt)
 
     if hasattr(app, "cleanup"):
@@ -161,11 +165,17 @@ def run_headless_game(args):
 
 
 if __name__ == "__main__":
+    from core.utils import setup_logging
+    from ml.train import run
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+    file = f"logs/{timestamp}.log"
+    setup_logging(file, debug=True)
+
     args = parse_args()
     if args.client or args.server or args.ai:
         run_headless_game(args)
+    elif args.train:
+        run(args.render)
     else:
         GameApp().run()
-
-# TODO: add --train mode to CLI args
-# TODO: add hosted (non-local) server option

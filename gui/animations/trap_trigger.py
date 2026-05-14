@@ -1,7 +1,7 @@
 import math
 import pygame
 from gui.effects.manager import EffectManager
-from gui.audio_manager import AudioManager
+from gui.audio import AudioManager
 from .animation import Animation
 
 
