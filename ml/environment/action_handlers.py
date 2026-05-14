@@ -103,7 +103,7 @@ class SummonHandler(ActionHandler):
             player.id, card.id, cell=None, check=False)
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Summoned {card.name}")
+            logger.debug(f"Summoned {card.name}")
         return success
 
 
@@ -156,7 +156,7 @@ class AttackHandler(ActionHandler):
 
         if success:
             logger.debug(
-                f"[HANDLER] ✓ {attacker.name} attacked {target_id}")
+                f"{attacker.name} attacked {target_id}")
         return success
 
 
@@ -204,7 +204,7 @@ class CastSpellHandler(ActionHandler):
         success = env.engine.cast_spell(spell_card.id, target_id)
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Cast {spell_card.name}")
+            logger.debug(f"Cast {spell_card.name}")
         return success
 
 
@@ -243,7 +243,7 @@ class SetTrapHandler(ActionHandler):
         success = env.engine.set_trap(trap_card.id, position=None, check=False)
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Set trap {trap_card.name}")
+            logger.debug(f"Set trap {trap_card.name}")
         return success
 
 
@@ -280,7 +280,7 @@ class ToggleHandler(ActionHandler):
         success = card.mode != old_mode
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Toggled {card.name} to {card.mode}")
+            logger.debug(f"Toggled {card.name} to {card.mode}")
             return True
         return False
 
@@ -319,7 +319,7 @@ class CombineHandler(ActionHandler):
         success = env.engine.upgrade_monster(player.id, card1_id, card2_id)
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Combined {card1_id} and {card2_id}")
+            logger.debug(f"Combined {card1_id} and {card2_id}")
             return True
         return False
 
@@ -339,5 +339,5 @@ class EndTurnHandler(ActionHandler):
             bool: Always True.
         """
         env.engine.end_turn()
-        logger.debug(f"[HANDLER] ✓ {player.name} ends turn")
+        logger.debug(f"{player.name} ends turn")
         return True

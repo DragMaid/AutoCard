@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Tuple, List, Dict, Any, TYPE_CHECKING
+from typing import Tuple, List, Dict, Any, TYPE_CHECKING, Optional
+from core.cards.spell_card import SpellAbility
+from core.utils import get_cards_typed
 from core.data.player import Player
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
@@ -10,6 +12,7 @@ if TYPE_CHECKING:
     from ml.environment .environment import GameEnv
 
 
+# TODO: remove all the Any later
 class LegalActionResolver:
     """Abstract base class for resolving legal actions in the environment."""
 
@@ -132,16 +135,16 @@ class CastSpellResolver(LegalActionResolver):
 
             # NOTE: this is assuming ability will act well together, bad design but good for now
             ability = card.abilities[0]
-            valid_targets: List[Tuple[int, Any, bool]] = []
+            valid_targets: List[Tuple[int, Optional[str], bool]] = []
 
-            if ability in ("buff_attack", "buff_defense"):
-                my_monsters = gs.get_cards_typed(player.id, "monster")
+            if ability in (SpellAbility.BUFF_ATTACK, SpellAbility.BUFF_DEFEND):
+                my_monsters = get_cards_typed(gs, player.id, CardType.MONSTER)
                 for m in my_monsters:
                     s = env._get_card_slot_idx(player.id, m)
                     valid_targets.append((1 + s, m.id, False))
 
-            elif ability == "destroy_trap":
-                opp_traps = gs.get_cards_typed(opp_id, "trap")
+            elif ability == SpellAbility.DESTROY_TRAP:
+                opp_traps = get_cards_typed(gs, opp_id, CardType.TRAP)
                 for t in opp_traps:
                     s = env._get_card_slot_idx(opp_id, t)
                     valid_targets.append((11 + s, t.id, False))
@@ -169,7 +172,8 @@ class SetTrapResolver(LegalActionResolver):
         gs = env.engine.game_state
         card_ids = gs.player_info[player.id].held_cards.card_ids
 
-        if gs.player_info[player.id].get("has_summoned_trap", False) or not gs.has_slot_available(player.id):
+        empty_cnt = len(gs.get_empty_slots(player.id))
+        if gs.player_info[player.id].has_summoned_trap or empty_cnt <= 0:
             return {}
 
         results = {}
@@ -189,10 +193,10 @@ class ToggleResolver(LegalActionResolver):
     def resolve(self, env: GameEnv, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
         """Resolve monsters in field slots that can be toggled."""
         gs = env.engine.game_state
-        if gs.player_info[player.id].get("has_toggled", False):
+        if gs.player_info[player.id].has_toggled:
             return {}
 
-        my_monsters = gs.get_cards_typed(player.id, CardType.MONSTER)
+        my_monsters = get_cards_typed(gs, player.id, CardType.MONSTER)
         results = {}
         for m in my_monsters:
             s = env._get_card_slot_idx(player.id, m)

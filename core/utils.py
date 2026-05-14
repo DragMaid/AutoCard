@@ -1,10 +1,12 @@
 import random
 import logging
-from typing import Optional
+from core.data.game_state import GameState, LogicCard
+from typing import List, Optional
+from core.cards.card import CardType
 from logging.handlers import RotatingFileHandler
 
 from core.cards.monster_card import MonsterType, MonsterCard
-from core.factory.base_factory import BaseFactory
+from core.factory.monster_factory import MonsterFactory
 
 
 def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
@@ -44,7 +46,7 @@ def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
 
 
 def load_by_type_and_level(
-    factory: BaseFactory,
+    factory: MonsterFactory,
     player_id: str,
     monster_type: MonsterType,
     star: int
@@ -71,3 +73,13 @@ def load_by_type_and_level(
 
     selected_name = random.choice(candidates)
     return factory.load(player_id, name=selected_name)
+
+
+def get_cards_typed(
+    game_state: GameState,
+    player_id: str,
+    card_type: CardType
+) -> List[LogicCard]:
+    """Get list of field cards that belong in same card_type."""
+    cards = game_state.get_player_field_cards(player_id)
+    return [c for c in cards if c.card_type == card_type]
