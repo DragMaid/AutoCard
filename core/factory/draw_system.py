@@ -19,7 +19,7 @@ class DrawSystem:
         CardType.TRAP: 20,
     }
 
-    DRAW_TABLES: Dict[str, Dict[Any, int]] = {
+    DRAW_TABLES: Dict[str, Dict[CardType, int]] = {
         CardType.MONSTER: {
             1: 74,
             2: 20,

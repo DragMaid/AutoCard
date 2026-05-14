@@ -13,7 +13,7 @@ class SpellFactory(BaseFactory):
     DATA_FILE = Path("./assets/data/spellInfo.json")
 
     def __init__(self) -> None:
-        self._cards: Dict[str, Any] = {}
+        self._cards: Dict[str, Dict[str, Any]] = {}
         CardRegistry.register(CardType.SPELL, self)
 
     def build(self) -> None:
@@ -33,7 +33,7 @@ class SpellFactory(BaseFactory):
             card_info["_image_path"] = image_path
             self._cards[card_info["name"]] = card_info
 
-    def load(self, owner_id: str, name: Optional[str] = None) -> Optional[SpellCard]:
+    def load(self, owner_id: str, name: Optional[str] = None) -> SpellCard:
         """Creates a SpellCard instance.
 
         Args:
@@ -41,15 +41,18 @@ class SpellFactory(BaseFactory):
             name (Optional[str]): The name of the spell.
 
         Returns:
-            Optional[SpellCard]: A new SpellCard instance, or None if not found.
+            SpellCard: A new SpellCard instance.
+
+        Raises:
+            ValueError: If spell not found.
         """
         if not self._cards:
-            return None
+            raise ValueError("Factory not built.")
 
         if name:
             prototype = self._cards.get(name)
             if not prototype:
-                return None
+                raise ValueError(f"Spell '{name}' not found.")
         else:
             prototype = random.choice(list(self._cards.values()))
 
@@ -63,10 +66,10 @@ class SpellFactory(BaseFactory):
             duration=prototype.get("duration")
         )
 
-    def get_cards(self) -> Dict[str, Any]:
+    def get_cards(self) -> Dict[str, Dict[str, Any]]:
         """Returns the spell cards dictionary.
 
         Returns:
-            Dict[str, Any]: A dictionary of spell card data.
+            Dict[str, Dict[str, Any]]: A dictionary of spell card data.
         """
         return self._cards
