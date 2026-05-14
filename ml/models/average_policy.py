@@ -1,33 +1,32 @@
 import torch
 import torch.nn as nn
 from ml.models.mlp_base import MLPBase
-
-
-import torch
-import torch.nn as nn
-from ml.models.mlp_base import MLPBase
 from typing import List
 
 
-class AveragePolicy(nn.Module):
-    """Policy network for NFSP (stochastic, NaN-safe version)."""
+from ml.models.state_encoder import GameStateEncoder
 
-    def __init__(self, input_dim: int, num_actions: int, hidden_dims: List[int] = [256, 256]):
+
+class AveragePolicy(nn.Module):
+    """Policy network for NFSP with Attention-based state encoding."""
+
+    def __init__(self, encoder: GameStateEncoder, num_actions: int, hidden_dims: List[int] = [256, 256]):
         """Initializes AveragePolicy.
 
         Args:
-            input_dim: Input dimension.
+            encoder: GameStateEncoder instance.
             num_actions: Number of actions.
             hidden_dims: List of hidden layer dimensions.
         """
         super().__init__()
-        self.feature_net = MLPBase(input_dim, hidden_dims)
+        self.encoder = encoder
+        self.feature_net = MLPBase(encoder.output_dim, hidden_dims)
         self.num_actions = num_actions
         self.head = nn.Linear(self.feature_net.output_dim, num_actions)
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
 
-        # Xavier initialization (prevents huge logits early)
+        # Xavier initialization
         nn.init.xavier_uniform_(self.head.weight)
         nn.init.constant_(self.head.bias, 0.0)
 
@@ -35,11 +34,15 @@ class AveragePolicy(nn.Module):
         """Forward pass.
 
         Args:
-            x: Input tensor.
+            x: Input tensor (flat).
 
         Returns:
             Action probabilities.
         """
+        # Encode state
+        x = self.encoder(x)
+
+        # Feature extraction
         x = self.feature_net(x)
 
         # Compute logits

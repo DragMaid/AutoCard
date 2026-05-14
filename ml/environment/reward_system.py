@@ -5,21 +5,7 @@ from dataclasses import dataclass, field
 from core.data.player import Player
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
-
-# TODO: rework this later
-# TODO: especially rework the reward system for card count
-
-logger = logging.getLogger(__name__)
-
-
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
-import logging
-import math
-
-from core.data.player import Player
-from core.cards.card import CardType
-from core.cards.monster_card import CardMode
+from core.utils import get_cards_typed
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +125,8 @@ class RewardCalculator:
 
         # Trap trigger tracking
         self.traps_triggered_this_step: int = 0
-        self.traps_rewarded_this_step: set = set()  # Track to prevent double-counting
+        # Track to prevent double-counting
+        self.traps_rewarded_this_step: set = set()
 
         self.reset_episode_tracking()
 
@@ -301,7 +288,7 @@ class RewardCalculator:
                 breakdown.add("deploy_monster", base_reward)
 
                 # Bonus for summoning stronger monsters (scaled)
-                strength_bonus = (monster.atk / self.max_stats) * \
+                strength_bonus = (monster.attack / self.max_stats) * \
                     self.config.strength_scale_factor
                 breakdown.add("strength_bonus", strength_bonus)
 
@@ -352,7 +339,7 @@ class RewardCalculator:
 
             # Bonus based on destroyed monster strength
             for m in opp_monsters_destroyed:
-                stat = m.atk if m.mode == CardMode.ATTACK else m.defend
+                stat = m.attack if m.mode == CardMode.ATTACK else m.defend
                 strength_bonus = (stat / self.max_stats) * \
                     self.config.strength_scale_factor
                 breakdown.add("destroy_strength_bonus", strength_bonus)
@@ -439,10 +426,10 @@ class RewardCalculator:
             if toggle_idx < len(after["my_monsters"]):
                 am = after["my_monsters"][toggle_idx]
                 # Reward optimal positioning
-                if (am.mode == CardMode.ATTACK and am.atk > am.defend) \
-                        or (am.mode == CardMode.DEFEND and am.atk < am.defend):
+                if (am.mode == CardMode.ATTACK and am.attack > am.defend) \
+                        or (am.mode == CardMode.DEFEND and am.attack < am.defend):
                     breakdown.add("optimal_toggle", 0.2)
-                elif (am.mode == CardMode.DEFEND and am.atk > am.defend):
+                elif (am.mode == CardMode.DEFEND and am.attack > am.defend):
                     breakdown.add("suboptimal_toggle", -0.5)
 
     def _calculate_combine_reward(
@@ -467,7 +454,7 @@ class RewardCalculator:
             breakdown.add("merge_combine", merge_reward)
 
             # Strength bonus for powerful merged monster
-            strength_bonus = (new_monster.atk / self.max_stats) * 0.1
+            strength_bonus = (new_monster.attack / self.max_stats) * 0.1
             breakdown.add("merge_strength_bonus", strength_bonus)
 
     def _calculate_field_advantage(self, player: Player, snapshot: Dict[str, Any]) -> float:
@@ -482,12 +469,12 @@ class RewardCalculator:
             - Decay factor prevents over-reaction to single-turn swings
         """
         my_total_stats = sum(
-            (m.atk if m.mode == CardMode.ATTACK else m.defend)
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["my_monsters"]
         )
 
         opp_total_stats = sum(
-            (m.atk if m.mode == CardMode.ATTACK else m.defend)
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
             for m in snapshot["opp_monsters"]
         )
 
@@ -581,7 +568,7 @@ class RewardCalculator:
             logger.info(f"{breakdown.get_summary()}")
         elif breakdown.total != 0:
             logger.info(f"REWARD ({breakdown.action_type}): {
-                             breakdown.get_summary()}")
+                breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
         """Get summary statistics for the episode."""
@@ -600,9 +587,7 @@ class RewardCalculator:
     def log_episode_summary(self):
         """Log episode reward summary."""
         summary = self.get_episode_summary()
-
         logger.info("EPISODE REWARD SUMMARY")
-
         for category, stats in summary.items():
             logger.info(f"\n{category.upper()}:")
             logger.info(f"Total: {stats['total']:+.4f}")
@@ -620,8 +605,8 @@ def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
     return {
         "my_lp": player.life_points,
         "opp_lp": opp.life_points,
-        "my_monsters": list(gs.get_cards_typed(player.id, "monster")),
-        "opp_monsters": list(gs.get_cards_typed(opp_id, "monster")),
+        "my_monsters": list(get_cards_typed(gs, player.id, CardType.MONSTER)),
+        "opp_monsters": list(get_cards_typed(gs, opp_id, CardType.MONSTER)),
         "my_cards": list(gs.get_player_field_cards(player.id)),
         "opp_cards": list(gs.get_player_field_cards(opp_id)),
         "my_hand_size": len(gs.player_info[player.id].held_cards.card_ids),

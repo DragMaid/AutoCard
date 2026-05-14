@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from typing import Tuple, Optional, TYPE_CHECKING
 from core.cards.card import CardType
 from core.cards.monster_card import MonsterCard
@@ -51,7 +52,8 @@ class SummonEngine:
             return False
 
         if cell is None:
-            cell = self.game_engine.game_state.get_random_empty_slot(player_id)
+            cell = random.choice(
+                self.game_engine.game_state.get_empty_slots(player_id))
             if cell is None:
                 log_action("SUMMON", player_id, {
                     "card": card.name,

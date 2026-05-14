@@ -21,8 +21,15 @@ class Config:
     MAX_STATS: int = 9999
     COLS: int = 5
     ROWS: int = 4
-    CARD_FEATURES: int = 6
-    MAX_ACTIONS_PER_TURN: int = 10
+
+    # ML Encoder Config
+    MAX_EFFECTS: int = 4
+    VALUE_NORM: float = 1000.0
+    DURATION_NORM: float = 10.0
+    MAX_ATTACK: float = 5000.0
+    MAX_DEFEND: float = 5000.0
+    MAX_STAR: int = 10
+    MAX_LIFE_POINTS: int = 8000
 
 
 config = Config()

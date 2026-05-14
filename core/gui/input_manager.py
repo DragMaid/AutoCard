@@ -3,6 +3,7 @@ from gui.screen.arrow import DragArrow
 from core.cards.monster_card import MonsterCard
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
+from core.data.game_state import AttackEntry
 
 LEFT_CLICK = 1
 RIGHT_CLICK = 3
@@ -192,10 +193,14 @@ class InputManager:
             self.drag_arrow.targets[1] = card_info
 
             if card_info.owner_id != attacker.owner_id:
-                self.game_engine.attack(
-                    current_player_id, next_player_id,
-                    attacker.id, card_info.id,
+                attack = AttackEntry(
+                    attacker_id=current_player_id,
+                    defender_id=next_player_id,
+                    card_id=attacker.id,
+                    target_id=card_info.id,
+                    target_is_player=False
                 )
+                self.game_engine.attack(attack)
                 return True
 
             # Same owner — attempt a merge if both are monsters
@@ -225,11 +230,14 @@ class InputManager:
         self.drag_arrow.end_pos = opponent_hand.rect.center
         self.drag_arrow.targets[1] = next_player
 
-        self.game_engine.attack(
-            current_player.id, next_player.id,
-            self.drag_arrow.targets[0].id, next_player.id,
-            target_is_player=True,
+        attack = AttackEntry(
+            attacker_id=current_player.id,
+            defender_id=next_player.id,
+            card_id=self.drag_arrow.targets[0].id,
+            target_id=next_player.id,
+            target_is_player=True
         )
+        self.game_engine.attack(attack)
 
     def _handle_right_click(self, pos: tuple[int, int]) -> None:
         """Handles right-click events (e.g., toggling a card's defense/attack mode).

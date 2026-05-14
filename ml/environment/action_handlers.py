@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 
 from core.data.player import Player
 from core.cards.card import CardType
+from core.data.game_state import AttackEntry
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +152,14 @@ class AttackHandler(ActionHandler):
             return False
 
         # Attempt attack
-        success = env.engine.attack(
-            player.id, opp_id, attacker.id, target_id, target_is_player)
+        attack = AttackEntry(
+            attacker_id=player.id,
+            defender_id=opp_id,
+            card_id=attacker.id,
+            target_id=target_id,
+            target_is_player=target_is_player
+        )
+        success = env.engine.attack(attack)
 
         if success:
             logger.debug(

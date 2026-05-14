@@ -13,8 +13,8 @@ from core.data.player import Player
 from core.config import config
 from ml.config import Config as MLConfig
 from .action_codec import ActionCodec
+from .encoder import encode_state
 from . import action_handlers
-from . import encoder
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class GameEnv:
         "set_trap": action_handlers.SetTrapHandler,
         "toggle": action_handlers.ToggleHandler,
         "combine": action_handlers.CombineHandler,
-        "activate": action_handlers.ActivateHandler,
+        "activate_trap": action_handlers.ActivateHandler,
         "end_turn": action_handlers.EndTurnHandler,
     }
 
@@ -74,6 +74,13 @@ class GameEnv:
         p1 = self.engine.game_state.players[0]
         return len(self._get_state(p1))
 
+    def get_winner(self) -> Optional[int]:
+        """Get the index of the winning player, or None if game is not over."""
+        for idx, player in enumerate(self.engine.game_state.players):
+            if player.life_points <= 0:
+                return 1 - idx
+        return None
+
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
         """Start a new game and return initial states for both players.
 
@@ -85,14 +92,14 @@ class GameEnv:
         self.engine.start_game()
 
         # Update reward calculator with max stats
-        max_stats = float(self.engine.rule_engine.max_stats)
+        max_stats = config.MAX_STATS
         self.reward_calculator.max_stats = max_stats
         self.reward_calculator.reset_episode_tracking()
 
         if hasattr(self, "renderer"):
             self.renderer.reset()
             # Force Matrix to re-sync with the reset GameState objects (held_cards etc)
-            self.renderer.field_matrix.set_game_state(
+            self.renderer.matrix.set_game_state(
                 self.engine.game_state, force=True)
 
         p1, p2 = self.engine.game_state.players
@@ -154,7 +161,7 @@ class GameEnv:
 
     def _get_player_index(self, player: Player) -> int:
         """Find the index of a player in the engine's player list."""
-        for i, p in enumerate(self.engine.players):
+        for i, p in enumerate(self.engine.game_state.players):
             if p.id == player.id:
                 return i
         return -1
@@ -171,7 +178,7 @@ class GameEnv:
 
         tm = self.engine.turn_manager
         if tm.is_trap_stage() and tm.get_trapper() == player:
-            if not remaining_actions or actions_taken >= config.MAX_ACTIONS_PER_TURN:
+            if not remaining_actions or actions_taken >= MLConfig.MAX_ACTIONS_PER_TURN:
                 before_snap = create_enhanced_snapshot(self.engine, player)
                 num_activated = len(self.engine.game_state.activated_traps)
                 if num_activated > 0:
@@ -216,7 +223,7 @@ class GameEnv:
     ) -> Tuple[float, int, int, bool]:
         """Perform a segment of actions for a single player."""
         if max_actions is None:
-            max_actions = config.MAX_ACTIONS_PER_TURN
+            max_actions = MLConfig.MAX_ACTIONS_PER_TURN
 
         total_turn_reward = 0.0
         action_pointer = 0
@@ -263,8 +270,8 @@ class GameEnv:
         cols = config.COLS
         rows_per_player = config.ROWS // 2
 
-        for r in range(gs.rows):
-            for c in range(gs.cols):
+        for r in range(config.ROWS):
+            for c in range(config.COLS):
                 if gs.field_matrix[r][c] == card.id:
                     if gs.field_matrix_ownership[r][c] == player_id:
                         if player_id == self.engine.game_state.players[0].id:
@@ -273,9 +280,12 @@ class GameEnv:
                             return (rows_per_player - 1 - r) * cols + c
         return -1
 
-    def get_legal_actions(self, player_id: str) -> Tuple[np.ndarray, Dict[int, Tuple[str, Dict[str, Any]]]]:
+    def get_legal_actions(self, player_id: str | int) -> Tuple[np.ndarray, Dict[int, Tuple[str, Dict[str, Any]]]]:
         """Return mask for legal actions."""
-        player = self.engine.game_state.players_lookup[player_id]
+        if isinstance(player_id, int):
+            player = self.engine.game_state.players[player_id]
+        else:
+            player = self.engine.game_state.players_lookup[player_id]
 
         mask = np.zeros(MLConfig.NUM_ACTIONS, dtype=bool)
         legal_actions = self._get_legal_actions(player)
@@ -315,7 +325,7 @@ class GameEnv:
         before_snapshot: Dict[str, Any]
     ) -> Tuple[float, bool, bool]:
         """Apply action and calculate reward."""
-        handler = self._action_handlers.get(action_name)
+        handler = self._action_handlers[action_name]
         success = handler.perform(self, player, params)
         after_snapshot = create_enhanced_snapshot(self.engine, player)
         breakdown = self.reward_calculator.calculate_action_reward(
@@ -325,7 +335,4 @@ class GameEnv:
 
     def _get_state(self, player: Player) -> np.ndarray:
         """Return a flat state vector for a given player."""
-        player_features = encoder.encode_player_features(player)
-        hand_encoded = encoder.encode_hand(player)
-        board_encoded = encoder.encode_board(player)
-        return np.concatenate([player_features, hand_encoded, board_encoded])
+        return encode_state(self, player.id)

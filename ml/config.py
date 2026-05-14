@@ -71,6 +71,8 @@ class Config:
     RENDER: bool = False
     SEED: int = 42
 
+    MAX_ACTIONS_PER_TURN: int = 10
+
     CHECKPOINT_PATH: Path = Path(BASE_PATH, "ml/saves/checkpoint.pth")
     RUNS_PATH: Path = Path(BASE_PATH, "mlruns")
 

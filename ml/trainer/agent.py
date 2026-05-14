@@ -7,6 +7,9 @@ import torch.nn.functional as F
 
 from ml.storage import ReplayBuffer, ReservoirBuffer
 from ml.models import DuelingDQN, AveragePolicy
+from ml.models.state_encoder import GameStateEncoder
+from ml.environment.encoder import get_card_feature_dim
+from core.config import config as game_config
 from ml.trainer.buffer_manager import BufferManager
 from ml.utils import update_target
 
@@ -25,15 +28,25 @@ class Agent:
         self.cfg = config
         self.num_actions = num_actions
 
+        # Initialize GameStateEncoder
+        card_dim = get_card_feature_dim()
+        player_dim = 8  # 2 players * 4 features each
+        self.encoder = GameStateEncoder(
+            card_dim=card_dim,
+            player_dim=player_dim,
+            max_hand_cards=game_config.MAX_HAND_CARDS,
+            max_board_cards=game_config.ROWS * game_config.COLS
+        ).to(self.cfg.DEVICE)
+
         # Core networks
-        self.dqn = DuelingDQN(state_dim, num_actions).to(self.cfg.DEVICE)
+        self.dqn = DuelingDQN(self.encoder, num_actions).to(self.cfg.DEVICE)
         self.target_dqn = DuelingDQN(
-            state_dim, num_actions).to(self.cfg.DEVICE)
+            self.encoder, num_actions).to(self.cfg.DEVICE)
         # Initial sync params to target dqn
         self.update_target_network()
 
         # Average policy
-        self.policy = AveragePolicy(state_dim, num_actions).to(self.cfg.DEVICE)
+        self.policy = AveragePolicy(self.encoder, num_actions).to(self.cfg.DEVICE)
 
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
@@ -217,7 +230,9 @@ class Agent:
         mask_tensor: torch.Tensor
     ) -> int:
         """Policy selection using logit masking BEFORE softmax."""
-        logits = self.policy.head(self.policy.feature_net(state_tensor))
+        encoded = self.policy.encoder(state_tensor)
+        feat = self.policy.feature_net(encoded)
+        logits = self.policy.head(feat)
 
         # Sanitize logits
         logits = torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0)

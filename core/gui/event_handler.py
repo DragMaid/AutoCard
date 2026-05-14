@@ -10,7 +10,7 @@ from gui.background.matrix_field import Matrix
 from core.data.game_state import GameState
 from core.data.events import EventLogger
 from gui.sprites.sprite import Sprite
-from gui.background.hand import Hand
+from gui.background.hand import HandUI
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class EventHandler:
         """
         return self.sprite_manager.get_sprite(sprite_id)
 
-    def _get_hand_by_player(self, player_id: str) -> Optional[Hand]:
+    def _get_hand_by_player(self, player_id: str) -> Optional[HandUI]:
         """Retrieves a player's hand by player ID.
 
         Args:

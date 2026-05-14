@@ -7,11 +7,12 @@ from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
+from core.config import config
+from ml.config import Config as MLConfig
+
 
 class TrainingLoop:
     """Orchestrates the main training loop for multi-agent RL."""
-
-    MAX_STEPS_PER_EPISODE: int = 100
 
     def __init__(
         self,
@@ -200,7 +201,7 @@ class TrainingLoop:
         """Checks if episode has exceeded max length."""
         return (
             self.episode_manager.current_episode_length >=
-            self.MAX_STEPS_PER_EPISODE
+            MLConfig.MAX_ACTIONS_PER_TURN
         )
 
     def _handle_episode_end(self, done: bool) -> None:

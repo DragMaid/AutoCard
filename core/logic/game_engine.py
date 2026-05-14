@@ -189,13 +189,7 @@ class GameEngine:
             self.synchronize()
         return success
 
-    def attack(self,
-               attacker_id: str,
-               defender_id: str,
-               card_id: str,
-               target_id: str,
-               target_is_player: bool = False
-               ) -> bool:
+    def attack(self, attack: AttackEntry) -> bool:
         """Initiates an attack sequence.
 
         Args:
@@ -209,22 +203,20 @@ class GameEngine:
             bool: True if attack sequence started, False if invalid.
         """
         can_attack = self.rule_engine.can_attack(
-            attacker_id, defender_id, card_id, target_id, target_is_player)
+            attack.attacker_id,
+            attack.defender_id,
+            attack.card_id,
+            attack.target_id,
+            attack.target_is_player
+        )
 
         if not can_attack:
             return False
 
-        attack = AttackEntry(
-            attacker_id=attacker_id,
-            defender_id=defender_id,
-            card_id=card_id,
-            target_id=target_id,
-            target_is_player=target_is_player
-        )
         # Check for trap triggers
         if not self.trap_engine.check_traps(
             condition=ActivateCondition.ATTACK,
-            target_id=card_id,
+            target_id=attack.card_id,
         ):
             self.battle_engine.resolve_battle(attack)
         else:
@@ -304,7 +296,7 @@ class GameEngine:
             cancel_resolve = self.trap_engine.resolve_traps()
             if not cancel_resolve:
                 for attack in self.game_state.attack_queue:
-                    self.resolve_battle(**attack)
+                    self.resolve_battle(attack)
             self.game_state.attack_queue.clear()
             self.turn_manager.toggle_trap_stage(state=False)
         else:
