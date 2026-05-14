@@ -1,27 +1,48 @@
+from typing import Any
+import pygame
 from gui.cache import get_font
 
 
 class CardStatOverlay:
-    def __init__(self, card_gui, game_state, font_size=20, position="bottom"):
+    """Provides an overlay for displaying card stats.
+
+    Attributes:
+        _card (Any): The card GUI element.
+        font (pygame.font.Font): The font used for displaying stats.
+        position (str): The position of the overlay (e.g., "bottom").
+        game_state (Any): The current game state.
+    """
+
+    def __init__(self, card_gui: Any, game_state: Any, font_size: int = 20, position: str = "bottom") -> None:
+        """Initializes the CardStatOverlay.
+
+        Args:
+            card_gui (Any): The card GUI element.
+            game_state (Any): The current game state.
+            font_size (int, optional): The font size for stats. Defaults to 20.
+            position (str, optional): The overlay position. Defaults to "bottom".
+        """
         self._card = card_gui
         self.font = get_font(font_size)
         self.position = position
         self.game_state = game_state
 
-    def __getattr__(self, name):
-        """
-        Delegate attribute access to the underlying card.
-        This means overlay.attr -> card.attr if overlay doesn't have it.
-        """
+    def __getattr__(self, name: str) -> Any:
+        """Delegates attribute access to the underlying card."""
         return getattr(self._card, name)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
         else:
             setattr(self._card, name, value)
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draws the card and its stat overlay.
+
+        Args:
+            surface (pygame.Surface): The surface to draw onto.
+        """
         # First draw the card itself
         card_id = self._card.logic_card.id
         self._card.logic_card = self.game_state.get_card_by_id(card_id)

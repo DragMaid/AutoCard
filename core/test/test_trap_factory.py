@@ -3,7 +3,8 @@ from core.factory.trap_factory import TrapFactory
 from core.data.player import Player
 
 
-def test_trap_factory():
+def test_trap_factory() -> None:
+    """Tests loading traps via TrapFactory."""
     factory = TrapFactory()
     factory.build()
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 import random
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,10 +44,9 @@ from ml.config import Config
 from .action_codec import ActionCodec
 
 logger = logging.getLogger(__name__)
-# TODO: refactor this shit for god sake
+
 # Constants
 CARD_FEATURES = 6
-
 action_type = List[Tuple[int, Optional[Dict]]]
 
 
@@ -69,6 +67,13 @@ class GameEnv:
         render: bool = False,
         reward_config: Optional[RewardConfig] = None
     ) -> None:
+        """Initialize the GameEnv.
+
+        Args:
+            engine: The GameEngine instance.
+            render: Whether to enable rendering.
+            reward_config: Optional configuration for rewards.
+        """
         self.render = render
         self.engine: GameEngine = engine
         self.reward_calculator = RewardCalculator(config=reward_config)
@@ -78,10 +83,12 @@ class GameEnv:
 
     @property
     def num_actions(self) -> int:
+        """Return the number of actions in the action space."""
         return Config.NUM_ACTIONS
 
     @property
     def state_dim(self) -> int:
+        """Return the dimension of the state space."""
         if not self.engine:
             return 0
         p1 = self.engine.game_state.players[0]
@@ -90,12 +97,9 @@ class GameEnv:
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
         """Start a new game and return initial states for both players.
 
-        Returns
-        -------
-        tuple
-            (state_player1, state_player2)
+        Returns:
+            A tuple of (state_player1, state_player2).
         """
-        # Log previous episode summary if exists
         self.reward_calculator.log_episode_summary()
         self.engine.reset()
         self.engine.start_game()
@@ -158,29 +162,21 @@ class GameEnv:
             return states, rewards, self.engine.game_state.is_game_over(), info
 
         info["acting_player_idx"] = acting_idx
-        player_id_str = str(acting_idx + 1)
 
         # Execute a segment for the acting player
-        segment_actions_list = action_queues.get(player_id_str, [])
+        segment_actions_list = action_queues.get(str(acting_idx + 1), [])
 
-        logger.info(f"[STAGE] {acting_player.name}'s {
-                         'TRAP ' if tm.is_trap_stage() else ''}SEGMENT START (Turn {tm.turn_count})")
-
-        total_turn_reward, actions_taken, consumed_from_list, done = self.step_single(
+        total_turn_reward, actions_taken, _, _ = self.step_single(
             acting_player, segment_actions_list, use_random=not provided_actions)
 
         # Update results
         rewards[acting_idx] += total_turn_reward
         info[f"player_{acting_idx + 1}_actions"] += actions_taken
 
-        logger.info(f"{acting_player.name}'s segment summary: {
-                         actions_taken} actions, {total_turn_reward:+.4f} segment reward")
-
         # Handle turn/stage ending if no more actions or forced end
-        if not done and not self.engine.game_state.is_game_over():
-            # If we are in trap stage and finished our actions, we must resolve traps
+        if not self.engine.game_state.is_game_over():
             if tm.is_trap_stage() and tm.get_trapper() == acting_player:
-                if not segment_actions_list or actions_taken >= 10:  # Assuming 10 is max actions per turn
+                if not segment_actions_list or actions_taken >= 10:
                     before_snap = create_enhanced_snapshot(
                         self.engine, acting_player)
                     num_activated = len(self.engine.game_state.activated_traps)
@@ -206,11 +202,12 @@ class GameEnv:
         return states, rewards, done, info
 
     def step_single(self,
-                    player,
-                    player_actions,
+                    player: Player,
+                    player_actions: List[Tuple[int, Optional[Dict]]],
                     max_actions_per_turn: int = 10,
                     use_random: bool = True
-                    ):
+                    ) -> Tuple[float, int, int, bool]:
+        """Perform a segment of actions for a single player."""
         total_turn_reward = 0.0
         action_pointer = 0
         actions_taken = 0
@@ -219,31 +216,24 @@ class GameEnv:
         while actions_taken < max_actions_per_turn:
             mask, legal_actions = self.get_legal_actions(player.id)
             if not np.any(mask):
-                # This player has no legal actions (e.g., interrupted by trap stage)
                 break
 
             if action_pointer < len(player_actions):
                 action_id, _ = player_actions[action_pointer]
                 action_pointer += 1
             elif use_random:
-                # Random legal action selection
                 legal_ids = np.where(mask)[0]
                 action_id = random.choice(legal_ids)
             else:
-                # No more provided actions and random is disabled
                 break
 
-            # Use legal_actions if available, otherwise decode
             if action_id in legal_actions:
                 action_name, action_params = legal_actions[action_id]
             else:
                 action_name, action_params = ActionCodec.decode(action_id)
 
-            # Take snapshot before action
             before_snapshot = create_enhanced_snapshot(self.engine, player)
-
-            # Perform action via handler
-            reward, done, success = self._apply_action(
+            reward, done, _ = self._apply_action(
                 player, action_name, action_params, before_snapshot)
 
             if hasattr(self, "renderer"):
@@ -257,8 +247,8 @@ class GameEnv:
 
         return total_turn_reward, actions_taken, action_pointer, done
 
-    # TODO: just move this to the other place
     def _init_handlers_and_resolvers(self) -> None:
+        """Initialize action handlers and resolvers."""
         self._action_handlers: Dict[str, ActionHandler] = {
             "summon": SummonHandler(),
             "attack": AttackHandler(),
@@ -270,7 +260,6 @@ class GameEnv:
             "end_turn": EndTurnHandler(),
         }
 
-        # resolvers should be ordered
         self._resolvers: List[LegalActionResolver] = [
             SummonResolver(),
             AttackResolver(),
@@ -289,39 +278,20 @@ class GameEnv:
             for c in range(gs.cols):
                 if gs.field_matrix[r][c] == card.id:
                     if gs.field_matrix_ownership[r][c] == player_id:
-                        # Map (r, c) to 0-9 based on player
                         if player_id == self.engine.game_state.players[0].id:
                             return (r - 2) * 5 + c
                         else:
                             return (1 - r) * 5 + c
         return -1
 
-    def _get_card_id_at_slot(self, player_id: str, slot_idx: int) -> Optional[str]:
-        """Get the card ID at a specific player slot."""
-        gs = self.engine.game_state
-        if player_id == self.engine.game_state.players[0].id:
-            r = 2 + (slot_idx // 5)
-            c = slot_idx % 5
-        else:
-            r = 1 - (slot_idx // 5)
-            c = slot_idx % 5
-
-        if 0 <= r < gs.rows and 0 <= c < gs.cols:
-            return gs.field_matrix[r][c]
-        return None
-
-    # TODO: refactor this for the love of god
-    def get_legal_actions(self, player_id: str | int):
+    def get_legal_actions(self, player_id: str | int) -> Tuple[np.ndarray, Dict[int, Tuple[str, Dict[str, Any]]]]:
         """Return mask for legal actions."""
-        # Convert index to player ID if needed
         if isinstance(player_id, int):
             player = self.engine.game_state.players[player_id]
         else:
             player = self.engine.game_state.players_lookup[player_id]
 
         mask = np.zeros(Config.NUM_ACTIONS, dtype=bool)
-
-        # Resolve all basic legal actions from resolvers
         legal_actions = self._get_legal_actions(player)
 
         for action_id in legal_actions:
@@ -336,12 +306,9 @@ class GameEnv:
         if tm.is_trap_stage():
             trapper = tm.get_trapper()
             if not trapper or trapper.id != player.id:
-                # Opponent of trapper has NO actions during trap stage
                 return {}
-            # Trapper can ONLY use TrapActivateResolver or EndTurnResolver
             allowed_resolver_types = (TrapActivateResolver, EndTurnResolver)
         else:
-            # Normal turn: acting player can do everything EXCEPT manual trap activation
             if tm.get_current_player().id != player.id:
                 return {}
             allowed_resolver_types = (SummonResolver, AttackResolver, CastSpellResolver,
@@ -361,43 +328,29 @@ class GameEnv:
         params: Optional[Dict],
         before_snapshot: Dict[str, Any]
     ) -> Tuple[float, bool, bool]:
-        """Apply action and calculate reward using the new reward system.
-
-        Returns:
-            Tuple of (reward, done, success)
-        """
+        """Apply action and calculate reward."""
         assert self.engine is not None
         handler = self._action_handlers.get(action_name)
         done = False
         success = False
 
-        # Perform the action
         try:
             success = handler.perform(self, player, params)
-        except Exception as e:
-            logger.error(
-                f"Action '{action_name}' failed with error: {e}")
+        except Exception:
             success = False
 
-        # Take snapshot after action
         after_snapshot = create_enhanced_snapshot(self.engine, player)
-
-        # Calculate reward using the new reward system
         breakdown = self.reward_calculator.calculate_action_reward(
             action_name, player, params, success, before_snapshot, after_snapshot
         )
 
-        # Check for game over
         if self.engine.game_state.is_game_over():
             done = True
 
         return breakdown.total, done, success
 
     def _get_state(self, player: Player) -> np.ndarray:
-        """Return a flat state vector for a given player.
-
-        Layout: [player_features, hand_encoded, board_encoded]
-        """
+        """Return a flat state vector for a given player."""
         player_features = self._encode_player_features(player)
         hand_encoded = self._encode_hand(player)
         board_encoded = self._encode_board(player)
@@ -405,18 +358,13 @@ class GameEnv:
 
     @staticmethod
     def _encode_player_features(player: Player) -> np.ndarray:
-        """Normalize the player healthbar"""
         return np.array([player.life_points / player.max_life_points], dtype=np.float32)
 
-    # TODO: re-consider this design later
-    # TODO: there's way to many weird constants, fix this
     def _encode_hand(self, player: Player) -> np.ndarray:
         gs = self.engine.game_state
         hand_card_ids = gs.player_info[player.id].held_cards.card_ids
         max_hand = self.engine.rule_engine.max_hand_cards
 
-        # Create a temp placeholder
-        # TODO: fix this weird ass hard coded card feature
         hand_encoded = np.zeros(max_hand * CARD_FEATURES, dtype=np.float32)
         for i, card_id in enumerate(hand_card_ids[:max_hand]):
             card = gs.get_card_by_id(card_id)
@@ -428,11 +376,7 @@ class GameEnv:
                 self.reward_calculator.max_stats
             hand_encoded[base + 2] = getattr(card, "defend", 0) / \
                 self.reward_calculator.max_stats
-            # TODO: wtf is even this
-            owner_flag = 0  # current player
-            hand_encoded[base + 3] = owner_flag
-            # TODO: rather write this into category separation
-            # TODO: rewrite this into vector embeddings
+            hand_encoded[base + 3] = 0
             hand_encoded[base + 4] = ability_to_float(card)
             hand_encoded[base + 5] = 1 if card.is_face_down else 0
         return hand_encoded
@@ -453,65 +397,9 @@ class GameEnv:
                         getattr(card, "defend", 0) /
                         self.reward_calculator.max_stats,
                         owner_flag,
-                        # TODO: same for this thing
                         ability_to_float(card),
                         1 if card.is_face_down else 0,
                     ])
                 else:
                     board_encoded.extend([0.0] * CARD_FEATURES)
         return np.array(board_encoded, dtype=np.float32)
-
-    def get_winner(self) -> Optional[int]:
-        """Get the index of the winning player, or None if game is not over."""
-        for idx, player in enumerate(self.engine.game_state.players):
-            if player.life_points <= 0:
-                return 1 - idx  # Return the other player's index
-        return None
-
-    def get_reward_summary(self) -> Dict[str, Any]:
-        """Get summary of rewards for the current episode."""
-        return self.reward_calculator.get_episode_summary()
-
-    def step_evaluation(self,
-                        player,
-                        player_actions,
-                        max_actions,
-                        callback=None
-                        ):
-        action_pointer = 0
-        actions_taken = 0
-
-        while actions_taken < max_actions:
-            mask, legal_actions = self.get_legal_actions(player.id)
-            if not np.any(mask):
-                break
-
-            if action_pointer < len(player_actions):
-                action_id, _ = player_actions[action_pointer]
-                action_pointer += 1
-            else:
-                legal_ids = np.where(mask)[0]
-                action_id = random.choice(legal_ids)
-
-            # Use legal_actions if available, otherwise decode
-            if action_id in legal_actions:
-                action_name, action_params = legal_actions[action_id]
-            else:
-                action_name, action_params = ActionCodec.decode(action_id)
-
-            # Take snapshot before action
-            before_snapshot = create_enhanced_snapshot(self.engine, player)
-
-            # Perform action via handler
-            reward, done, success = self._apply_action(
-                player, action_name, action_params, before_snapshot)
-
-            actions_taken += 1
-
-            if callback:
-                callback()
-
-            if done or action_name == "end_turn":
-                break
-
-            time.sleep(0.8)

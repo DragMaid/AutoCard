@@ -1,19 +1,17 @@
 import logging
 import random
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from core.factory.card_registry import CardRegistry
 from core.factory.monster_factory import MonsterFactory
 from core.factory.spell_factory import SpellFactory
 from core.factory.trap_factory import TrapFactory
-from core.cards.card import CardType
+from core.cards.card import CardType, Card
 
 logger = logging.getLogger(__name__)
 
 
 class DrawSystem:
-    """
-    Handles weighted card draws for monsters, spells, and traps.
-    """
+    """Handles weighted card draws for monsters, spells, and traps."""
 
     CARD_TYPE_WEIGHTS: Dict[str, int] = {
         CardType.MONSTER: 50,
@@ -44,7 +42,7 @@ class DrawSystem:
         },
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.monster_factory = MonsterFactory()
         self.spell_factory = SpellFactory()
         self.trap_factory = TrapFactory()
@@ -53,9 +51,14 @@ class DrawSystem:
         self.spell_factory.build()
         self.trap_factory.build()
 
-    def draw(self, player_id: str):
-        """
-        Draw a card using weighted probabilities.
+    def draw(self, player_id: str) -> Optional[Card]:
+        """Draws a card using weighted probabilities.
+
+        Args:
+            player_id (str): The ID of the player drawing the card.
+
+        Returns:
+            Optional[Card]: The drawn card instance, or None if the draw failed.
         """
         category = self._weighted_choice(self.CARD_TYPE_WEIGHTS)
         selection = self._weighted_choice(self.DRAW_TABLES[category])
@@ -86,9 +89,16 @@ class DrawSystem:
         player_id: str,
         category: CardType,
         card_name: str,
-    ):
-        """
-        Draw a spell or trap card by name.
+    ) -> Optional[Card]:
+        """Draws a spell or trap card by name.
+
+        Args:
+            player_id (str): The ID of the player.
+            category (CardType): The card category.
+            card_name (str): The name of the card.
+
+        Returns:
+            Optional[Card]: The drawn card instance, or None if creation failed.
         """
         card = CardRegistry.create(category, player_id, card_name)
 
@@ -107,9 +117,15 @@ class DrawSystem:
         self,
         player_id: str,
         level: int,
-    ):
-        """
-        Draw a monster matching the requested level.
+    ) -> Optional[Card]:
+        """Draws a monster matching the requested level.
+
+        Args:
+            player_id (str): The ID of the player.
+            level (int): The required monster star level.
+
+        Returns:
+            Optional[Card]: The drawn monster card instance, or None if creation failed.
         """
         factory = CardRegistry.get_factory(CardType.MONSTER)
 
@@ -145,14 +161,19 @@ class DrawSystem:
         return card
 
     @staticmethod
-    def _weighted_choice(table: Dict[Any, Any]) -> Any:
-        """
-        Select a weighted random item from a mapping.
+    def _weighted_choice(table: Dict[Any, int]) -> Any:
+        """Selects a weighted random item from a mapping.
+
+        Args:
+            table (Dict[Any, int]): A dictionary mapping items to weights.
+
+        Returns:
+            Any: The randomly selected item.
         """
         if not table:
             raise ValueError("Weighted table cannot be empty.")
 
-        normalized = {}
+        normalized: Dict[Any, float] = {}
 
         for key, weight in table.items():
             try:

@@ -1,4 +1,6 @@
+import pygame
 import logging
+from typing import Dict, List, Optional, Callable, Any, Set
 from collections import defaultdict
 from gui.cards.monster_card import MonsterCardGUI
 from gui.cards.spell_card import SpellCardGUI
@@ -7,58 +9,82 @@ from gui.cards.stat_overlay import CardStatOverlay
 from gui.animations.manager import AnimationManager
 from gui.animations.toggle import ToggleRotateAnimation
 from gui.utils import random_color
-from core.data.events import (
-    AttackEvent, TrapTriggerEvent, ToggleEvent,
-    SpellActiveEvent, MergeEvent, TrapTriggerableEvent
-)
 from gui.screen.arrow import DragArrow
 from gui.sprites.sprite_manager import SpriteManager
-from core.cards.card import CardType
+from core.gui.event_handler import EventHandler
+from core.cards.card import CardType, Card
 from core.cards.monster_card import CardMode
+from gui.background.matrix_field import Matrix
+from core.data.game_state import GameState
+from core.data.events import EventLogger
+from core.logic.turn_manager import TurnManager
+from gui.sprites.sprite import Sprite
 
 logger = logging.getLogger(__name__)
 
 
 class RenderEngine:
+    """Engine responsible for rendering game components and handling GUI logic."""
+
     def __init__(
         self,
         *,
-        matrix,
-        screen,
-        game_state,
-        event_logger,
-        turn_manager,
-        train_mode=False,
+        matrix: Matrix,
+        screen: pygame.Surface,
+        game_state: GameState,
+        event_logger: EventLogger,
+        turn_manager: TurnManager,
+        train_mode: bool = False,
     ):
+        """Initializes the RenderEngine.
+
+        Args:
+            matrix: The game board matrix field.
+            screen: The pygame surface to render to.
+            game_state: The current state of the game.
+            event_logger: Logger for game events.
+            turn_manager: Manager for game turns.
+            train_mode: Boolean flag for training mode.
+        """
         self.screen = screen
         self.matrix = matrix
         self.sprite_manager = SpriteManager()
-        self.exisiting_colors = defaultdict(dict)
-        self.pending_merges = []
+        self.exisiting_colors: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        self.pending_merges: List[Any] = []
         self.game_state = game_state
         self.turn_manager = turn_manager
         self.event_logger = event_logger
         self.animation_mgr = AnimationManager(
             train_mode=train_mode, game_state=game_state)
-        self.sprite_lookup = {}
+        self.sprite_lookup: Dict[str, Sprite] = {}
+        self.event_handler = EventHandler(
+            self.sprite_manager,
+            self.animation_mgr,
+            self.matrix,
+            self.game_state,
+            self.event_logger
+        )
 
         self.last_triggered_count = 0
-        self.attack_indicators = []
+        self.attack_indicators: List[DragArrow] = []
 
-    def reset(self):
+    def reset(self) -> None:
+        """Resets the rendering engine state."""
         for value in self.sprite_manager.sprites.values():
             value.clear()
         self.exisiting_colors = defaultdict(dict)
         self.pending_merges.clear()
 
-    def update(self):
-        self.handle_events()
+    def update(self) -> None:
+        """Updates the game state for rendering."""
+        self.event_handler.handle_events()
         self.register_cards()
         self.handle_merge()
         self.process_pending_merges()
         self.handle_attack_queue()
 
-    def handle_attack_queue(self):
+    def handle_attack_queue(self) -> None:
+        """Processes the attack queue and updates attack indicators."""
         self.attack_indicators.clear()
         for attack in self.game_state.attack_queue:
             attack_indicator = DragArrow(color=(255, 0, 0))
@@ -74,11 +100,13 @@ class RenderEngine:
                 target_ui = self.sprite_manager.get_sprite(target_id)
 
             source_ui = self.sprite_manager.get_sprite(source_id)
-            attack_indicator.start_pos = source_ui.rect.center
-            attack_indicator.end_pos = target_ui.rect.center
-            self.attack_indicators.append(attack_indicator)
+            if source_ui and target_ui:
+                attack_indicator.start_pos = source_ui.rect.center
+                attack_indicator.end_pos = target_ui.rect.center
+                self.attack_indicators.append(attack_indicator)
 
-    def handle_merge(self):
+    def handle_merge(self) -> None:
+        """Handles mergeable groups by highlighting cards."""
         for player in self.game_state.players:
             groups = self.game_state.get_mergeable_groups(player.id)
             extc = self.exisiting_colors[player.id]
@@ -104,69 +132,14 @@ class RenderEngine:
             for key in removed:
                 extc.pop(key, None)
 
-    def register_cards(self):
+    def register_cards(self) -> None:
+        """Registers all cards in the hand and matrix."""
         self.register_hand(self.game_state, self.matrix)
         self.register_matrix(self.game_state, self.matrix,
                              self.animation_mgr.create_place_animation)
 
-    # TODO: refactor this to policy based
-    def handle_events(self):
-        try:
-            for event in self.event_logger.get_events():
-                et = type(event)
-
-                if et is AttackEvent:
-                    card = self.sprite_manager.get_sprite(event.card_id)
-                    if not card:
-                        continue
-
-                    if event.target_is_player:
-                        opponent_hand = next(
-                            (h for h in getattr(self.matrix, "hands", [])
-                             if getattr(h, "player_id") == event.target_id),
-                            None
-                        )
-                        if opponent_hand:
-                            self.animation_mgr.create_attack_player_animation(
-                                card, opponent_hand)
-                    else:
-                        target = self.sprite_manager.get_sprite(
-                            event.target_id)
-                        if target:
-                            self.animation_mgr.create_attack_animation(
-                                card, target)
-
-                elif et is TrapTriggerEvent:
-                    trap = self.sprite_manager.get_sprite(event.card_id)
-                    if trap:
-                        self.animation_mgr.create_trigger_animation(trap)
-                        self.matrix.areas["preview_card_table"].set_card(
-                            trap, self.game_state)
-
-                elif et is TrapTriggerableEvent:
-                    trap = self.sprite_manager.get_sprite(event.card_id)
-                    if trap:
-                        self.animation_mgr.create_triggerable_animation(trap)
-
-                elif et is ToggleEvent:
-                    card = self.sprite_manager.get_sprite(event.card_id)
-                    if card:
-                        self.animation_mgr.create_toggle_animation(
-                            card, event.mode)
-
-                elif et is SpellActiveEvent:
-                    spell = self.sprite_manager.get_sprite(event.spell_id)
-                    if spell:
-                        self.animation_mgr.create_spell_animation(spell)
-
-                elif et is MergeEvent:
-                    self.pending_merges.append(event)
-
-            self.event_logger.clear_events()
-        except Exception as e:
-            logger.error(f"[ERROR] handle_events failed: {e}")
-
-    def process_pending_merges(self):
+    def process_pending_merges(self) -> None:
+        """Processes pending merge events."""
         still_pending = []
         for event in self.pending_merges:
             card_id = event.card_id
@@ -185,15 +158,37 @@ class RenderEngine:
 
         self.pending_merges = still_pending
 
-    def is_pending_merge(self, card_id):
+    def is_pending_merge(self, card_id: str) -> bool:
+        """Checks if a card is part of a pending merge.
+
+        Args:
+            card_id: The ID of the card.
+
+        Returns:
+            True if pending merge, False otherwise.
+        """
         for event in self.pending_merges:
             if card_id in (event.card_id, event.target_id, event.result_card_id):
                 return True
         return False
 
-    # TODO: maybe doing an event based manager is more efficient ?
-    def sync_sprites(self, desired_set, zone, create_sprite,
-                     add_animation=None, align_fn=None):
+    def sync_sprites(
+        self,
+        desired_set: List[Card],
+        zone: str,
+        create_sprite: Callable[[Card], Sprite],
+        add_animation: Optional[Callable[[Sprite], None]] = None,
+        align_fn: Optional[Callable[[], None]] = None
+    ) -> None:
+        """Synchronizes sprites in a zone with the desired set of cards.
+
+        Args:
+            desired_set: List of cards to be present.
+            zone: The zone name (e.g., "hand", "matrix").
+            create_sprite: Factory function to create a new sprite.
+            add_animation: Optional function for animation when a sprite is added.
+            align_fn: Optional function to align sprites in the zone.
+        """
         sprite_dict = self.sprite_manager.sprites[zone]
         existing_ids = set(sprite_dict.keys())
         desired_ids = {card.id for card in desired_set}
@@ -210,18 +205,14 @@ class RenderEngine:
             if card.id in to_add:
                 sprite = create_sprite(card)
                 self.sprite_manager.add_sprite(card, sprite, zone)
-            # TODO: this not a very smart way to handle it, make gui card hold card_id instead
             else:
-                # Update the logic card reference for existing sprites
                 sprite = sprite_dict.get(card.id)
                 if sprite:
-                    # Handle both raw CardGUI and CardStatOverlay (which delegates to _card)
                     if hasattr(sprite, "logic_card"):
                         sprite.logic_card = card
                     elif hasattr(sprite, "_card") and hasattr(sprite._card, "logic_card"):
                         sprite._card.logic_card = card
 
-                    # Sync visual state if not animating
                     if not self.animation_mgr.is_animating(sprite, ToggleRotateAnimation):
                         if hasattr(card, "mode"):
                             sprite.angle = 90 if card.mode == CardMode.DEFEND else 0
@@ -234,8 +225,17 @@ class RenderEngine:
                 if not self.is_pending_merge(cid):
                     add_animation(sprite_dict[cid])
 
-    def create_gui_card(self, card, matrix, flip=False):
-        """Create GUI card with proper orientation"""
+    def create_gui_card(self, card: Card, matrix: Matrix, flip: bool = False) -> Any:
+        """Create GUI card with proper orientation.
+
+        Args:
+            card: The logic card to create a GUI representation for.
+            matrix: The matrix context.
+            flip: Whether the card should be flipped.
+
+        Returns:
+            The GUI card component.
+        """
         is_opponent = self.game_state.players_lookup[card.owner_id].is_opponent
 
         if card.card_type == CardType.MONSTER:
@@ -258,14 +258,20 @@ class RenderEngine:
                 matrix.grid["slot_height"]
             ))
         else:
-            raise
+            raise ValueError(f"Unknown card type: {card.card_type}")
 
         if flip:
             card_gui.flip = True
 
         return card_gui
 
-    def register_hand(self, game_state, matrix):
+    def register_hand(self, game_state: GameState, matrix: Matrix) -> None:
+        """Registers cards currently in the player's hand.
+
+        Args:
+            game_state: Current game state.
+            matrix: The matrix context.
+        """
         current_cards = []
         for player in game_state.players:
             held_cards = game_state.player_info[player.id].held_cards
@@ -274,8 +280,7 @@ class RenderEngine:
                 if card:
                     current_cards.append(card)
 
-        def make_hand_sprite(card):
-            # NOTE: the gui card will sync display with state of the logic card
+        def make_hand_sprite(card: Card) -> Sprite:
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             card.is_face_down = is_opponent
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
@@ -290,15 +295,26 @@ class RenderEngine:
             align_fn=lambda: self.align_cards(matrix, check=False)
         )
 
-    # TODO: add type hint after
-    def register_matrix(self, game_state, matrix, animation=None):
+    def register_matrix(
+        self,
+        game_state: GameState,
+        matrix: Matrix,
+        animation: Optional[Callable[[Sprite], None]] = None
+    ) -> None:
+        """Registers cards currently on the matrix board.
+
+        Args:
+            game_state: Current game state.
+            matrix: The matrix context.
+            animation: Optional animation function for new cards.
+        """
         current_cards = [
             game_state.get_card_by_id(str(card_id))
             for row in game_state.field_matrix
             for card_id in row if card_id
         ]
 
-        def make_matrix_sprite(card):
+        def make_matrix_sprite(card: Card) -> Sprite:
             is_opponent = game_state.players_lookup[card.owner_id].is_opponent
             card.is_face_down = card.card_type == CardType.TRAP
             sprite = self.create_gui_card(card, matrix, flip=is_opponent)
@@ -318,11 +334,18 @@ class RenderEngine:
             create_sprite=make_matrix_sprite
         )
 
-    def align_cards(self, matrix, check=False):
+    def align_cards(self, matrix: Matrix, check: bool = False) -> None:
+        """Aligns cards in the matrix hands.
+
+        Args:
+            matrix: The matrix context.
+            check: Whether to perform an alignment check.
+        """
         for hand in matrix.hands:
             hand.align(self.sprite_manager.sprites["hand"], check=check)
 
-    def draw(self):
+    def draw(self) -> None:
+        """Draws all sprites and indicators to the screen."""
         for group in self.sprite_manager.sprites.values():
             for sprite in group.values():
                 sprite.draw(self.screen)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from core.cards.monster_card import MonsterCard
 from typing import TYPE_CHECKING
 from .utils import log_action
 from core.data.game_state import AttackEntry
@@ -12,27 +11,25 @@ if TYPE_CHECKING:
 
 
 class BattleEngine:
-    """
-    Handles battle resolution logic between cards and players.
-    """
+    """Handles battle resolution logic between cards and players."""
 
-    def __init__(self, game_engine: GameEngine):
+    def __init__(self, game_engine: GameEngine) -> None:
+        """Initializes the BattleEngine.
+
+        Args:
+            game_engine (GameEngine): The main game engine instance.
+        """
         self.game_engine = game_engine
 
     def resolve_battle(self, attack: AttackEntry) -> None:
-        """
-        Resolves a battle between a card and a target (card or player).
+        """Resolves a battle between a card and a target (card or player).
 
         Args:
-            attacker_id (str): ID of the attacking player.
-            defender_id (str): ID of the defending player.
-            card_id (str): ID of the attacking card.
-            target_id (str): ID of the target card or player.
-            target_is_player (bool): True if the target is a player.
+            attack (AttackEntry): The attack details containing attacker, defender,
+                card IDs, and target information.
         """
 
-        card: MonsterCard = \
-            self.game_engine.game_state.get_card_by_id(attack.card_id)
+        card = self.game_engine.game_state.get_card_by_id(attack.card_id)
         if not card:
             return
 
@@ -43,8 +40,7 @@ class BattleEngine:
         ))
 
         if not attack.target_is_player:
-            target: MonsterCard =\
-                self.game_engine.game_state.get_card_by_id(attack.target_id)
+            target = self.game_engine.game_state.get_card_by_id(attack.target_id)
             if not target:
                 return
             defender = self.game_engine.game_state.players_lookup[attack.defender_id]
@@ -66,15 +62,13 @@ class BattleEngine:
                     defender.life_points = max(
                         defender.life_points - damage, 0)
                     self.game_engine.move_card_to_graveyard(attack.target_id)
-                    battle_details["result"] = f"Target destroyed, {
-                        defender.name} -{damage}LP"
+                    battle_details["result"] = f"Target destroyed, {defender.name} -{damage}LP"
                 elif card.attack < target.attack:
                     damage = abs(target.attack - card.attack)
                     attacker.life_points = max(
                         attacker.life_points - damage, 0)
                     self.game_engine.move_card_to_graveyard(attack.card_id)
-                    battle_details["result"] = f"Attacker destroyed, {
-                        attacker.name} -{damage}LP"
+                    battle_details["result"] = f"Attacker destroyed, {attacker.name} -{damage}LP"
                 else:
                     self.game_engine.move_card_to_graveyard(attack.card_id)
                     self.game_engine.move_card_to_graveyard(attack.target_id)
@@ -87,8 +81,7 @@ class BattleEngine:
                     damage = abs(target.defend - card.attack)
                     attacker.life_points = max(
                         attacker.life_points - damage, 0)
-                    battle_details["result"] = f"Attack got reflected, {
-                        attacker.name} -{damage}LP"
+                    battle_details["result"] = f"Attack got reflected, {attacker.name} -{damage}LP"
                 else:
                     battle_details["result"] = "Attack tied defense (no effect)"
 

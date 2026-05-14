@@ -13,10 +13,19 @@ if TYPE_CHECKING:
 class UpgradeEngine:
     """
     Handles monster upgrade (fusion/merge) logic.
+
+    Attributes:
+        game_engine (GameEngine): The game engine instance.
     """
 
-    def __init__(self, game_engine: GameEngine):
-        self.game_engine = game_engine
+    def __init__(self, game_engine: GameEngine) -> None:
+        """
+        Initializes the UpgradeEngine.
+
+        Args:
+            game_engine (GameEngine): The game engine instance.
+        """
+        self.game_engine: GameEngine = game_engine
 
     def upgrade_monster(
         self,
@@ -35,7 +44,7 @@ class UpgradeEngine:
         Returns:
             bool: True if upgrade successful, False otherwise.
         """
-        can_upgrade = self.game_engine.rule_engine.can_upgrade(
+        can_upgrade: bool = self.game_engine.rule_engine.can_upgrade(
             player_id, own_card_id, target_card_id)
 
         own_card: MonsterCard = self.game_engine.game_state.get_card_by_id(
@@ -44,7 +53,7 @@ class UpgradeEngine:
             target_card_id)
 
         if not can_upgrade:
-            reasons = []
+            reasons: list[str] = []
             if own_card.monster_type != target_card.monster_type:
                 reasons.append(f"Type mismatch: {own_card.monster_type.value} vs {
                                target_card.monster_type.value}")
@@ -61,9 +70,9 @@ class UpgradeEngine:
             }, False)
             return False
 
-        upgrade_position = target_card.pos_in_matrix
-        old_level = own_card.star
-        new_level = old_level + 1
+        upgrade_position: Optional[tuple[int, int]] = target_card.pos_in_matrix
+        old_level: int = own_card.star
+        new_level: int = old_level + 1
 
         # Remove the base monsters from the field and move them to graveyard
         self.game_engine.move_card_to_graveyard(own_card_id)
@@ -71,7 +80,7 @@ class UpgradeEngine:
 
         # Create the upgraded monster
         monster_factory = self.game_engine.draw_system.monster_factory
-        upgraded_monster = load_by_type_and_level(
+        upgraded_monster: Optional[MonsterCard] = load_by_type_and_level(
             factory=monster_factory,
             player_id=player_id,
             monster_type=own_card.monster_type,

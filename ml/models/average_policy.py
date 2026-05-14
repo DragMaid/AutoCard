@@ -3,10 +3,23 @@ import torch.nn as nn
 from ml.models.mlp_base import MLPBase
 
 
+import torch
+import torch.nn as nn
+from ml.models.mlp_base import MLPBase
+from typing import List
+
+
 class AveragePolicy(nn.Module):
     """Policy network for NFSP (stochastic, NaN-safe version)."""
 
-    def __init__(self, input_dim, num_actions, hidden_dims=[256, 256]):
+    def __init__(self, input_dim: int, num_actions: int, hidden_dims: List[int] = [256, 256]):
+        """Initializes AveragePolicy.
+
+        Args:
+            input_dim: Input dimension.
+            num_actions: Number of actions.
+            hidden_dims: List of hidden layer dimensions.
+        """
         super().__init__()
         self.feature_net = MLPBase(input_dim, hidden_dims)
         self.num_actions = num_actions
@@ -18,7 +31,15 @@ class AveragePolicy(nn.Module):
         nn.init.xavier_uniform_(self.head.weight)
         nn.init.constant_(self.head.bias, 0.0)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Action probabilities.
+        """
         x = self.feature_net(x)
 
         # Compute logits
@@ -31,7 +52,15 @@ class AveragePolicy(nn.Module):
         # Use numerically safe softmax (log-sum-exp trick)
         return self.stable_softmax(logits, dim=1)
 
-    def act(self, state):
+    def act(self, state: torch.Tensor) -> int:
+        """Selects action.
+
+        Args:
+            state: State tensor.
+
+        Returns:
+            Action index.
+        """
         state = state.unsqueeze(0).to(self.device)
         with torch.no_grad():
             probs = self.forward(state)
@@ -39,7 +68,16 @@ class AveragePolicy(nn.Module):
         return action
 
     @staticmethod
-    def stable_softmax(logits, dim=-1):
+    def stable_softmax(logits: torch.Tensor, dim: int = -1) -> torch.Tensor:
+        """Computes numerically stable softmax.
+
+        Args:
+            logits: Logits.
+            dim: Dimension.
+
+        Returns:
+            Probabilities.
+        """
         z = logits - logits.max(dim=dim, keepdim=True).values
         numerator = torch.exp(z)
         denominator = numerator.sum(dim=dim, keepdim=True)

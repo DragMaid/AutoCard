@@ -12,5 +12,5 @@ class Player(BaseModel):
     is_opponent: bool = False
 
     def reset(self) -> None:
-        """Reset player life points back to its original value."""
+        """Resets player life points back to their original value."""
         self.life_points = self.original_life_points

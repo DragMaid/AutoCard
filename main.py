@@ -8,7 +8,7 @@ from core.network.ai import AIGame
 
 # TODO: move these to config
 class GameApp:
-    def __init__(self):
+    def __init__(self) -> None:
         pygame.init()
         self.screen = pygame.display.set_mode((1280, 720))
         self.clock = pygame.time.Clock()
@@ -16,7 +16,7 @@ class GameApp:
         self.game_app = None
         self.running = True
 
-    def run(self):
+    def run(self) -> None:
         while self.running:
             dt = self.clock.tick(60) / 1000.0
             self._tick(dt)
@@ -24,7 +24,7 @@ class GameApp:
         self._cleanup_game()
         pygame.quit()
 
-    def _tick(self, dt: float):
+    def _tick(self, dt: float) -> None:
         state = self.matchmaker.state
 
         # User navigated back to the menu while a game existed → clean it up
@@ -47,7 +47,7 @@ class GameApp:
             and self.matchmaker.state == ScreenState.START_GAME
         )
 
-    def _tick_game(self, dt: float):
+    def _tick_game(self, dt: float) -> None:
         keep_running = self.game_app.step(dt)
         if not keep_running or self.game_app.should_exit_to_menu:
             reason = getattr(self.game_app, "exit_reason", None)
@@ -56,7 +56,7 @@ class GameApp:
             if reason:
                 self.matchmaker.show_error(reason)
 
-    def _tick_matchmaking(self, dt: float):
+    def _tick_matchmaking(self, dt: float) -> None:
         self._handle_matchmaking_events()
         self.matchmaker.update(dt)
         self.matchmaker.draw(self.screen)
@@ -67,13 +67,13 @@ class GameApp:
         elif state == ScreenState.START_GAME and self.game_app is None:
             self._create_game_app(self.matchmaker.result)
 
-    def _handle_matchmaking_events(self):
+    def _handle_matchmaking_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
             self.matchmaker.handle_event(event)
 
-    def _poll_waiting(self):
+    def _poll_waiting(self) -> None:
         """Check connection / lobby state and advance to START_GAME when ready."""
         if self.game_app is None:
             self._create_game_app(self.matchmaker.result)
@@ -95,7 +95,7 @@ class GameApp:
             elif self.game_app.connected and self.game_app.game_started:
                 self.matchmaker.set_state(ScreenState.START_GAME)
 
-    def _create_game_app(self, result):
+    def _create_game_app(self, result: tuple) -> None:
         if not result:
             return
         mode = result[0]

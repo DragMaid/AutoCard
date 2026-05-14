@@ -12,53 +12,82 @@ from core.cards.monster_card import CardMode
 logger = logging.getLogger(__name__)
 
 
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field
+import logging
+import math
+
+from core.data.player import Player
+from core.cards.card import CardType
+from core.cards.monster_card import CardMode
+
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class RewardConfig:
-    """Configuration for reward values."""
-    # Action rewards
+    """Configuration for reward values in the reinforcement learning agent.
+
+    Attributes:
+        deploy_monster: Reward for deploying a monster card.
+        deploy_trap: Reward for deploying a trap card.
+        attack_destroy: Reward for destroying an opponent's monster.
+        survive_attack: Reward for surviving an opponent's attack.
+        monster_destroyed: Penalty for losing a monster card.
+        use_spell: Reward for using a spell card.
+        merge_base: Base reward for merging monsters.
+        damage_scale_factor: Scaling factor for damage-based rewards.
+        field_advantage_multiplier: Normalized multiplier for field advantage.
+        field_advantage_cap: Maximum value for field advantage.
+        field_advantage_decay: Decay factor for field advantage smoothing.
+        board_control_bonus: Bonus for having more monsters than the opponent.
+        no_monsters_penalty: Penalty for having no monsters on the field.
+        trap_advantage: Bonus for having a trap advantage.
+        skip_turn: Penalty for skipping a turn.
+        premature_end_penalty: Penalty for ending turn prematurely.
+        invalid_action: Penalty for taking an invalid action.
+        valid_action_bonus: Bonus for taking a valid action.
+        win: Reward for winning the game.
+        lose: Penalty for losing the game.
+        direct_attack_bonus: Bonus for performing a direct attack.
+        trap_trigger_base: Base reward for triggering a trap.
+        trap_trigger_log_scale: Logarithmic scaling for trap trigger rewards.
+        max_trap_trigger_reward: Maximum reward for multiple trap triggers.
+        spell_combo_bonus: Bonus for spell combos.
+        high_level_summon_bonus: Bonus for high-level monster summons.
+        bait_block_bonus: Bonus for blocking a trap with bait.
+        strength_scale_factor: Scaling factor for strength-based rewards.
+        max_step_reward: Maximum allowable reward per step.
+        min_step_reward: Minimum allowable reward per step.
+    """
     deploy_monster: float = 0.5
-    deploy_trap: float = 0.15  # Reduced since main reward is from triggering
+    deploy_trap: float = 0.15
     attack_destroy: float = 1.0
     survive_attack: float = 0.2
     monster_destroyed: float = -0.5
     use_spell: float = 0.3
     merge_base: float = 1.0
-
-    # Damage-based rewards (logarithmic scaling)
     damage_scale_factor: float = 0.05
-
-    # Field advantage
-    field_advantage_multiplier: float = 0.5  # Normalized multiplier
+    field_advantage_multiplier: float = 0.5
     field_advantage_cap: float = 0.5
-    # Smooth sudden swings (0.9-0.99 range)
     field_advantage_decay: float = 0.95
     board_control_bonus: float = 0.2
     no_monsters_penalty: float = -0.3
     trap_advantage: float = 0.1
-
-    # Penalties
     skip_turn: float = -1.0
     premature_end_penalty: float = -0.3
     invalid_action: float = -0.5
     valid_action_bonus: float = 0.1
-
-    # Terminal rewards
     win: float = 2.0
     lose: float = -2.0
-
-    # Bonus rewards
     direct_attack_bonus: float = 0.3
-    trap_trigger_base: float = 0.5  # Base reward per trap trigger
-    trap_trigger_log_scale: float = 1.0  # Controls logarithmic steepness
-    max_trap_trigger_reward: float = 1.5  # Cap for multiple traps
+    trap_trigger_base: float = 0.5
+    trap_trigger_log_scale: float = 1.0
+    max_trap_trigger_reward: float = 1.5
     spell_combo_bonus: float = 0.3
     high_level_summon_bonus: float = 0.1
     bait_block_bonus: float = 0.3
-
-    # Strength-based scaling
     strength_scale_factor: float = 0.1
-
-    # Reward clamping
     max_step_reward: float = 2.0
     min_step_reward: float = -2.0
 

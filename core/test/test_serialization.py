@@ -2,6 +2,7 @@ import json
 import socketio
 import threading
 import time
+from typing import Any
 
 from core.logic.game_engine import GameEngine
 from core.data.player import Player
@@ -12,13 +13,23 @@ SERVER_URL = f"http://{HOST}:{PORT}"
 
 
 def create_engine(p1_name: str, p2_name: str) -> GameEngine:
+    """Creates a GameEngine instance with two players.
+
+    Args:
+        p1_name: Name of the first player.
+        p2_name: Name of the second player.
+
+    Returns:
+        A configured GameEngine instance.
+    """
     p1 = Player(player_index=0, name=p1_name)
     p2 = Player(player_index=1, name=p2_name, is_opponent=True)
 
     return GameEngine([p1, p2])
 
 
-def server():
+def server() -> None:
+    """Starts the game engine server."""
     sio = socketio.Server(cors_allowed_origins="*")
     app = socketio.WSGIApp(sio)
 
@@ -26,7 +37,7 @@ def server():
     engine.start_game()
 
     @sio.event
-    def connect(sid, environ):
+    def connect(sid: str, environ: Any) -> None:
         print(f"[SERVER] Client connected: {sid}")
 
         serialized = engine.serialize()
@@ -38,7 +49,7 @@ def server():
         )
 
     @sio.event
-    def disconnect(sid):
+    def disconnect(sid: str) -> None:
         print(f"[SERVER] Client disconnected: {sid}")
 
     from werkzeug.serving import run_simple
@@ -46,21 +57,22 @@ def server():
     run_simple(HOST, PORT, app, threaded=True, use_reloader=False)
 
 
-def client():
+def client() -> None:
+    """Connects to the server and prints received game state."""
     sio = socketio.Client()
 
     engine = create_engine("1", "2")
 
     @sio.event
-    def connect():
+    def connect() -> None:
         print("[CLIENT] Connected")
 
     @sio.event
-    def disconnect():
+    def disconnect() -> None:
         print("[CLIENT] Disconnected")
 
     @sio.event
-    def game_state(data):
+    def game_state(data: Any) -> None:
         print("[CLIENT] Received game state")
 
         engine.deserialize(data)

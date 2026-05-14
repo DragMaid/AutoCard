@@ -12,11 +12,14 @@ if TYPE_CHECKING:
 
 
 class SummonEngine:
-    """
-    Handles card summoning and placement logic.
-    """
+    """Handles card summoning and placement logic."""
 
-    def __init__(self, game_engine: GameEngine):
+    def __init__(self, game_engine: GameEngine) -> None:
+        """Initializes the SummonEngine.
+
+        Args:
+            game_engine (GameEngine): The main game engine instance.
+        """
         self.game_engine = game_engine
 
     def summon_card(
@@ -26,8 +29,7 @@ class SummonEngine:
         cell: Optional[Tuple[int, int]],
         check: bool = True
     ) -> bool:
-        """
-        Processes a summon request from a player.
+        """Processes a summon request from a player.
 
         Args:
             player_id (str): ID of the player summoning.

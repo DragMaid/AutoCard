@@ -10,13 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class RuleEngine:
-    """
-    Handles game rule logic, validation of player actions, and turn-based state updates.
-    """
+    """Handles game rule logic, validation of player actions, and turn-based state updates."""
 
-    def __init__(self, game_state: GameState, turn_manager: TurnManager):
-        """
-        Initializes the RuleEngine with the current game state and turn manager.
+    def __init__(self, game_state: GameState, turn_manager: TurnManager) -> None:
+        """Initializes the RuleEngine with the current game state and turn manager.
 
         Args:
             game_state (GameState): The current state of the game.
@@ -26,8 +23,7 @@ class RuleEngine:
         self.game_state = game_state
 
     def can_draw(self, player_id: str) -> bool:
-        """
-        Validates if a player is allowed to draw a card from their deck.
+        """Validates if a player is allowed to draw a card from their deck.
 
         Args:
             player_id (str): The ID of the player attempting to draw.
@@ -68,8 +64,7 @@ class RuleEngine:
         player_id: str,
         trap_id: str
     ) -> bool:
-        """
-        Validates if a player is allowed to activate a trap card.
+        """Validates if a player is allowed to activate a trap card.
 
         Args:
             player_id (str): The ID of the player attempting the activation.
@@ -128,8 +123,7 @@ class RuleEngine:
         card_id: str,
         pos: Tuple[int, int]
     ) -> bool:
-        """
-        Validates if a player is allowed to summon a card to the specified field position.
+        """Validates if a player is allowed to summon a card to the specified field position.
 
         Args:
             player_id (str): The ID of the player attempting to summon.
@@ -290,8 +284,7 @@ class RuleEngine:
         return True
 
     def can_change_mode(self, player_id: str, card_id: str) -> bool:
-        """
-        Validates if a player is allowed to change the mode of a card on the field.
+        """Validates if a player is allowed to change the mode of a card on the field.
 
         Args:
             player_id (str): The ID of the player attempting to change the mode.
@@ -333,8 +326,7 @@ class RuleEngine:
         target_id: str,
         target_is_player: bool = False
     ) -> bool:
-        """
-        Validates if an attack action is permitted.
+        """Validates if an attack action is permitted.
 
         Args:
             attacker_id (str): The ID of the player initiating the attack.
@@ -497,8 +489,7 @@ class RuleEngine:
         return False
 
     def can_toggle(self, player_id: str, card_id: str) -> bool:
-        """
-        Validates if a player is allowed to toggle the state of a card.
+        """Validates if a player is allowed to toggle the state of a card.
 
         Args:
             player_id (str): The ID of the player attempting the action.
@@ -564,8 +555,7 @@ class RuleEngine:
         return True
 
     def can_upgrade(self, player_id: str, own_card_id: str, target_card_id: str) -> bool:
-        """
-        Validates if a player is allowed to upgrade a monster card.
+        """Validates if a player is allowed to upgrade a monster card.
 
         Args:
             player_id (str): The ID of the player initiating the upgrade.

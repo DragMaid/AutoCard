@@ -1,16 +1,42 @@
+from typing import Any
 from gui.cards.card_gui import CardGUI
 from core.cards.monster_card import MonsterCard as LogicMonsterCard
 
 
 class MonsterCardGUI(CardGUI):
-    def __init__(self, monster_info: LogicMonsterCard, *args, **kwargs):
+    """GUI representation of a monster card."""
+
+    def __init__(self, monster_info: LogicMonsterCard, *args: Any, **kwargs: Any) -> None:
+        """Initializes the MonsterCardGUI.
+
+        Args:
+            monster_info (LogicMonsterCard): The logic representation of the monster card.
+            *args (Any): Variable length argument list.
+            **kwargs (Any): Arbitrary keyword arguments.
+        """
         super().__init__(monster_info, *args, **kwargs)
 
-    def on_toggle(self, game_engine):
+    def on_toggle(self, game_engine: Any) -> bool:
+        """Handles card toggle event.
+
+        Args:
+            game_engine (Any): The game engine instance.
+
+        Returns:
+            bool: Result of the toggle operation.
+        """
         return game_engine.toggle_card(self.logic_card.id)
 
-    # TODO: not sure about this one but should reconsider this design
-    def on_drop(self, matrix, game_engine):
+    def on_drop(self, matrix: Any, game_engine: Any) -> bool:
+        """Handles card drop event.
+
+        Args:
+            matrix (Any): The field matrix.
+            game_engine (Any): The game engine instance.
+
+        Returns:
+            bool: True if drop was successful, False otherwise.
+        """
         cell = matrix.get_slot_at_pos(self.rect.center)
         success = False
 

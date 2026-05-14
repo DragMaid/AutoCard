@@ -110,7 +110,11 @@ class GameState(BaseModel):
 
     # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
-        """Reset the game state instance to its original state."""
+        """Resets the game state instance to its original state.
+
+        Initializes player info, clears the field matrix, and empties trap/attack
+        queues.
+        """
         for player in self.players:
             player.reset()
 
@@ -141,7 +145,11 @@ class GameState(BaseModel):
         self.attack_queue = []
 
     def is_game_over(self) -> bool:
-        """Returns a boolean indicating if one player is dead."""
+        """Checks if the game has ended.
+
+        Returns:
+            bool: True if one player has zero or fewer life points, False otherwise.
+        """
         for player in self.players:
             if player.life_points <= 0:
                 self.game_over = True
@@ -149,7 +157,13 @@ class GameState(BaseModel):
         return self.game_over
 
     def modify_field(self, mode: ModifyMode, card: Card, pos: Tuple[int, int]) -> None:
-        """Perform action validation before adding / removing card from field slots."""
+        """Performs action validation before adding or removing a card from the field.
+
+        Args:
+            mode (ModifyMode): The modification action, either ADD or REMOVE.
+            card (Card): The card to be modified on the field.
+            pos (Tuple[int, int]): The grid coordinates (row, col) on the field.
+        """
         row, col = pos
         # Convert to enum if this fail then just crash
         ModifyMode(mode)
@@ -253,11 +267,25 @@ class GameState(BaseModel):
             self.field_matrix[row][col] = None
 
     def get_card_by_id(self, card_id: str) -> Optional[Card]:
-        """Helper function to get all logic card stored via its ID."""
+        """Retrieves a card instance by its unique ID.
+
+        Args:
+            card_id (str): The unique identifier of the card.
+
+        Returns:
+            Optional[Card]: The card instance if found, otherwise None.
+        """
         return self.entity_lookup.get(card_id)
 
     def get_player_field_cards(self, player_id: str) -> List[Card]:
-        """Return a list of player's cards currently on the field."""
+        """Returns a list of player's cards currently on the field.
+
+        Args:
+            player_id (str): The ID of the player.
+
+        Returns:
+            List[Card]: A list of card instances belonging to the player on the field.
+        """
         return [
             self.entity_lookup[self.field_matrix[r][c]]
             for r in range(config.ROWS)
@@ -266,11 +294,26 @@ class GameState(BaseModel):
             and self.field_matrix_ownership[r][c] == player_id
         ]
 
-    def get_player_held_card_ids(self, player_id: str) -> List[Card]:
+    def get_player_held_card_ids(self, player_id: str) -> List[str]:
+        """Returns the list of card IDs currently held by the player.
+
+        Args:
+            player_id (str): The ID of the player.
+
+        Returns:
+            List[str]: A list of card IDs in the player's hand.
+        """
         return self.player_info[player_id].held_cards.card_ids
 
-    def get_empty_slots(self, player_id: str) -> Optional[Tuple[int, int]]:
-        """Return row, col tuples of all empty slots owned by user."""
+    def get_empty_slots(self, player_id: str) -> List[Tuple[int, int]]:
+        """Returns a list of coordinate tuples of all empty slots owned by a player.
+
+        Args:
+            player_id (str): The ID of the player.
+
+        Returns:
+            List[Tuple[int, int]]: A list of (row, col) coordinates for empty slots.
+        """
         empty_slots = [
             (r, c)
             for r in range(config.ROWS)
@@ -281,14 +324,29 @@ class GameState(BaseModel):
         return empty_slots
 
     def get_opponent_id(self, player_id: str) -> Optional[str]:
-        """Get ID of the first player that is not the user."""
+        """Gets the ID of the opponent player.
+
+        Args:
+            player_id (str): The ID of the current player.
+
+        Returns:
+            Optional[str]: The ID of the opponent if one exists, otherwise None.
+        """
         for pid in self.player_info:
             if pid != player_id:
                 return pid
         return None
 
     def get_mergeable_groups(self, player_id: str) -> Dict[Tuple, List[MonsterCard]]:
-        """Returns a dict of tuple for keys and list of MonsterCard that are mergeable."""
+        """Groups field monsters by type and star level for potential merging.
+
+        Args:
+            player_id (str): The ID of the player.
+
+        Returns:
+            Dict[Tuple, List[MonsterCard]]: A dictionary where keys are (player_id,
+            monster_type, star) and values are lists of compatible MonsterCards.
+        """
         groups: Dict[Tuple, List[MonsterCard]] = {}
         for card in self.get_player_field_cards(player_id):
             if isinstance(card, MonsterCard):

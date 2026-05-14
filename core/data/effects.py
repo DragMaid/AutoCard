@@ -25,26 +25,38 @@ class EffectPolicy:
     """Base class for implementing effect management."""
 
     @staticmethod
-    def apply(card: Card, effect: Effect, game_state: GameState):
+    def apply(card: Card, effect: Effect, game_state: GameState) -> None:
+        """Applies an effect to a target card."""
         raise NotImplementedError
 
     @staticmethod
-    def remove(self, card: Card, effect: Effect, game_state: GameState):
+    def remove(card: Card, effect: Effect, game_state: GameState) -> None:
+        """Removes an effect from a target card."""
         raise NotImplementedError
 
 
 class BuffPolicy(EffectPolicy):
-    def apply(target, effect, game_state):
+    """Policy for applying and removing buff effects."""
+
+    @staticmethod
+    def apply(target: Card, effect: Effect, game_state: GameState) -> None:
+        """Applies a buff to a target."""
         setattr(target, effect.stat,
                 getattr(target, effect.stat) + effect.value)
 
-    def remove(target, effect, game_state):
+    @staticmethod
+    def remove(target: Card, effect: Effect, game_state: GameState) -> None:
+        """Removes a buff from a target."""
         setattr(target, effect.stat,
                 getattr(target, effect.stat) - effect.value)
 
 
 class DebuffPolicy(EffectPolicy):
-    def apply(target, effect, game_state):
+    """Policy for applying and removing debuff effects."""
+
+    @staticmethod
+    def apply(target: Card, effect: Effect, game_state: GameState) -> None:
+        """Applies a debuff to a target."""
         # NOTE: update effect effectiveness so it wouldn't buff the card
         # ex: 500 atk -> -100 atk -> 0 atk -> 500 atk instead of 600 atk
         new_stat = getattr(target, effect.stat) - effect.value
@@ -52,7 +64,9 @@ class DebuffPolicy(EffectPolicy):
         effect.value = abs(new_stat_filtered - new_stat)
         setattr(target, effect.stat, new_stat_filtered)
 
-    def remove(target, effect, game_state):
+    @staticmethod
+    def remove(target: Card, effect: Effect, game_state: GameState) -> None:
+        """Removes a debuff from a target."""
         setattr(target, effect.stat,
                 getattr(target, effect.stat) + effect.value)
 

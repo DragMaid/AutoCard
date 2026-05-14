@@ -12,6 +12,14 @@ class SpellAbility(str, Enum):
 
 
 class SpellCard(Card):
+    """Represents a spell card in the game.
+
+    Attributes:
+        card_type: Category of the card, fixed to SPELL.
+        abilities: List of abilities provided by the spell.
+        effectiveness: Optional list of effectiveness values for abilities.
+        duration: Optional list of durations for abilities.
+    """
     card_type: Literal[CardType.SPELL] = CardType.SPELL
 
     abilities: List[SpellAbility]

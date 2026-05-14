@@ -1,5 +1,6 @@
 import logging
 from multiprocessing import Process, Queue
+from typing import Optional
 from core.network.discovery import DiscoveryServer
 from gui.effects.manager import EffectManager
 from .base import GameApp
@@ -13,46 +14,67 @@ class SocketIOWrapper:
     Bridges the GameEngine's socket_io interface to the server's output queue.
     """
 
-    def __init__(self, out_queue: Queue):
-        self.out_queue = out_queue
+    def __init__(self, out_queue: Queue) -> None:
+        self.out_queue: Queue = out_queue
 
-    def emit(self, event: str, data: dict):
+    def emit(self, event: str, data: dict) -> None:
+        """Emits an event to the client."""
         self.out_queue.put((event, data))
 
 
 class SocketServerGame(GameApp):
-    def __init__(self, screen, host="0.0.0.0", port=5555,
-                 room_name="AutoCard Room", password=""):
+    """
+    Game mode for server-side socket hosting.
+
+    Attributes:
+        game_started (bool): Whether the game has started.
+        connected_clients (int): Number of connected clients.
+    """
+
+    def __init__(self, screen, host: str = "0.0.0.0", port: int = 5555,
+                 room_name: str = "AutoCard Room", password: str = "") -> None:
+        """
+        Initializes SocketServerGame.
+
+        Args:
+            screen: The pygame screen surface.
+            host (str): Server host address.
+            port (int): Server port.
+            room_name (str): Name of the room.
+            password (str): Optional connection password.
+        """
         super().__init__(screen)
 
-        self.game_started = False
-        self.connected_clients = 0
-        self._pending_data = None
-        self._password = password
+        self.game_started: bool = False
+        self.connected_clients: int = 0
+        self._pending_data: Optional[dict] = None
+        self._password: str = password
 
         self._sub_queue: Queue = Queue()   # server → main process
         self._out_queue: Queue = Queue()   # main process → server
 
         self.game_engine.socket_io = SocketIOWrapper(self._out_queue)
 
-        self._discovery = DiscoveryServer(
+        self._discovery: DiscoveryServer = DiscoveryServer(
             port, room_name=room_name, password_protected=bool(password)
         )
         self._discovery.start()
 
-        self._server_process = Process(
+        self._server_process: Process = Process(
             target=run_socketio_server,
             args=(host, port, password, self._sub_queue, self._out_queue),
             daemon=True,
         )
         self._server_process.start()
 
-    def update(self):
+    def update(self) -> None:
+        """Updates game state."""
         self.drain_sub_queue()
         self._apply_pending_sync()
         self._tick_rendering()
 
-    def drain_sub_queue(self):
+    def drain_sub_queue(self) -> None:
+        """Drains the sub queue for messages from the server process."""
         while not self._sub_queue.empty():
             msg = self._sub_queue.get()
             key, value = next(iter(msg.items()))
@@ -62,7 +84,6 @@ class SocketServerGame(GameApp):
                       self.connected_clients + 1}")
                 self.connected_clients += 1
                 self.game_engine.start_game()
-                # TODO: remove debug
                 from core.logic.utils import draw_specific_card
                 from core.cards.card import CardType
                 draw_specific_card(
@@ -80,7 +101,8 @@ class SocketServerGame(GameApp):
             elif key == "synchronize":
                 self._pending_data = value
 
-    def _apply_pending_sync(self):
+    def _apply_pending_sync(self) -> None:
+        """Applies pending game state synchronization."""
         if self._pending_data is None:
             return
         self.game_engine.deserialize(self._pending_data)
@@ -101,12 +123,14 @@ class SocketServerGame(GameApp):
         self.render_engine.align_cards(self.matrix)
         self._pending_data = None
 
-    def _tick_rendering(self):
+    def _tick_rendering(self) -> None:
+        """Updates rendering systems."""
         self.render_engine.update()
         self.render_engine.animation_mgr.update(self.dt)
         EffectManager.update()
 
-    def cleanup(self):
+    def cleanup(self) -> None:
+        """Cleans up resources."""
         logger.info("Stopping SocketServerGame…")
         try:
             self._discovery.stop()

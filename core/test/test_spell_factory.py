@@ -3,7 +3,8 @@ from core.factory.spell_factory import SpellFactory
 from core.data.player import Player
 
 
-def test_spell_factory():
+def test_spell_factory() -> None:
+    """Tests loading spells via SpellFactory."""
     factory = SpellFactory()
     factory.build()
 

@@ -1,7 +1,7 @@
 import json
 import random
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, Dict, Any
 from core.cards.spell_card import SpellCard
 from core.factory.base_factory import BaseFactory
 from core.factory.card_registry import CardRegistry
@@ -12,12 +12,12 @@ from core.config import config
 class SpellFactory(BaseFactory):
     DATA_FILE = Path("./assets/data/spellInfo.json")
 
-    def __init__(self):
-        self._cards = {}
+    def __init__(self) -> None:
+        self._cards: Dict[str, Any] = {}
         CardRegistry.register(CardType.SPELL, self)
 
-    def build(self):
-        """Load spell cards from JSON (flat array)."""
+    def build(self) -> None:
+        """Loads spell cards from JSON (flat array)."""
         if not self.DATA_FILE.exists():
             raise FileNotFoundError(f"{self.DATA_FILE} not found")
 
@@ -34,7 +34,15 @@ class SpellFactory(BaseFactory):
             self._cards[card_info["name"]] = card_info
 
     def load(self, owner_id: str, name: Optional[str] = None) -> Optional[SpellCard]:
-        """Create a SpellCard instance."""
+        """Creates a SpellCard instance.
+
+        Args:
+            owner_id (str): The ID of the owner.
+            name (Optional[str]): The name of the spell.
+
+        Returns:
+            Optional[SpellCard]: A new SpellCard instance, or None if not found.
+        """
         if not self._cards:
             return None
 
@@ -55,5 +63,10 @@ class SpellFactory(BaseFactory):
             duration=prototype.get("duration")
         )
 
-    def get_cards(self) -> List[SpellCard]:
+    def get_cards(self) -> Dict[str, Any]:
+        """Returns the spell cards dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary of spell card data.
+        """
         return self._cards

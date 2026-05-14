@@ -1,7 +1,7 @@
 import json
 import random
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from core.cards.monster_card import MonsterCard
 from core.factory.base_factory import BaseFactory
 from core.factory.card_registry import CardRegistry
@@ -12,12 +12,12 @@ from core.config import config
 class MonsterFactory(BaseFactory):
     DATA_FILE = Path("./assets/data/monsterInfo.json")
 
-    def __init__(self):
-        self._cards = {}
+    def __init__(self) -> None:
+        self._cards: Dict[str, Any] = {}
         CardRegistry.register(CardType.MONSTER, self)
 
-    def build(self):
-        """Load monster cards from JSON (nested format)."""
+    def build(self) -> None:
+        """Loads monster cards from JSON (nested format)."""
         if not self.DATA_FILE.exists():
             raise FileNotFoundError(f"{self.DATA_FILE} not found")
 
@@ -33,12 +33,21 @@ class MonsterFactory(BaseFactory):
                 enum_name = category.upper().replace(" ", "_")
                 card_info["monster_type"] = enum_name
                 card_info["star"] = card_info.get("star", 1)
-                image_path = str(config.ASSET_DIR / card_info["texture"].lstrip("/"))
+                image_path = \
+                    str(config.ASSET_DIR / card_info["texture"].lstrip("/"))
                 card_info["_image_path"] = image_path
                 self._cards[card_info["name"]] = card_info
 
-    def load(self, owner_id: str, name: Optional[str] = None) -> MonsterCard:
-        """Create a MonsterCard instance."""
+    def load(self, owner_id: str, name: Optional[str] = None) -> Optional[MonsterCard]:
+        """Creates a MonsterCard instance.
+
+        Args:
+            owner_id (str): The ID of the owner.
+            name (Optional[str]): The name of the monster.
+
+        Returns:
+            Optional[MonsterCard]: A new MonsterCard instance, or None if not found.
+        """
         if not self._cards:
             return None
 
@@ -60,5 +69,10 @@ class MonsterFactory(BaseFactory):
             star=prototype.get("star", 1)
         )
 
-    def get_cards(self) -> List[MonsterCard]:
+    def get_cards(self) -> Dict[str, Any]:
+        """Returns the monster cards dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary of monster card data.
+        """
         return self._cards

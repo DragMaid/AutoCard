@@ -1,17 +1,42 @@
 import pygame
+from typing import Any, Optional
 from gui.cards.card_gui import CardGUI
 from core.cards.trap_card import TrapCard as LogicTrapCard
 from gui.screen.components import Button
 
 
 class TrapCardGUI(CardGUI):
-    def __init__(self, trap_info: LogicTrapCard, *args, **kwargs):
+    """GUI representation of a trap card.
+
+    Attributes:
+        is_face_down (bool): Whether the card is face down.
+        triggerable (bool): Whether the trap can be triggered.
+        activated (bool): Whether the trap is activated.
+    """
+
+    def __init__(self, trap_info: LogicTrapCard, *args: Any, **kwargs: Any) -> None:
+        """Initializes the TrapCardGUI.
+
+        Args:
+            trap_info (LogicTrapCard): The logic representation of the trap card.
+            *args (Any): Variable length argument list.
+            **kwargs (Any): Arbitrary keyword arguments.
+        """
         self.is_face_down = True
         self.triggerable = False
         self.activated = False
         super().__init__(trap_info, *args, **kwargs)
 
-    def on_drop(self, matrix, game_engine):
+    def on_drop(self, matrix: Any, game_engine: Any) -> bool:
+        """Handles card drop event.
+
+        Args:
+            matrix (Any): The field matrix.
+            game_engine (Any): The game engine instance.
+
+        Returns:
+            bool: True if drop was successful, False otherwise.
+        """
         cell = matrix.get_slot_at_pos(self.rect.center)
         success = False
 
@@ -25,8 +50,8 @@ class TrapCardGUI(CardGUI):
         self.is_selected = False
         return success
 
-    def update_activate_button(self):
-        # Update the triggerable button
+    def update_activate_button(self) -> None:
+        """Updates the triggerable button state."""
         btn_w, btn_h = self.rect.width, 30
         activate_button_rect = pygame.Rect(
             self.rect.x, self.rect.y + self.rect.height - btn_h - 10, btn_w, btn_h)
@@ -45,7 +70,8 @@ class TrapCardGUI(CardGUI):
             self.activate_button.text = text_str
             self.activate_button.color = bg_color
 
-    def update(self):
+    def update(self) -> None:
+        """Updates the trap card state."""
         # Update our triggerable state from the logic card
         self.triggerable = self.logic_card.triggerable and not self.logic_card.is_opponent
 
@@ -57,7 +83,12 @@ class TrapCardGUI(CardGUI):
                 self.update_activate_button()
         super().update()
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draws the trap card.
+
+        Args:
+            surface (pygame.Surface): The surface to draw onto.
+        """
         super().draw(surface)
-        if self.triggerable and self.activate_button:
+        if self.triggerable and hasattr(self, 'activate_button') and self.activate_button:
             self.activate_button.draw(surface)

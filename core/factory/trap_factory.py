@@ -2,6 +2,7 @@ import json
 import random
 from pathlib import Path
 from typing import Optional, List
+
 from core.cards.trap_card import TrapCard
 from core.factory.base_factory import BaseFactory
 from core.factory.card_registry import CardRegistry
@@ -10,15 +11,17 @@ from core.config import config
 
 
 class TrapFactory(BaseFactory):
-    # TODO: put these to config instead
+    """Factory class for creating TrapCard instances from data files."""
+
     DATA_FILE = Path("./assets/data/trapInfo.json")
 
-    def __init__(self):
-        self._cards = {}
+    def __init__(self) -> None:
+        """Initializes the TrapFactory and registers it with the CardRegistry."""
+        self._cards: dict = {}
         CardRegistry.register(CardType.TRAP, self)
 
-    def build(self):
-        """Load trap cards from JSON (flat array)."""
+    def build(self) -> None:
+        """Loads trap cards from the JSON data file."""
         if not self.DATA_FILE.exists():
             raise FileNotFoundError(f"{self.DATA_FILE} not found")
 
@@ -34,7 +37,16 @@ class TrapFactory(BaseFactory):
             self._cards[card_info["name"]] = card_info
 
     def load(self, owner_id: str, name: Optional[str] = None) -> Optional[TrapCard]:
-        """Create a TrapCard instance."""
+        """Creates a TrapCard instance.
+
+        Args:
+            owner_id (str): The ID of the owner of the card.
+            name (Optional[str]): The name of the specific trap to create. If None,
+                picks a random trap.
+
+        Returns:
+            Optional[TrapCard]: The instantiated TrapCard, or None if creation failed.
+        """
         if not self._cards:
             return None
 
@@ -57,4 +69,9 @@ class TrapFactory(BaseFactory):
         )
 
     def get_cards(self) -> List[TrapCard]:
+        """Returns the list of loaded trap prototypes.
+
+        Returns:
+            List[TrapCard]: The list of available trap card definitions.
+        """
         return self._cards

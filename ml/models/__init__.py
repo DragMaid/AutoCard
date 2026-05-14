@@ -3,7 +3,7 @@ from ml.models.average_policy import AveragePolicy
 from ml.models.dqn import DQN
 from ml.models.dueling_dqn import DuelingDQN
 
-__all__ = [
+__all__: list[str] = [
     'MLPBase',
     'AveragePolicy',
     'DQN',

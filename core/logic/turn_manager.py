@@ -6,6 +6,14 @@ from core.data.player import Player
 
 
 class TurnManagerState(BaseModel):
+    """
+    State container for turn management data.
+
+    Attributes:
+        current_player_index (int): Index of the player whose turn it is.
+        is_trap_stage (bool): Whether the game is currently in the trap stage.
+        turn_count (int): Total number of turns passed.
+    """
     current_player_index: int = 0
     is_trap_stage: bool = False
     turn_count: int = 1
@@ -16,7 +24,7 @@ class TurnManager:
     Manages turn-based logic, including player switching, turn tracking, and phase states.
     """
 
-    def __init__(self, game_state: GameState, effect_tracker: EffectTracker):
+    def __init__(self, game_state: GameState, effect_tracker: EffectTracker) -> None:
         """
         Initializes the TurnManager.
 
@@ -24,14 +32,26 @@ class TurnManager:
             game_state (GameState): The current game state object.
             effect_tracker (EffectTracker): Tracker for active game effects.
         """
-        self.game_state = game_state
-        self.effect_tracker = effect_tracker
-        self.turn_state = TurnManagerState()
+        self.game_state: GameState = game_state
+        self.effect_tracker: EffectTracker = effect_tracker
+        self.turn_state: TurnManagerState = TurnManagerState()
 
     def serialize(self) -> dict:
+        """
+        Serializes the turn state.
+
+        Returns:
+            dict: The serialized turn state.
+        """
         return self.turn_state.model_dump()
 
     def deserialize(self, serialized: dict) -> None:
+        """
+        Deserializes the turn state.
+
+        Args:
+            serialized (dict): The serialized turn state to load.
+        """
         self.turn_state = TurnManagerState.model_validate(serialized)
 
     def get_trapper(self) -> Optional[Player]:
@@ -39,7 +59,7 @@ class TurnManager:
         Returns the player currently authorized to trigger traps, if in trap stage.
 
         Returns:
-            Player: The trapping player, or None if not in trap stage.
+            Optional[Player]: The trapping player, or None if not in trap stage.
         """
         if not self.is_trap_stage():
             return None
@@ -70,7 +90,7 @@ class TurnManager:
         Returns:
             int: The index of the next player in the game state's players list.
         """
-        player_count = len(self.game_state.players)
+        player_count: int = len(self.game_state.players)
         return (self.turn_state.current_player_index + 1) % player_count
 
     def is_trap_stage(self) -> bool:
@@ -87,7 +107,7 @@ class TurnManager:
         Toggles the trap stage state.
 
         Args:
-            state (bool, optional): Force set the trap stage state.
+            state (Optional[bool]): Force set the trap stage state.
         """
         assert state is None or isinstance(state, bool)
         if state is not None:
@@ -100,7 +120,7 @@ class TurnManager:
         Finalizes the current turn, resets turn-based player flags, updates effects,
         and increments the turn count.
         """
-        current_player = self.get_current_player()
+        current_player: Player = self.get_current_player()
         self.game_state.player_info[current_player.id].has_summoned_monster = False
         self.game_state.player_info[current_player.id].has_summoned_trap = False
         self.game_state.player_info[current_player.id].has_toggled = False

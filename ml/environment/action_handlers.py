@@ -1,6 +1,7 @@
 import logging
+from typing import Optional, Dict, Any
+
 from core.data.player import Player
-from typing import Optional, Dict
 from core.cards.card import CardType
 
 logger = logging.getLogger(__name__)
@@ -10,16 +11,36 @@ class ActionHandler:
     """Base class for action handlers.
 
     Subclasses must implement :meth:`perform` to execute the action.
-    Returns True if action was successful, False otherwise.
     """
-    def perform(env, player: Player, params: Optional[Dict]) -> bool:
-        """Perform the action. Return True if successful."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Perform the action.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Optional dictionary of action parameters.
+
+        Returns:
+            bool: True if the action was successful, False otherwise.
+        """
         return True
 
 
 class ActivateHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Activate a triggerable trap in a specific slot."""
+    """Handler for activating triggerable traps."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Activate a triggerable trap in a specific slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card_id' or 'trap' slot index.
+
+        Returns:
+            bool: True if activation was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -47,8 +68,19 @@ class ActivateHandler(ActionHandler):
 
 
 class SummonHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Summon a monster from a hand slot."""
+    """Handler for summoning monsters."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Summon a monster from a hand slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card_id' or 'monster' hand index.
+
+        Returns:
+            bool: True if summoning was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -58,7 +90,7 @@ class SummonHandler(ActionHandler):
         if not card_id:
             hand_idx = params.get("monster")
             player_hand_ids = gs.player_info[player.id].held_cards.card_ids
-            if hand_idx >= len(player_hand_ids):
+            if hand_idx is None or hand_idx >= len(player_hand_ids):
                 return False
             card_id = player_hand_ids[hand_idx]
 
@@ -76,8 +108,19 @@ class SummonHandler(ActionHandler):
 
 
 class AttackHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Perform an attack from an attacker slot to a target slot."""
+    """Handler for attacking with monsters."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Perform an attack from an attacker slot to a target slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'attacker_id', 'target_id', or slot indices.
+
+        Returns:
+            bool: True if attack was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -118,8 +161,19 @@ class AttackHandler(ActionHandler):
 
 
 class CastSpellHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Cast a spell from a hand slot on a target slot."""
+    """Handler for casting spells."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Cast a spell from a hand slot on a target slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card_id' or 'spell' hand index.
+
+        Returns:
+            bool: True if spell cast was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -155,8 +209,19 @@ class CastSpellHandler(ActionHandler):
 
 
 class SetTrapHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Set a trap from a hand slot."""
+    """Handler for setting traps."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Set a trap from a hand slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card_id' or 'trap' hand index.
+
+        Returns:
+            bool: True if trap set was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -183,8 +248,19 @@ class SetTrapHandler(ActionHandler):
 
 
 class ToggleHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Toggle a monster in a specific slot."""
+    """Handler for toggling monster modes."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Toggle a monster in a specific slot.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card_id' or 'toggle' slot index.
+
+        Returns:
+            bool: True if toggle was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -204,13 +280,25 @@ class ToggleHandler(ActionHandler):
         success = card.mode != old_mode
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Toggled {
-                              card.name} to {card.mode}")
+            logger.debug(f"[HANDLER] ✓ Toggled {card.name} to {card.mode}")
+            return True
+        return False
 
 
 class CombineHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """Combine two monsters in specific slots."""
+    """Handler for combining monsters."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """Combine two monsters in specific slots.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Parameters including 'card1_id', 'card2_id', or 'pair' slot indices.
+
+        Returns:
+            bool: True if combination was successful, False otherwise.
+        """
         if not params:
             return False
 
@@ -231,14 +319,25 @@ class CombineHandler(ActionHandler):
         success = env.engine.upgrade_monster(player.id, card1_id, card2_id)
 
         if success:
-            logger.debug(f"[HANDLER] ✓ Combined {
-                              card1_id} and {card2_id}")
-        return success
+            logger.debug(f"[HANDLER] ✓ Combined {card1_id} and {card2_id}")
+            return True
+        return False
 
 
 class EndTurnHandler(ActionHandler):
-    def perform(self, env, player: Player, params: Optional[Dict]) -> bool:
-        """End the current player's turn."""
+    """Handler for ending a player's turn."""
+
+    def perform(self, env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+        """End the current player's turn.
+
+        Args:
+            env: The game environment.
+            player: The player performing the action.
+            params: Unused.
+
+        Returns:
+            bool: Always True.
+        """
         env.engine.end_turn()
         logger.debug(f"[HANDLER] ✓ {player.name} ends turn")
         return True

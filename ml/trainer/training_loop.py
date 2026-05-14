@@ -1,7 +1,7 @@
 import time
 import random
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
@@ -9,19 +9,25 @@ from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
 
 class TrainingLoop:
-    """
-    Orchestrates the main training loop for multi-agent RL.
-    """
+    """Orchestrates the main training loop for multi-agent RL."""
 
-    MAX_STEPS_PER_EPISODE = 100
+    MAX_STEPS_PER_EPISODE: int = 100
 
     def __init__(
         self,
-        env,
+        env: Any,
         agents: List[Agent],
         episode_manager: EpisodeManager,
-        config
+        config: Any
     ):
+        """Initializes TrainingLoop.
+
+        Args:
+            env: Environment.
+            agents: List of agents.
+            episode_manager: Episode manager.
+            config: Configuration object.
+        """
         self.env = env
         self.agents = agents
         self.episode_manager = episode_manager
@@ -33,8 +39,8 @@ class TrainingLoop:
             self.cfg.EPS_DECAY
         )
 
-    def run(self):
-        """Execute the main training loop."""
+    def run(self) -> None:
+        """Executes the main training loop."""
         states = list(self.env.reset())
         start_time = time.time()
 
@@ -62,8 +68,16 @@ class TrainingLoop:
                     frame_idx, duration=time.time()-start_time)
                 start_time = time.time()
 
-    def _execute_step(self, states: List, epsilon: float):
-        """Execute a single training step for all agents."""
+    def _execute_step(self, states: List[Any], epsilon: float) -> tuple[List[Any], bool]:
+        """Executes a single training step for all agents.
+
+        Args:
+            states: Current states.
+            epsilon: Exploration probability.
+
+        Returns:
+            Next states and completion flag.
+        """
         # Decide whether to use the best policy based decision or to explore (random)
         best_response = random.random() >= self.cfg.ETA
 
@@ -94,11 +108,21 @@ class TrainingLoop:
     def _select_all_actions(
         self,
         agents: List[Agent],
-        states: List,
+        states: List[Any],
         epsilon: float,
         best_response: bool
-    ) -> Dict:
-        """Select actions for all agents."""
+    ) -> Dict[str, List[tuple[int, None]]]:
+        """Selects actions for all agents.
+
+        Args:
+            agents: List of agents.
+            states: List of states.
+            epsilon: Exploration probability.
+            best_response: Best response flag.
+
+        Returns:
+            Dictionary of actions.
+        """
         env_actions = {}
 
         # States here has batch size >= 1 but we will be processing each independently
@@ -122,15 +146,15 @@ class TrainingLoop:
 
     def _store_transitions(
         self,
-        states: List,
-        actions: Dict,
-        rewards: List,
-        next_states: List,
+        states: List[Any],
+        actions: Dict[str, Any],
+        rewards: List[float],
+        next_states: List[Any],
         done: bool,
         best_response: bool,
         acting_idx: int = -1
-    ):
-        """Store transitions in agent buffers."""
+    ) -> None:
+        """Stores transitions in agent buffers."""
         for agent_idx, agent in enumerate(self.agents):
             # Only store transition if this agent was acting OR if the episode is done
             if agent_idx != acting_idx and not done:
@@ -156,39 +180,39 @@ class TrainingLoop:
             # Track episode reward
             self.episode_manager.add_reward(agent_idx, rewards[agent_idx])
 
-    def _record_winner(self):
-        """Record the winner of the episode."""
+    def _record_winner(self) -> None:
+        """Records the winner of the episode."""
         winner = self.env.get_winner()
         if winner >= 0:
             self.episode_manager.record_win(winner)
 
-    def _update_all_agents(self):
-        """Update networks for all agents."""
+    def _update_all_agents(self) -> None:
+        """Updates networks for all agents."""
         for agent in self.agents:
             agent.update_networks()
 
-    def _update_target_networks(self):
-        """Update target networks for all agents."""
+    def _update_target_networks(self) -> None:
+        """Updates target networks for all agents."""
         for agent in self.agents:
             agent.update_target_network()
 
     def _episode_too_long(self) -> bool:
-        """Check if episode has exceeded max length."""
+        """Checks if episode has exceeded max length."""
         return (
             self.episode_manager.current_episode_length >=
             self.MAX_STEPS_PER_EPISODE
         )
 
-    def _handle_episode_end(self, done: bool):
-        """Handle end of episode cleanup."""
+    def _handle_episode_end(self, done: bool) -> None:
+        """Handles end of episode cleanup."""
         self.episode_manager.finalize_episode()
 
         # Clear agent buffer managers
         for agent in self.agents:
             agent.buffer_manager.clear()
 
-    def _evaluate_and_save(self, frame_idx: int, duration):
-        """Evaluate current performance and save models."""
+    def _evaluate_and_save(self, frame_idx: int, duration: float) -> None:
+        """Evaluates current performance and saves models."""
         stats = self.episode_manager.get_statistics()
 
         # Log metrics

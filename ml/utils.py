@@ -2,20 +2,37 @@ from pathlib import Path
 import math
 import random
 import datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import numpy as np
 import mlflow
 
 
-def update_target(current_model, target_model):
-    """Copy weights from current_model to target_model."""
+def update_target(current_model: torch.nn.Module, target_model: torch.nn.Module) -> None:
+    """
+    Copy weights from current_model to target_model.
+
+    Args:
+        current_model: The model to copy weights from.
+        target_model: The model to copy weights to.
+    """
     target_model.load_state_dict(current_model.state_dict())
 
 
-def epsilon_scheduler(eps_start=1.0, eps_final=0.01, eps_decay=50000):
-    """Return a function to get epsilon at a given frame index."""
-    def function(frame_idx):
+def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay: int = 50000) -> Callable[[int], float]:
+    """
+    Return a function to get epsilon at a given frame index.
+
+    Args:
+        eps_start: The initial epsilon value.
+        eps_final: The final epsilon value.
+        eps_decay: The frame index at which to reach the final epsilon.
+
+    Returns:
+        A callable function that returns the epsilon for a given frame index.
+    """
+    def function(frame_idx: int) -> float:
         return eps_final + (eps_start - eps_final) \
             * math.exp(-1. * frame_idx / eps_decay)
     return function

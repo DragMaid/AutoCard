@@ -17,6 +17,17 @@ class ActivateCondition(str, Enum):
 
 
 class TrapCard(Card):
+    """Represents a trap card in the game.
+
+    Attributes:
+        card_type: Category of the card, fixed to TRAP.
+        abilities: List of abilities triggered by the trap.
+        activation: Condition that triggers the trap.
+        effectiveness: Optional list of effectiveness values for abilities.
+        duration: Optional list of durations for abilities.
+        is_triggered: Whether the trap has been activated.
+        triggerable: Whether the trap is currently in a state to be triggered.
+    """
     card_type: Literal[CardType.TRAP] = CardType.TRAP
 
     abilities: List[TrapAbility]
@@ -28,6 +39,7 @@ class TrapCard(Card):
     is_triggered: bool = False
     triggerable: bool = False
 
-    def reveal(self):
+    def reveal(self) -> None:
+        """Reveals the trap and marks it as triggered."""
         self.is_face_down = False
         self.is_triggered = True

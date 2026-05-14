@@ -21,13 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class GameEngine:
-    """
-    The main orchestrator for game logic, integrating various specialized engines.
-    """
+    """The main orchestrator for game logic, integrating various specialized engines."""
 
-    def __init__(self, players: List[Player], socket_io=None):
-        """
-        Initializes the GameEngine.
+    def __init__(self, players: List[Player], socket_io=None) -> None:
+        """Initializes the GameEngine.
 
         Args:
             players (List[Player]): The list of players in the game.
@@ -63,7 +60,11 @@ class GameEngine:
                 raise
 
     def serialize(self) -> dict:
-        """Placeholder for serialization logic."""
+        """Serializes the current game state.
+
+        Returns:
+            dict: A dictionary representation of the game engine state.
+        """
         serialized = {}
         serialized["game_state"] = self.game_state.serialize()
         serialized["effect_tracker"] = self.effect_tracker.serialize()
@@ -72,6 +73,11 @@ class GameEngine:
         return serialized
 
     def deserialize(self, serialized: dict) -> None:
+        """Deserializes game state from a dictionary.
+
+        Args:
+            serialized (dict): The dictionary representation to restore.
+        """
         self.game_state.deserialize(serialized["game_state"])
         self.effect_tracker.deserialize(serialized["effect_tracker"])
         self.event_logger.deserialize(serialized["event_logger"])
@@ -88,8 +94,7 @@ class GameEngine:
         self.give_init_cards(self.start_hand_count)
 
     def give_init_cards(self, number: int) -> None:
-        """
-        Gives initial cards to all players.
+        """Gives initial cards to all players.
 
         Args:
             number (int): Number of cards to draw.
@@ -99,8 +104,7 @@ class GameEngine:
                 self.draw_card(player.id, check=False)
 
     def draw_card(self, player_id: str, check: bool = True) -> bool:
-        """
-        Player draws a card if allowed by rules.
+        """Player draws a card if allowed by rules.
 
         Args:
             player_id (str): ID of the drawing player.
@@ -129,8 +133,7 @@ class GameEngine:
         return False
 
     def toggle_card(self, card_id: str) -> bool:
-        """
-        Toggles a monster's position (Attack/Defense).
+        """Toggles a monster's position (Attack/Defense).
 
         Args:
             card_id (str): ID of the card to toggle.
@@ -138,7 +141,7 @@ class GameEngine:
         Returns:
             bool: True if successful, False otherwise.
         """
-        card: MonsterCard = self.game_state.get_card_by_id(card_id)
+        card = self.game_state.get_card_by_id(card_id)
         if not card or card.card_type != CardType.MONSTER:
             return False
 
@@ -193,8 +196,7 @@ class GameEngine:
                target_id: str,
                target_is_player: bool = False
                ) -> bool:
-        """
-        Initiates an attack sequence.
+        """Initiates an attack sequence.
 
         Args:
             attacker_id (str): ID of the attacker.
@@ -233,7 +235,11 @@ class GameEngine:
         return True
 
     def move_card_to_graveyard(self, card_id: str) -> None:
-        """Moves a card from the field or hand to the graveyard."""
+        """Moves a card from the field or hand to the graveyard.
+
+        Args:
+            card_id (str): ID of the card to move.
+        """
         card = self.game_state.get_card_by_id(card_id)
         assert card is not None
 
@@ -253,7 +259,12 @@ class GameEngine:
         )
 
     def toggle_trap_activation(self, trap_id: str, activated: bool = False) -> None:
-        """Toggles player's intent to activate a triggerable trap."""
+        """Toggles player's intent to activate a triggerable trap.
+
+        Args:
+            trap_id (str): ID of the trap card.
+            activated (bool): Whether the trap is to be activated.
+        """
         owner_id = self.game_state.get_card_by_id(trap_id).owner_id
         if self.rule_engine.can_activate(owner_id, trap_id):
             if activated:
@@ -309,5 +320,9 @@ class GameEngine:
         self.synchronize()
 
     def is_local_turn(self) -> bool:
-        """Checks if it's the local player's turn."""
+        """Checks if it's the local player's turn.
+
+        Returns:
+            bool: True if it is the local player's turn, False otherwise.
+        """
         return is_local_turn(self.turn_manager, self.game_state.players)

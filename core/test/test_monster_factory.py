@@ -4,7 +4,8 @@ from core.data.player import Player
 from core.utils import load_by_type_and_level
 
 
-def test_monster_factory_build_and_load():
+def test_monster_factory_build_and_load() -> None:
+    """Tests building and loading monsters via MonsterFactory."""
     factory = MonsterFactory()
     factory.build()  # load JSON
 

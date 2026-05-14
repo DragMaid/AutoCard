@@ -1,12 +1,25 @@
 from collections import deque
+from typing import Any
 
 
 class BufferManager:
-    """
-    Manages temporary storage of transitions for multi-step returns.
+    """Manages temporary storage of transitions for multi-step returns.
+
+    Attributes:
+        agent: The agent instance.
+        cfg: The training configuration object.
+        state_deque (deque): Deque of states.
+        reward_deque (deque): Deque of rewards.
+        action_deque (deque): Deque of actions.
     """
 
-    def __init__(self, agent, config):
+    def __init__(self, agent: Any, config: Any) -> None:
+        """Initializes the BufferManager.
+
+        Args:
+            agent: The agent instance.
+            config: The training configuration object.
+        """
         self.agent = agent
         self.cfg = config
 
@@ -17,21 +30,20 @@ class BufferManager:
 
     def append_transition(
         self,
-        state,
+        state: Any,
         action: int,
         reward: float,
-        next_state,
+        next_state: Any,
         done: bool
-    ):
-        """
-        Add transition and push to buffers when appropriate.
+    ) -> None:
+        """Adds a transition and pushes to buffers when appropriate.
 
         Args:
-            state: Current state
-            action: Action taken
-            reward: Reward received
-            next_state: Next state
-            done: Whether episode is done
+            state (Any): Current state.
+            action (int): Action taken.
+            reward (float): Reward received.
+            next_state (Any): Next state.
+            done (bool): Whether the episode is done.
         """
         self.state_deque.append(state)
         self.reward_deque.append(reward)
@@ -42,11 +54,23 @@ class BufferManager:
             self._push_to_replay_buffer(next_state, done)
 
     def _should_push_to_replay(self, done: bool) -> bool:
-        """Check if ready to push to replay buffer."""
+        """Checks if ready to push to replay buffer.
+
+        Args:
+            done (bool): Whether the episode is done.
+
+        Returns:
+            bool: True if ready, False otherwise.
+        """
         return len(self.state_deque) == self.cfg.MULTI_STEP or done
 
-    def _push_to_replay_buffer(self, next_state, done: bool):
-        """Push multi-step transition to replay buffer."""
+    def _push_to_replay_buffer(self, next_state: Any, done: bool) -> None:
+        """Pushes multi-step transition to replay buffer.
+
+        Args:
+            next_state (Any): Next state.
+            done (bool): Whether the episode is done.
+        """
         discounted_reward = self._compute_discounted_reward()
 
         self.agent.replay_buffer.push(
@@ -58,14 +82,18 @@ class BufferManager:
         )
 
     def _compute_discounted_reward(self) -> float:
-        """Compute discounted sum of rewards in deque."""
+        """Computes discounted sum of rewards in the reward deque.
+
+        Returns:
+            float: The computed discounted reward.
+        """
         return sum(
             reward * (self.cfg.GAMMA ** i)
             for i, reward in enumerate(self.reward_deque)
         )
 
-    def clear(self):
-        """Clear all deques."""
+    def clear(self) -> None:
+        """Clears all deques."""
         self.state_deque.clear()
         self.reward_deque.clear()
         self.action_deque.clear()

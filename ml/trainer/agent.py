@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from typing import List
+from typing import List, Any
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -12,16 +12,16 @@ from ml.utils import update_target
 
 
 class Agent:
-    """
-    RL agent with DQN and average policy network.
-    """
+    """RL agent with DQN and average policy network."""
 
-    def __init__(
-            self,
-            state_dim: int,
-            num_actions: int,
-            config
-    ):
+    def __init__(self, state_dim: int, num_actions: int, config: Any):
+        """Initializes Agent.
+
+        Args:
+            state_dim: State dimension.
+            num_actions: Number of actions.
+            config: Configuration object.
+        """
         self.cfg = config
         self.num_actions = num_actions
 
@@ -49,16 +49,25 @@ class Agent:
         self.rl_losses: List[float] = []
         self.sl_losses: List[float] = []
 
-    def select_action(self, state, epsilon: float, best_response: bool = True) -> int:
-        """Select action using either DQN or average policy."""
+    def select_action(self, state: np.ndarray, epsilon: float, best_response: bool = True) -> int:
+        """Selects action using either DQN or average policy.
+
+        Args:
+            state: Current state.
+            epsilon: Exploration probability.
+            best_response: Use DQN or average policy.
+
+        Returns:
+            Selected action.
+        """
         tensor = torch.FloatTensor(state).to(self.cfg.DEVICE)
 
         if best_response:
             return self.dqn.act(tensor, epsilon)
         return self.policy.act(tensor)
 
-    def update_networks(self):
-        """Update all networks if sufficient data available."""
+    def update_networks(self) -> None:
+        """Updates all networks if sufficient data available."""
         if not self._can_update():
             return
 
@@ -73,15 +82,23 @@ class Agent:
         self.sl_losses.append(sl_loss.item())
 
     def _can_update(self) -> bool:
-        """Check if buffers have enough samples."""
+        """Checks if buffers have enough samples.
+
+        Returns:
+            Boolean indicating if update is possible.
+        """
         min_samples = self.cfg.BATCH_SIZE
         return (
             len(self.replay_buffer) > min_samples and
             len(self.reservoir) > min_samples
         )
 
-    def _update_rl_network(self):
-        """Update DQN network."""
+    def _update_rl_network(self) -> torch.Tensor:
+        """Updates DQN network.
+
+        Returns:
+            Loss tensor.
+        """
         batch = self.replay_buffer.sample(self.cfg.BATCH_SIZE)
         state, action, reward, next_state, done = batch
 
@@ -115,8 +132,12 @@ class Agent:
 
         return loss
 
-    def _update_sl_network(self):
-        """Update average policy network."""
+    def _update_sl_network(self) -> torch.Tensor:
+        """Updates average policy network.
+
+        Returns:
+            Loss tensor.
+        """
         state, action = self.reservoir.sample(self.cfg.BATCH_SIZE)
 
         state = torch.FloatTensor(state).to(self.cfg.DEVICE)
@@ -132,25 +153,27 @@ class Agent:
 
         return loss
 
-    def update_target_network(self):
-        """Copy weights from DQN to target DQN."""
+    def update_target_network(self) -> None:
+        """Copies weights from DQN to target DQN."""
         update_target(self.dqn, self.target_dqn)
 
     def select_action_with_mask(
             self,
-            state,
+            state: np.ndarray,
             action_mask: np.ndarray,
             epsilon: float,
             best_response: bool = True
     ) -> int:
-        """
-        Select action with masking.
+        """Selects action with masking.
 
         Args:
-            state: Current state
-            action_mask: Boolean array indicating valid actions
-            epsilon: Exploration rate
-            best_response: Use DQN (True) or policy (False)
+            state: Current state.
+            action_mask: Boolean array indicating valid actions.
+            epsilon: Exploration rate.
+            best_response: Use DQN (True) or policy (False).
+
+        Returns:
+            Selected action.
         """
         if not np.any(action_mask):
             # No valid actions - should never happen, but fallback
@@ -193,7 +216,7 @@ class Agent:
         state_tensor: torch.Tensor,
         mask_tensor: torch.Tensor
     ) -> int:
-        """Policy selection using logit masking BEFORE softmax (Option A)."""
+        """Policy selection using logit masking BEFORE softmax."""
         logits = self.policy.head(self.policy.feature_net(state_tensor))
 
         # Sanitize logits
@@ -204,7 +227,7 @@ class Agent:
         assert logits.dim() == 2
         assert logits.shape[-1] == mask_tensor.shape[-1]
 
-        # check for finiteness (corrected assertion)
+        # check for finiteness
         assert torch.isfinite(logits).all(), "Logits must be finite"
 
         # handle edge case: no valid actions
@@ -223,7 +246,7 @@ class Agent:
         # softmax over valid actions only
         probs = torch.softmax(masked_logits, dim=1)
 
-        # check for finiteness in probabilities (corrected assertion)
+        # check for finiteness in probabilities
         assert torch.isfinite(probs).all(), "Probs must be finite"
 
         action = torch.multinomial(probs[0], 1).item()

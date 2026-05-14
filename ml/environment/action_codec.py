@@ -3,11 +3,17 @@ import math
 from typing import Dict, List, Tuple, Any
 
 
+# TODO: imma consider making an enum for this
 @dataclass(frozen=True)
 class ActionBlock:
-    """Represents a structured action type in the discrete action space."""
+    """Represents a structured action type in the discrete action space.
+
+    Attributes:
+        name: The name of the action.
+        dims: A list of dimensions for parameter spaces.
+        param_names: A list of parameter names.
+    """
     name: str
-    # parameter space dimensions (e.g. [10] or [10, 21])
     dims: List[int]
     param_names: List[str]
 
@@ -40,7 +46,7 @@ class ActionCodec:
     TOTAL_ACTIONS: int = 0
 
     @classmethod
-    def _initialize(cls):
+    def _initialize(cls) -> None:
         """Precompute offsets and total action space size."""
         cls.OFFSETS = []
         cls.BLOCK_SIZES = []
@@ -56,12 +62,14 @@ class ActionCodec:
 
     @staticmethod
     def _compute_block_size(dims: List[int]) -> int:
+        """Compute the size of a block based on its dimensions."""
         if not dims:
             return 1
         return math.prod(dims)
 
     @staticmethod
     def _compute_strides(dims: List[int]) -> List[int]:
+        """Compute strides for parameter indexing."""
         strides = []
         for i in range(len(dims)):
             stride = math.prod(dims[i + 1:]) if i + 1 < len(dims) else 1
@@ -69,10 +77,20 @@ class ActionCodec:
         return strides
 
     @classmethod
-    def encode(cls, name: str, **params) -> int:
-        """Encode structured action into flat index."""
+    def encode(cls, name: str, **params: int) -> int:
+        """Encode structured action into flat index.
+
+        Args:
+            name: The action name.
+            **params: Action parameters.
+
+        Returns:
+            Flat integer index of the action.
+
+        Raises:
+            ValueError: If an unknown action or invalid parameters are provided.
+        """
         for i, block in enumerate(cls.BLOCKS):
-            # TODO: would be better if we can use a hashmap here
             if block.name != name:
                 continue
 
@@ -97,7 +115,14 @@ class ActionCodec:
 
     @classmethod
     def decode(cls, action_id: int) -> Tuple[str, Dict[str, Any]]:
-        """Decode flat action index into structured form."""
+        """Decode flat action index into structured form.
+
+        Args:
+            action_id: The flat integer action index.
+
+        Returns:
+            A tuple of (action_name, action_parameters).
+        """
         for i, block in enumerate(cls.BLOCKS):
             base = cls.OFFSETS[i]
             size = cls.BLOCK_SIZES[i]
@@ -106,7 +131,7 @@ class ActionCodec:
             if base <= action_id < base + size:
                 offset = action_id - base
 
-                # Handle blocks with no parameters first hand 
+                # Handle blocks with no parameters first hand
                 if not block.dims:
                     return block.name, {}
 
@@ -125,6 +150,7 @@ class ActionCodec:
 
     @classmethod
     def num_actions(cls) -> int:
+        """Get the total number of actions in the action space."""
         return cls.TOTAL_ACTIONS
 
 

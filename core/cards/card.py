@@ -11,6 +11,20 @@ class CardType(str, Enum):
 
 
 class Card(BaseModel):
+    """Represents a generic card in the game.
+
+    Attributes:
+        id: Unique identifier for the card.
+        name: Name of the card.
+        description: Description text of the card.
+        card_type: Category of the card (e.g., MONSTER, SPELL).
+        owner_id: ID of the player who owns this card.
+        image_path: Optional path to the card's visual asset.
+        is_placed: Indicates if the card is currently on the field.
+        is_face_down: Indicates if the card is face-down.
+        is_opponent: Indicates if the card belongs to the opponent.
+        pos_in_matrix: Position of the card on the field as (col, row).
+    """
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     description: str
