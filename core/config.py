@@ -17,6 +17,7 @@ class Config:
     """
     ASSET_DIR: Path = ROOT_DIR / 'assets'
     SCREEN_SIZE: Tuple[int, int] = (1280, 720)
+    FPS: int = 60
     MAX_HAND_CARDS: int = 10
     MAX_STATS: int = 9999
     COLS: int = 5
@@ -25,11 +26,15 @@ class Config:
     # ML Encoder Config
     MAX_EFFECTS: int = 4
     VALUE_NORM: float = 1000.0
-    DURATION_NORM: float = 10.0
-    MAX_ATTACK: float = 5000.0
-    MAX_DEFEND: float = 5000.0
-    MAX_STAR: int = 10
+    DURATION_NORM: float = 5.0
+    MAX_ATTACK: float = 9999.0
+    MAX_DEFEND: float = 9999.0
+    MAX_STAR: int = 4
     MAX_LIFE_POINTS: int = 8000
+
+    # Networking config
+    DEFAULT_PORT: int = 5555
+    DEFAULT_HOST: str = "localhost"
 
 
 config = Config()

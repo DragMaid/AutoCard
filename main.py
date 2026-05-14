@@ -4,13 +4,13 @@ from gui.screen.matchmaking import MatchmakingScreen, ScreenState
 from core.network.server import SocketServerGame
 from core.network.client import SocketClientGame
 from core.network.ai import AIGame
+from core.config import config
 
 
-# TODO: move these to config
 class GameApp:
     def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((1280, 720))
+        self.screen = pygame.display.set_mode(config.SCREEN_SIZE)
         self.clock = pygame.time.Clock()
         self.matchmaker = MatchmakingScreen(self.screen)
         self.game_app = None
@@ -18,7 +18,7 @@ class GameApp:
 
     def run(self) -> None:
         while self.running:
-            dt = self.clock.tick(60) / 1000.0
+            dt = self.clock.tick(config.FPS) / 1000.0
             self._tick(dt)
 
         self._cleanup_game()
@@ -131,6 +131,8 @@ class GameApp:
 def parse_args():
     from argparse import ArgumentParser
     p = ArgumentParser()
+    p.add_argument("--train",  action="store_true")
+    p.add_argument("--render",  action="store_true")
     p.add_argument("--client", action="store_true")
     p.add_argument("--server", action="store_true")
     p.add_argument("--ai",     action="store_true")
@@ -142,7 +144,7 @@ def parse_args():
 def run_headless_game(args):
     """Bypass matchmaking for direct CLI launches."""
     pygame.init()
-    screen = pygame.display.set_mode((1280, 720))
+    screen = pygame.display.set_mode(config.SCREEN_SIZE)
     clock = pygame.time.Clock()
 
     if args.client:
@@ -154,7 +156,7 @@ def run_headless_game(args):
 
     running = True
     while running:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(config.FPS) / 1000.0
         running = app.step(dt)
 
     if hasattr(app, "cleanup"):
@@ -164,6 +166,8 @@ def run_headless_game(args):
 
 if __name__ == "__main__":
     from core.utils import setup_logging
+    from ml.train import run
+
     timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
     file = f"logs/{timestamp}.log"
     setup_logging(file, debug=True)
@@ -171,8 +175,7 @@ if __name__ == "__main__":
     args = parse_args()
     if args.client or args.server or args.ai:
         run_headless_game(args)
+    elif args.train:
+        run(args.render)
     else:
         GameApp().run()
-
-# TODO: add --train mode to CLI args
-# TODO: add hosted (non-local) server option

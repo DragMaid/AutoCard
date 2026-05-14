@@ -1,12 +1,12 @@
-from pathlib import Path
-import math
-import random
-import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+import logging
 import torch
 import numpy as np
 import mlflow
+import math
+import random
+import datetime
+from pathlib import Path
+from typing import Sequence, Callable
 
 
 def update_target(current_model: torch.nn.Module, target_model: torch.nn.Module) -> None:
@@ -38,17 +38,40 @@ def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay
     return function
 
 
-# TODO: rewrite this
-def log_training_metrics(frame_idx,
-                         max_frames,
-                         rewards,
-                         lengths,
-                         rl_losses,
-                         sl_losses,
-                         wins,
-                         update_freq,
-                         duration,
-                         logging):
+def log_training_metrics(
+    frame_idx: int,
+    max_frames: int,
+    rewards: Sequence[float],
+    lengths: Sequence[int],
+    rl_losses: Sequence[float],
+    sl_losses: Sequence[float],
+    wins: Sequence[int],
+    update_freq: int,
+    duration: float,
+    logger: logging.Logger,
+) -> None:
+    """
+    Logs training metrics for reinforcement learning and supervised learning progress.
+
+    This function aggregates and reports key training statistics such as reward trends,
+    episode lengths, loss values, and win rates at a given training step. It is typically
+    called at fixed intervals during training to monitor model performance and stability.
+
+    Args:
+        frame_idx (int): Current training step or frame index.
+        max_frames (int): Total number of training frames planned.
+        rewards (Sequence[float]): Reward values collected over recent episodes.
+        lengths (Sequence[int]): Episode lengths (number of steps per episode).
+        rl_losses (Sequence[float]): Reinforcement learning loss values over recent updates.
+        sl_losses (Sequence[float]): Supervised learning loss values over recent updates.
+        wins (Sequence[int]): Binary or count-based win indicators (e.g., 1 for win, 0 for loss).
+        update_freq (int): Number of frames between logging updates.
+        duration (float): Time elapsed since last logging event (in seconds).
+        logger (logging.Logger): Logger instance used for outputting metrics.
+
+    Returns:
+        None
+    """
     def mean_safe(x):
         return np.mean(x) if len(x) > 0 else 0.0
 

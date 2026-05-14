@@ -6,7 +6,6 @@ from core.cards.card import Card
 
 
 class EffectType(str, Enum):
-    """Different types of effects a spell can apply"""
     BUFF = "BUFF"
     DEBUFF = "DEBUFF"
 

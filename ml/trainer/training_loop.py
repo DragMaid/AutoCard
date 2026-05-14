@@ -7,7 +7,6 @@ from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
-from core.config import config
 from ml.config import Config as MLConfig
 
 
@@ -51,8 +50,11 @@ class TrainingLoop:
             # Execute single step
             states, done = self._execute_step(states, epsilon)
 
+            # NOTE: the training process will eventually slow down
+            # due to the replay buffer and reservoir filling up
             # Update networks
-            self._update_all_agents()
+            if frame_idx % self.cfg.TRAIN_FREQ == 0:
+                self._update_all_agents()
 
             # Periodic target network updates
             if frame_idx % self.cfg.UPDATE_TARGET_FREQ == 0:
@@ -65,8 +67,8 @@ class TrainingLoop:
 
             # Periodic evaluation and checkpointing
             if frame_idx % self.cfg.EVALUATION_INTERVAL == 0:
-                self._evaluate_and_save(
-                    frame_idx, duration=time.time()-start_time)
+                elapsed = time.time()-start_time
+                self._evaluate_and_save(frame_idx, duration=elapsed)
                 start_time = time.time()
 
     def _execute_step(self, states: List[Any], epsilon: float) -> tuple[List[Any], bool]:

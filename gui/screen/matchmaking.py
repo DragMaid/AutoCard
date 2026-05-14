@@ -1,9 +1,10 @@
+import threading
 import pygame
 from enum import Enum, auto
 from gui.cache import get_font
 from core.network.discovery import DiscoveryClient
+from core.config import config
 from .components import Button, InputBox, ScrollList
-import threading
 
 
 class ScreenState(Enum):
@@ -75,7 +76,7 @@ class MatchmakingScreen:
         self.host_components.append(self.room_name_input)
 
         self.port_input = InputBox(
-            (center_x - 100, 320, 200, 50), text="5555", placeholder="Port", numeric=True)
+            (center_x - 100, 320, 200, 50), text=f"{config.DEFAULT_PORT}", placeholder="Port", numeric=True)
         self.host_components.append(self.port_input)
 
         self.password_input = InputBox(

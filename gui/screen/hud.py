@@ -1,10 +1,7 @@
 import pygame
 from gui.cache import get_font
+from core.config import config
 from .components import Button
-
-
-# TODO: move these to config
-SCREEN_SIZE = (1280, 720)
 
 
 class GameHUD:
@@ -14,7 +11,7 @@ class GameHUD:
         self.game_engine = game_engine
 
         self.end_turn_button = Button(
-            pygame.Rect(15, SCREEN_SIZE[1] - 60, 150, 50),
+            pygame.Rect(15, config.SCREEN_SIZE[1] - 60, 150, 50),
             "End Turn",
             font_size=28,
             color=(50, 100, 50),
@@ -22,7 +19,7 @@ class GameHUD:
             callback=on_end_turn,
         )
         self.surrender_button = Button(
-            pygame.Rect(15, SCREEN_SIZE[1] - 110, 150, 40),
+            pygame.Rect(15, config.SCREEN_SIZE[1] - 110, 150, 40),
             "Surrender",
             font_size=20,
             color=(80, 30, 30),

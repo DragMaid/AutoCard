@@ -3,7 +3,6 @@ import math
 from typing import Dict, List, Tuple, Any
 
 
-# TODO: imma consider making an enum for this
 @dataclass(frozen=True)
 class ActionBlock:
     """Represents a structured action type in the discrete action space.

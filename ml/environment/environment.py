@@ -327,6 +327,7 @@ class GameEnv:
         """Apply action and calculate reward."""
         handler = self._action_handlers[action_name]
         success = handler.perform(self, player, params)
+        assert success
         after_snapshot = create_enhanced_snapshot(self.engine, player)
         breakdown = self.reward_calculator.calculate_action_reward(
             action_name, player, params, success, before_snapshot, after_snapshot)

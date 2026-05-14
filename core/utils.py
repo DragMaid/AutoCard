@@ -1,5 +1,6 @@
 import random
 import logging
+from pathlib import Path
 from core.data.game_state import GameState, LogicCard
 from typing import List, Optional
 from core.cards.card import CardType
@@ -7,6 +8,26 @@ from logging.handlers import RotatingFileHandler
 
 from core.cards.monster_card import MonsterType, MonsterCard
 from core.factory.monster_factory import MonsterFactory
+
+
+class DictFormatter(logging.Formatter):
+    """Custom logging formatter that includes extra fields from the log record."""
+
+    def format(self, record):
+        base = super().format(record)
+
+        extras = {
+            k: v for k, v in record.__dict__.items()
+            if k not in logging.LogRecord(
+                None, None, "", 0, "", (), None
+            ).__dict__
+        }
+
+        if extras:
+            extra_str = " | " + " ".join(f"{k}={v}" for k, v in extras.items())
+            return base + extra_str
+
+        return base
 
 
 def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
@@ -18,7 +39,7 @@ def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
     """
     level = logging.DEBUG if debug else logging.INFO
 
-    formatter = logging.Formatter(
+    formatter = DictFormatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     root = logging.getLogger()
@@ -31,8 +52,11 @@ def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
     console.setLevel(level)
     console.setFormatter(formatter)
 
+    logging.captureWarnings(True)
+
     # File output
     if file is not None:
+        Path(file).parent.mkdir(exist_ok=True, parents=True)
         file_handler = RotatingFileHandler(
             file,
             maxBytes=5_000_000,

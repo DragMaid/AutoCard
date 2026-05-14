@@ -1,8 +1,10 @@
+import pygame
 import logging
 from multiprocessing import Process, Queue
 from typing import Optional
 from core.network.discovery import DiscoveryServer
 from gui.effects.manager import EffectManager
+from core.config import config
 from .base import GameApp
 from .utils import run_socketio_server
 
@@ -31,8 +33,14 @@ class SocketServerGame(GameApp):
         connected_clients (int): Number of connected clients.
     """
 
-    def __init__(self, screen, host: str = "0.0.0.0", port: int = 5555,
-                 room_name: str = "AutoCard Room", password: str = "") -> None:
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        host: str = config.DEFAULT_HOST,
+        port: int = config.DEFAULT_PORT,
+        room_name: str = "AutoCard Room",
+        password: str = ""
+    ) -> None:
         """
         Initializes SocketServerGame.
 

@@ -3,9 +3,10 @@ import socket
 import threading
 import json
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from core.config import config
 
-DISCOVERY_PORT: int = 55555
+DISCOVERY_PORT: int = config.DEFAULT_PORT + 1
 MAGIC_WORD: str = "AUTOCARD_SERVER"
 logger = logging.getLogger(__name__)
 

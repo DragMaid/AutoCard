@@ -17,9 +17,13 @@ def new_players() -> Tuple[Player, Player]:
     return p1, p2
 
 
-if __name__ == "__main__":
+def run(render: bool = False):
     cfg = Config()
     engine = GameEngine(players=new_players())
-    env = GameEnv(engine=engine, render=True)
+    env = GameEnv(engine=engine, render=render)
     trainer = Trainer(env, cfg)
     trainer.train()
+
+
+if __name__ == "__main__":
+    run()

@@ -108,7 +108,6 @@ class GameState(BaseModel):
     def players_lookup(self) -> Dict[str, Player]:
         return {p.id: p for p in self.players}
 
-    # TODO: refactor this function a bit into smaller components
     def reset(self) -> None:
         """Resets the game state instance to its original state.
 

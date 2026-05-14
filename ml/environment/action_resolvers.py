@@ -127,7 +127,6 @@ class CastSpellResolver(LegalActionResolver):
         opp_id = gs.get_opponent_id(player.id)
 
         results = {}
-        # TODO: fix this
         for i, cid in enumerate(card_ids):
             card = gs.get_card_by_id(cid)
             if not card or card.card_type != CardType.SPELL:

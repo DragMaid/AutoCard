@@ -36,7 +36,7 @@ class RuleEngine:
             self.game_state.player_info[player_id].held_cards.card_ids)
 
         if current_player.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Draw denied",
                 extra={
                     "reason": "Not player's turn yet",
@@ -47,7 +47,7 @@ class RuleEngine:
             return False
 
         if hand_size >= config.MAX_HAND_CARDS:
-            logger.debug(
+            logger.warning(
                 "Draw denied",
                 extra={
                     "reason": "Player hand is already full",
@@ -77,7 +77,7 @@ class RuleEngine:
         card = self.game_state.get_card_by_id(trap_id)
 
         if not trapper or trapper.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Activation denied",
                 extra={
                     "reason": "Not trapper's turn",
@@ -88,7 +88,7 @@ class RuleEngine:
             return False
 
         if trap_id not in list(self.game_state.triggerable_traps.keys()):
-            logger.debug(
+            logger.warning(
                 "Activation denied",
                 extra={
                     "reason": "Card not currently triggerable",
@@ -98,7 +98,7 @@ class RuleEngine:
             return False
 
         if card.owner_id != player_id:
-            logger.debug(
+            logger.warning(
                 "Activation denied",
                 extra={
                     "reason": "Card does not belong to player",
@@ -137,7 +137,7 @@ class RuleEngine:
         card = self.game_state.get_card_by_id(card_id)
 
         if not card:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Provided card ID does not exist",
@@ -148,7 +148,7 @@ class RuleEngine:
 
         # Check if it's player's turn
         if current_player.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Not player's turn",
@@ -160,7 +160,7 @@ class RuleEngine:
 
         # Check if card is in hand
         if card_id not in self.game_state.get_player_held_card_ids(player_id):
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Card not in hand",
@@ -173,7 +173,7 @@ class RuleEngine:
         # Check summon type restrictions
         if card.card_type == CardType.MONSTER:
             if self.game_state.player_info[player_id].has_summoned_monster:
-                logger.debug(
+                logger.warning(
                     "Summon denied",
                     extra={
                         "reason": "Already summoned monster this turn",
@@ -184,7 +184,7 @@ class RuleEngine:
                 return False
         elif card.card_type == CardType.TRAP:
             if self.game_state.player_info[player_id].has_summoned_trap:
-                logger.debug(
+                logger.warning(
                     "Summon denied",
                     extra={
                         "reason": "Already summoned trap this turn",
@@ -205,7 +205,7 @@ class RuleEngine:
 
         # Check position validity
         if pos is None:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "No slot specified",
@@ -220,7 +220,7 @@ class RuleEngine:
         ownership_matrix = self.game_state.field_matrix_ownership
         row, col = pos
         if not (0 <= row < len(card_matrix) and 0 <= col < len(card_matrix[0])):
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Position out of bounds",
@@ -234,7 +234,7 @@ class RuleEngine:
         if card_matrix[row][col] is not None:
             existing_id = card_matrix[row][col]
             existing = self.game_state.get_card_by_id(existing_id)
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Position occupied",
@@ -248,7 +248,7 @@ class RuleEngine:
 
         slot_owner_id = ownership_matrix[row][col]
         if slot_owner_id != player_id:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Slot isn't owned by player",
@@ -262,7 +262,7 @@ class RuleEngine:
         # Check max cards on field
         empty_count = len(self.game_state.get_empty_slots(player_id))
         if empty_count <= 0:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Field full",
@@ -296,7 +296,7 @@ class RuleEngine:
         current_player = self.turn_manager.get_current_player()
 
         if current_player.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Mode change denied",
                 extra={
                     "reason": "Not player's turn",
@@ -306,7 +306,7 @@ class RuleEngine:
             return False
 
         if card_id not in self.game_state.get_player_field_cards(player_id):
-            logger.debug(
+            logger.warning(
                 "Mode change denied",
                 extra={
                     "reason": "Card not on field",
@@ -342,7 +342,7 @@ class RuleEngine:
         card = self.game_state.get_card_by_id(card_id)
 
         if not card:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Provided card ID does not exist",
@@ -353,7 +353,7 @@ class RuleEngine:
 
         # Cannot attack on first turn
         if self.turn_manager.turn_state.turn_count == 1:
-            logger.debug(
+            logger.warning(
                 "Attack denied",
                 extra={
                     "reason": "Cannot attack on turn 1",
@@ -365,7 +365,7 @@ class RuleEngine:
 
         # Must be attacker's turn
         if current_player.id != attacker_id:
-            logger.debug(
+            logger.warning(
                 "Attack denied",
                 extra={
                     "reason": "Not attacker's turn",
@@ -377,7 +377,7 @@ class RuleEngine:
 
         # Card must belong to attacker
         if card.owner_id != attacker_id:
-            logger.debug(
+            logger.warning(
                 "Attack denied",
                 extra={
                     "reason": "Card belongs to another player",
@@ -390,7 +390,7 @@ class RuleEngine:
 
         # Card must be in attack position
         if card.mode != CardMode.ATTACK:
-            logger.debug(
+            logger.warning(
                 "Attack denied",
                 extra={
                     "reason": "Card not in attack mode",
@@ -403,7 +403,7 @@ class RuleEngine:
 
         # Card cannot have already attacked
         if card.has_attacked:
-            logger.debug(
+            logger.warning(
                 "Attack denied",
                 extra={
                     "reason": "Already attacked this turn",
@@ -421,7 +421,7 @@ class RuleEngine:
                 return False
 
             if target.card_type != CardType.MONSTER:
-                logger.debug(
+                logger.warning(
                     "Attack denied",
                     extra={
                         "reason": "Cannot attack trap card",
@@ -432,7 +432,7 @@ class RuleEngine:
                 return False
 
             if target.owner_id != defender_id:
-                logger.debug(
+                logger.warning(
                     "Attack denied",
                     extra={
                         "reason": "Target belongs to different defender",
@@ -459,7 +459,7 @@ class RuleEngine:
                 defender_id)
             for def_card in defender_cards:
                 if def_card.card_type == CardType.MONSTER:
-                    logger.debug(
+                    logger.warning(
                         "Direct attack denied",
                         extra={
                             "reason": "Defender has monsters on field",
@@ -479,7 +479,7 @@ class RuleEngine:
             )
             return True
 
-        logger.debug(
+        logger.warning(
             "Attack denied",
             extra={
                 "reason": "Invalid target",
@@ -502,7 +502,7 @@ class RuleEngine:
         card = self.game_state.get_card_by_id(card_id)
 
         if not card:
-            logger.debug(
+            logger.warning(
                 "Summon denied",
                 extra={
                     "reason": "Provided card ID does not exist",
@@ -512,7 +512,7 @@ class RuleEngine:
             return False
 
         if current_player.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Toggle denied",
                 extra={
                     "reason": "Not player's turn",
@@ -523,7 +523,7 @@ class RuleEngine:
             return False
 
         if card.owner_id != player_id:
-            logger.debug(
+            logger.warning(
                 "Toggle denied",
                 extra={
                     "reason": "Card belongs to another player",
@@ -535,7 +535,7 @@ class RuleEngine:
             return False
 
         if self.game_state.player_info[player_id].has_toggled:
-            logger.debug(
+            logger.warning(
                 "Toggle denied",
                 extra={
                     "reason": "Already toggled this turn",
@@ -570,7 +570,7 @@ class RuleEngine:
         target_card = self.game_state.get_card_by_id(target_card_id)
 
         if not own_card or not target_card:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Either owned card or target card could not be found",
@@ -582,7 +582,7 @@ class RuleEngine:
             return False
 
         if current_player.id != player_id:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Not player's turn",
@@ -594,7 +594,7 @@ class RuleEngine:
 
         if own_card.card_type != CardType.MONSTER \
                 or target_card.card_type != CardType.MONSTER:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Cards are not monsters",
@@ -606,7 +606,7 @@ class RuleEngine:
             return False
 
         if own_card.star != target_card.star:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Level mismatch",
@@ -620,7 +620,7 @@ class RuleEngine:
             return False
 
         if own_card.owner_id != player_id or target_card.owner_id != player_id:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Cards don't belong to player",
@@ -632,7 +632,7 @@ class RuleEngine:
             return False
 
         if own_card.card_type != target_card.card_type:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Type mismatch",
@@ -646,7 +646,7 @@ class RuleEngine:
             return False
 
         if own_card_id == target_card_id:
-            logger.debug(
+            logger.warning(
                 "Upgrade denied",
                 extra={
                     "reason": "Same card instance",

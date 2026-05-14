@@ -1,9 +1,11 @@
+import pygame
 import time
 import urllib.parse
 import socketio
 from threading import Thread
 from typing import Optional, Any
 from gui.effects.manager import EffectManager
+from core.config import config
 from .base import GameApp
 from .utils import resolve_to_localhost_if_self
 
@@ -18,7 +20,13 @@ class SocketClientGame(GameApp):
         connection_error (Optional[str]): Connection error message, if any.
     """
 
-    def __init__(self, screen, host: str = "localhost", port: int = 5555, password: str = "") -> None:
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        host: str = config.DEFAULT_HOST,
+        port: int = config.DEFAULT_PORT,
+        password: str = ""
+    ) -> None:
         """
         Initializes SocketClientGame.
 
@@ -99,7 +107,8 @@ class SocketClientGame(GameApp):
 
         # Update all cards to match the new perspective
         for card in self.game_engine.game_state.entity_lookup.values():
-            owner = self.game_engine.game_state.players_lookup.get(card.owner_id)
+            owner = self.game_engine.game_state.players_lookup.get(
+                card.owner_id)
             if owner:
                 card.is_opponent = owner.is_opponent
 
