@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from typing import List, Any
+from typing import List
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -8,55 +8,56 @@ import torch.nn.functional as F
 from ml.storage import ReplayBuffer, ReservoirBuffer
 from ml.models import DuelingDQN, AveragePolicy
 from ml.models.state_encoder import GameStateEncoder
-from ml.environment.encoder import get_card_feature_dim
-from core.config import config as game_config
+from ml.environment.encoder import get_card_feature_dim, get_player_feature_dim
 from ml.trainer.buffer_manager import BufferManager
 from ml.utils import update_target
+
+from core.config import Config as game_config
+from ml.config import Config as ml_config
 
 
 class Agent:
     """RL agent with DQN and average policy network."""
 
-    def __init__(self, state_dim: int, num_actions: int, config: Any):
+    def __init__(self, state_dim: int, num_actions: int):
         """Initializes Agent.
 
         Args:
             state_dim: State dimension.
             num_actions: Number of actions.
-            config: Configuration object.
         """
-        self.cfg = config
         self.num_actions = num_actions
 
         # Initialize GameStateEncoder
         card_dim = get_card_feature_dim()
-        player_dim = 8  # 2 players * 4 features each
+        # Times 2 since there are 2 players
+        player_dim = get_player_feature_dim() * 2
         self.encoder = GameStateEncoder(
             card_dim=card_dim,
             player_dim=player_dim,
             max_hand_cards=game_config.MAX_HAND_CARDS,
             max_board_cards=game_config.ROWS * game_config.COLS
-        ).to(self.cfg.DEVICE)
+        ).to(ml_config.DEVICE)
 
         # Core networks
-        self.dqn = DuelingDQN(self.encoder, num_actions).to(self.cfg.DEVICE)
+        self.dqn = DuelingDQN(self.encoder, num_actions).to(ml_config.DEVICE)
         self.target_dqn = DuelingDQN(
-            self.encoder, num_actions).to(self.cfg.DEVICE)
+            self.encoder, num_actions).to(ml_config.DEVICE)
         # Initial sync params to target dqn
         self.update_target_network()
 
         # Average policy
-        self.policy = AveragePolicy(self.encoder, num_actions).to(self.cfg.DEVICE)
+        self.policy = AveragePolicy(self.encoder, num_actions).to(ml_config.DEVICE)
 
         # Buffers and optimizers
-        self.replay_buffer = ReplayBuffer(self.cfg.BUFFER_SIZE)
-        self.reservoir = ReservoirBuffer(self.cfg.BUFFER_SIZE)
+        self.replay_buffer = ReplayBuffer(ml_config.BUFFER_SIZE)
+        self.reservoir = ReservoirBuffer(ml_config.BUFFER_SIZE)
         self.rl_optimizer = optim.Adam(self.dqn.parameters(), lr=1e-4)
         self.sl_optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
 
         # Buffer manager for temporary state, reward containment till
         # enough samples are met to be flushed into replay and reservoir
-        self.buffer_manager = BufferManager(self, self.cfg)
+        self.buffer_manager = BufferManager(self)
 
         # Metrics
         self.rl_losses: List[float] = []
@@ -73,7 +74,7 @@ class Agent:
         Returns:
             Selected action.
         """
-        tensor = torch.FloatTensor(state).to(self.cfg.DEVICE)
+        tensor = torch.FloatTensor(state).to(ml_config.DEVICE)
 
         if best_response:
             return self.dqn.act(tensor, epsilon)
@@ -100,7 +101,7 @@ class Agent:
         Returns:
             Boolean indicating if update is possible.
         """
-        min_samples = self.cfg.BATCH_SIZE
+        min_samples = ml_config.BATCH_SIZE
         return (
             len(self.replay_buffer) > min_samples and
             len(self.reservoir) > min_samples
@@ -112,15 +113,15 @@ class Agent:
         Returns:
             Loss tensor.
         """
-        batch = self.replay_buffer.sample(self.cfg.BATCH_SIZE)
+        batch = self.replay_buffer.sample(ml_config.BATCH_SIZE)
         state, action, reward, next_state, done = batch
 
         # Convert to tensors
-        state = torch.FloatTensor(state).to(self.cfg.DEVICE)
-        next_state = torch.FloatTensor(next_state).to(self.cfg.DEVICE)
-        action = torch.LongTensor(action).to(self.cfg.DEVICE)
-        reward = torch.FloatTensor(reward).to(self.cfg.DEVICE)
-        done = torch.FloatTensor(done).to(self.cfg.DEVICE)
+        state = torch.FloatTensor(state).to(ml_config.DEVICE)
+        next_state = torch.FloatTensor(next_state).to(ml_config.DEVICE)
+        action = torch.LongTensor(action).to(ml_config.DEVICE)
+        reward = torch.FloatTensor(reward).to(ml_config.DEVICE)
+        done = torch.FloatTensor(done).to(ml_config.DEVICE)
 
         # Compute loss
         q_values = self.dqn(state)
@@ -132,7 +133,7 @@ class Agent:
             max_next_q = next_q_values.max(1)[0]
 
         # Additional discount factor
-        discount_factor = self.cfg.GAMMA ** self.cfg.MULTI_STEP
+        discount_factor = ml_config.GAMMA ** ml_config.MULTI_STEP
         expected_q = reward + discount_factor * max_next_q * (1 - done)
 
         # Changed MSE loss for Huber loss, avoid huge spikes
@@ -151,10 +152,10 @@ class Agent:
         Returns:
             Loss tensor.
         """
-        state, action = self.reservoir.sample(self.cfg.BATCH_SIZE)
+        state, action = self.reservoir.sample(ml_config.BATCH_SIZE)
 
-        state = torch.FloatTensor(state).to(self.cfg.DEVICE)
-        action = torch.LongTensor(action).to(self.cfg.DEVICE)
+        state = torch.FloatTensor(state).to(ml_config.DEVICE)
+        action = torch.LongTensor(action).to(ml_config.DEVICE)
 
         probs = self.policy(state)
         log_probs = probs.gather(1, action.unsqueeze(1)).log()
@@ -193,9 +194,9 @@ class Agent:
             return 0
 
         # This assume that batch size will be 1
-        tensor = torch.FloatTensor(state).unsqueeze(0).to(self.cfg.DEVICE)
+        tensor = torch.FloatTensor(state).unsqueeze(0).to(ml_config.DEVICE)
         mask_tensor = torch.FloatTensor(
-            action_mask).unsqueeze(0).to(self.cfg.DEVICE)
+            action_mask).unsqueeze(0).to(ml_config.DEVICE)
 
         if best_response:
             return self._select_with_dqn_masked(tensor, mask_tensor, epsilon)

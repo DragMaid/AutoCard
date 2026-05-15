@@ -2,6 +2,7 @@ from threading import Thread
 from typing import Optional
 from ml.ai_opponent import AIOpponent, HumanVsAIManager
 from gui.effects.manager import EffectManager
+from ml.config import Config
 from .base import GameApp
 
 
@@ -25,10 +26,8 @@ class AIGame(GameApp):
 
         self.ai: AIOpponent = AIOpponent(
             env=self.env,
-            config=self.config,
-            checkpoint_path=self.config.CHECKPOINT_PATH,
+            checkpoint_path=Config.CHECKPOINT_PATH,
             agent_id=1,
-            device=self.config.DEVICE,
         )
         self.ai_manager: HumanVsAIManager = HumanVsAIManager(
             game_engine=self.game_engine,
@@ -53,6 +52,11 @@ class AIGame(GameApp):
         """
         Checks if it's the AI's turn and triggers the execution if not already running.
         """
+        def force_align():
+            self.matrix.set_game_state(
+                self.game_engine.game_state, force=True)
+            self.render_engine.align_cards(self.matrix)
+
         current = self.game_engine.turn_manager.get_current_player()
         if current == self.player2 and not self._ai_running:
             self._ai_running = True
@@ -60,7 +64,7 @@ class AIGame(GameApp):
                 target=self.ai_manager.execute_ai_turn,
                 kwargs={
                     "on_complete": lambda: setattr(self, "_ai_running", False),
-                    "callback": lambda: self.render_engine.align_cards(self.matrix),
+                    "callback": lambda: force_align(),
                 },
                 daemon=True,
             )

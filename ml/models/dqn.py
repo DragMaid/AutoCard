@@ -1,14 +1,9 @@
 import random
 import torch
 import torch.nn as nn
-from ml.models.mlp_base import MLPBase
-
-
-import random
-import torch
-import torch.nn as nn
-from ml.models.mlp_base import MLPBase
 from typing import List
+from ml.models.mlp_base import MLPBase
+from ml.config import Config
 
 
 class DQN(nn.Module):
@@ -26,8 +21,9 @@ class DQN(nn.Module):
         self.feature_net = MLPBase(input_dim, hidden_dims)
         self.head = nn.Linear(self.feature_net.output_dim, num_actions)
         self.num_actions = num_actions
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
+        self.device = Config.DEVICE
+
+        # Xavier initialization
         nn.init.xavier_uniform_(self.head.weight)
         nn.init.constant_(self.head.bias, 0.0)
 

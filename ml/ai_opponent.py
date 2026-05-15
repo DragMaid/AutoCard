@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Optional, Dict, Tuple, Any, Callable
 from ml.trainer.agent import Agent
 from core.data.player import Player
+from ml.environment.environment import GameEnv
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +15,6 @@ class AIOpponent:
 
     Attributes:
         env (Any): Game environment instance.
-        config (Any): Training configuration object.
         device (str): Device to run inference on.
         agent_id (int): Which agent to load.
         agent (Agent): The trained AI agent.
@@ -24,8 +25,7 @@ class AIOpponent:
 
     def __init__(
         self,
-        env: Any,
-        config: Any,
+        env: GameEnv,
         checkpoint_path: Path,
         agent_id: int = 0,
         device: str = "cpu"
@@ -34,13 +34,11 @@ class AIOpponent:
 
         Args:
             env (Any): GameEnv instance.
-            config (Any): Training config.
             checkpoint_path (Path): Path to saved model checkpoint.
             agent_id (int, optional): Which agent to load. Defaults to 0.
             device (str, optional): Device to run inference on. Defaults to "cpu".
         """
         self.env = env
-        self.config = config
         self.device = device
         self.agent_id = agent_id
 
@@ -48,7 +46,6 @@ class AIOpponent:
         self.agent = Agent(
             state_dim=env.state_dim,
             num_actions=env.num_actions,
-            config=config
         )
 
         # Load trained weights
@@ -260,7 +257,8 @@ class HumanVsAIManager:
         )
         actions = [(action_id, None)]
 
-        self.game_env.step_evaluation(self.ai_player, actions, 10, callback)
+        self.game_env.step_single(
+            self.ai_player, actions, callback=callback)
 
         if self.game_engine.turn_manager.get_current_player() == self.ai_player:
             self.game_engine.end_turn()

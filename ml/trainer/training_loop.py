@@ -7,7 +7,7 @@ from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
-from ml.config import Config as MLConfig
+from ml.config import Config as ml_config
 
 
 class TrainingLoop:
@@ -18,7 +18,7 @@ class TrainingLoop:
         env: Any,
         agents: List[Agent],
         episode_manager: EpisodeManager,
-        config: Any
+        mlflow_enabled: bool = False
     ):
         """Initializes TrainingLoop.
 
@@ -26,17 +26,16 @@ class TrainingLoop:
             env: Environment.
             agents: List of agents.
             episode_manager: Episode manager.
-            config: Configuration object.
         """
         self.env = env
         self.agents = agents
         self.episode_manager = episode_manager
-        self.cfg = config
+        self.mlflow_enabled = mlflow_enabled
 
         self.epsilon_scheduler = epsilon_scheduler(
-            self.cfg.EPS_START,
-            self.cfg.EPS_FINAL,
-            self.cfg.EPS_DECAY
+            ml_config.EPS_START,
+            ml_config.EPS_FINAL,
+            ml_config.EPS_DECAY
         )
 
     def run(self) -> None:
@@ -44,7 +43,7 @@ class TrainingLoop:
         states = list(self.env.reset())
         start_time = time.time()
 
-        for frame_idx in range(1, self.cfg.MAX_FRAMES + 1):
+        for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
             epsilon = self.epsilon_scheduler(frame_idx)
 
             # Execute single step
@@ -53,11 +52,11 @@ class TrainingLoop:
             # NOTE: the training process will eventually slow down
             # due to the replay buffer and reservoir filling up
             # Update networks
-            if frame_idx % self.cfg.TRAIN_FREQ == 0:
+            if frame_idx % ml_config.TRAIN_FREQ == 0:
                 self._update_all_agents()
 
             # Periodic target network updates
-            if frame_idx % self.cfg.UPDATE_TARGET_FREQ == 0:
+            if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
                 self._update_target_networks()
 
             # Handle episode completion
@@ -66,7 +65,7 @@ class TrainingLoop:
                 states = list(self.env.reset())
 
             # Periodic evaluation and checkpointing
-            if frame_idx % self.cfg.EVALUATION_INTERVAL == 0:
+            if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
                 elapsed = time.time()-start_time
                 self._evaluate_and_save(frame_idx, duration=elapsed)
                 start_time = time.time()
@@ -82,7 +81,7 @@ class TrainingLoop:
             Next states and completion flag.
         """
         # Decide whether to use the best policy based decision or to explore (random)
-        best_response = random.random() >= self.cfg.ETA
+        best_response = random.random() >= ml_config.ETA
 
         # Select actions for all agents
         env_actions = self._select_all_actions(
@@ -203,7 +202,7 @@ class TrainingLoop:
         """Checks if episode has exceeded max length."""
         return (
             self.episode_manager.current_episode_length >=
-            MLConfig.MAX_ACTIONS_PER_TURN
+            ml_config.MAX_ACTIONS_PER_TURN
         )
 
     def _handle_episode_end(self, done: bool) -> None:
@@ -221,15 +220,16 @@ class TrainingLoop:
         # Log metrics
         log_training_metrics(
             frame_idx,
-            self.cfg.MAX_FRAMES,
+            ml_config.MAX_FRAMES,
             stats["rewards"],
             stats["episode_lengths"],
             [agent.rl_losses for agent in self.agents],
             [agent.sl_losses for agent in self.agents],
             stats["wins"],
-            self.cfg.UPDATE_TARGET_FREQ,
+            ml_config.UPDATE_TARGET_FREQ,
             duration,
-            logging
+            logging,
+            self.mlflow_enabled
         )
 
         # Save models
@@ -242,5 +242,7 @@ class TrainingLoop:
             for i, agent in enumerate(self.agents)
         }
 
+        save_folder = ml_config.CHECKPOINT_PATH.parent
+        save_path = save_folder / f"cp_{frame_idx}.pth"
         save_model(logging, models=models, policies=policies,
-                   checkpoint_path=self.cfg.CHECKPOINT_PATH)
+                   checkpoint_path=save_path)

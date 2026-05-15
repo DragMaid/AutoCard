@@ -57,11 +57,7 @@ def setup_logging(file: Optional[str] = None, debug: bool = False) -> None:
     # File output
     if file is not None:
         Path(file).parent.mkdir(exist_ok=True, parents=True)
-        file_handler = RotatingFileHandler(
-            file,
-            maxBytes=5_000_000,
-            backupCount=3
-        )
+        file_handler = RotatingFileHandler(file, maxBytes=5_000_000)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)

@@ -1,9 +1,9 @@
 from typing import Tuple
-from ml.config import Config
 from ml.trainer.trainer import Trainer
 from ml.environment.environment import GameEnv
 from core.logic.game_engine import GameEngine
 from core.data.player import Player
+from ml.config import Config
 
 
 def new_players() -> Tuple[Player, Player]:
@@ -17,13 +17,12 @@ def new_players() -> Tuple[Player, Player]:
     return p1, p2
 
 
-def run(render: bool = False):
-    cfg = Config()
+def run(args):
     engine = GameEngine(players=new_players())
-    env = GameEnv(engine=engine, render=render)
-    trainer = Trainer(env, cfg)
+    env = GameEnv(engine=engine, render=args.render)
+    trainer = Trainer(env, mlflow_enabled=args.mlflow)
+    if args.checkpoint:
+        trainer.load_checkpoint(args.checkpoint)
+    elif args.resume:
+        trainer.load_checkpoint(Config.CHECKPOINT_PATH)
     trainer.train()
-
-
-if __name__ == "__main__":
-    run()

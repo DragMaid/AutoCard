@@ -7,6 +7,7 @@ import random
 import datetime
 from pathlib import Path
 from typing import Sequence, Callable
+from ml.config import Config
 
 
 def update_target(current_model: torch.nn.Module, target_model: torch.nn.Module) -> None:
@@ -49,6 +50,7 @@ def log_training_metrics(
     update_freq: int,
     duration: float,
     logger: logging.Logger,
+    mlfow_enabled: bool = False
 ) -> None:
     """
     Logs training metrics for reinforcement learning and supervised learning progress.
@@ -102,17 +104,18 @@ def log_training_metrics(
     )
 
     # MLflow logging
-    mlflow.log_metric("P1/Reward/Average", p1_avg_reward, step=frame_idx)
-    mlflow.log_metric("P2/Reward/Average", p2_avg_reward, step=frame_idx)
-    mlflow.log_metric("Episode/Length", avg_length, step=frame_idx)
-    mlflow.log_metric("P1/RL_Loss", p1_rl, step=frame_idx)
-    mlflow.log_metric("P1/SL_Loss", p1_sl, step=frame_idx)
-    mlflow.log_metric("P2/RL_Loss", p2_rl, step=frame_idx)
-    mlflow.log_metric("P2/SL_Loss", p2_sl, step=frame_idx)
-    mlflow.log_metric("P1/Wins", p1_wins, step=frame_idx)
-    mlflow.log_metric("P2/Wins", p2_wins, step=frame_idx)
-    mlflow.log_metric("P1/WinRate", p1_wins / total_wins, step=frame_idx)
-    mlflow.log_metric("P2/WinRate", p2_wins / total_wins, step=frame_idx)
+    if mlfow_enabled:
+        mlflow.log_metric("P1/Reward/Average", p1_avg_reward, step=frame_idx)
+        mlflow.log_metric("P2/Reward/Average", p2_avg_reward, step=frame_idx)
+        mlflow.log_metric("Episode/Length", avg_length, step=frame_idx)
+        mlflow.log_metric("P1/RL_Loss", p1_rl, step=frame_idx)
+        mlflow.log_metric("P1/SL_Loss", p1_sl, step=frame_idx)
+        mlflow.log_metric("P2/RL_Loss", p2_rl, step=frame_idx)
+        mlflow.log_metric("P2/SL_Loss", p2_sl, step=frame_idx)
+        mlflow.log_metric("P1/Wins", p1_wins, step=frame_idx)
+        mlflow.log_metric("P2/Wins", p2_wins, step=frame_idx)
+        mlflow.log_metric("P1/WinRate", p1_wins / total_wins, step=frame_idx)
+        mlflow.log_metric("P2/WinRate", p2_wins / total_wins, step=frame_idx)
 
     # Reset buffers for next interval
     for buf in [*rewards, *rl_losses, *sl_losses, lengths]:
@@ -266,135 +269,6 @@ def load_single_agent(logging, agent_id: int, dqn_model, policy_model=None,
     return True
 
 
-def load_model_legacy(logging, models, policies, device="cpu", checkpoint_path=None):
-    """
-    Load models from legacy checkpoint format (p1/p2 naming).
-
-    This function maintains backward compatibility with old checkpoints
-    that used 'p1' and 'p2' naming convention.
-
-    Args:
-        logging: Logger instance
-        models: Dict with keys like 'agent_0', 'agent_1'
-        policies: Dict with keys like 'agent_0', 'agent_1'
-        device: Device to load models to
-        checkpoint_path: Optional custom path, defaults to saves/checkpoint.pth
-    """
-    if checkpoint_path is None:
-        checkpoint_path = Path("saves/checkpoint.pth")
-    else:
-        checkpoint_path = Path(checkpoint_path)
-
-    if not checkpoint_path.exists():
-        raise ValueError(f"No model found at {checkpoint_path}")
-
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    # Map legacy keys to new keys
-    legacy_to_new = {
-        'p1': 'agent_0',
-        'p2': 'agent_1',
-    }
-
-    # Load models with legacy mapping
-    for legacy_key, new_key in legacy_to_new.items():
-        model_key = f"{legacy_key}_model"
-        if model_key in checkpoint and new_key in models:
-            models[new_key].load_state_dict(checkpoint[model_key])
-            logging.info(f"Loaded {model_key} -> {new_key}")
-
-        policy_key = f"{legacy_key}_policy"
-        if policy_key in checkpoint and new_key in policies:
-            if policies[new_key] is not None:
-                policies[new_key].load_state_dict(checkpoint[policy_key])
-                logging.info(f"Loaded {policy_key} -> {new_key}")
-
-    logging.info(f"Models loaded from {checkpoint_path} (legacy format)")
-
-
-def detect_and_load_model(logging, models, policies, device="cpu", checkpoint_path=None):
-    """
-    Automatically detect checkpoint format and load accordingly.
-
-    Tries new format first, falls back to legacy format if needed.
-
-    Args:
-        logging: Logger instance
-        models: Dict with keys like 'agent_0', 'agent_1'
-        policies: Dict with keys like 'agent_0', 'agent_1'
-        device: Device to load models to
-        checkpoint_path: Optional custom path
-    """
-    if checkpoint_path is None:
-        checkpoint_path = Path("saves/checkpoint.pth")
-    else:
-        checkpoint_path = Path(checkpoint_path)
-
-    if not checkpoint_path.exists():
-        raise ValueError(f"No model found at {checkpoint_path}")
-
-    # Load checkpoint to inspect format
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    # Detect format by checking keys
-    has_new_format = any('agent_' in key for key in checkpoint.keys())
-    has_legacy_format = any(key.startswith('p1') or key.startswith('p2')
-                            for key in checkpoint.keys())
-
-    if has_new_format:
-        load_model(logging, models, policies, device, checkpoint_path)
-    elif has_legacy_format:
-        logging.info("Detected legacy checkpoint format, converting...")
-        load_model_legacy(logging, models, policies, device, checkpoint_path)
-    else:
-        raise ValueError(f"Unknown checkpoint format in {checkpoint_path}")
-
-
-def get_checkpoint_info(checkpoint_path):
-    """
-    Get information about what's in a checkpoint file.
-
-    Args:
-        checkpoint_path: Path to checkpoint file
-
-    Returns:
-        Dict with info about the checkpoint
-    """
-    checkpoint_path = Path(checkpoint_path)
-
-    if not checkpoint_path.exists():
-        return {"exists": False, "error": f"File not found: {checkpoint_path}"}
-
-    try:
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
-
-        info = {
-            "exists": True,
-            "path": str(checkpoint_path),
-            "keys": list(checkpoint.keys()),
-            "agents": [],
-            "has_policies": []
-        }
-
-        # Detect agents
-        for key in checkpoint.keys():
-            if "_model" in key:
-                agent_name = key.replace("_model", "")
-                info["agents"].append(agent_name)
-
-                # Check if has policy
-                policy_key = f"{agent_name}_policy"
-                info["has_policies"].append(policy_key in checkpoint)
-
-        return info
-
-    except Exception as e:
-        return {"exists": True, "error": str(e)}
-
-
-# Example usage functions
-
 def save_training_checkpoint(trainer, checkpoint_path="checkpoints/checkpoint.pth"):
     """
     Convenience function to save all agents from trainer.
@@ -428,8 +302,8 @@ def load_training_checkpoint(trainer, checkpoint_path="checkpoints/checkpoint.pt
     policies = {f"agent_{i}": agent.policy for i,
                 agent in enumerate(trainer.agents)}
 
-    detect_and_load_model(
+    load_model(
         logging, models, policies,
-        device=trainer.cfg.DEVICE,
+        device=Config.DEVICE,
         checkpoint_path=Path(checkpoint_path)
     )

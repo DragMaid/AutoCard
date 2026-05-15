@@ -1,6 +1,6 @@
 import pygame
 from gui.cache import get_font
-from core.config import config
+from core.config import Config
 from .components import Button
 
 
@@ -11,7 +11,7 @@ class GameHUD:
         self.game_engine = game_engine
 
         self.end_turn_button = Button(
-            pygame.Rect(15, config.SCREEN_SIZE[1] - 60, 150, 50),
+            pygame.Rect(15, Config.SCREEN_SIZE[1] - 60, 150, 50),
             "End Turn",
             font_size=28,
             color=(50, 100, 50),
@@ -19,7 +19,7 @@ class GameHUD:
             callback=on_end_turn,
         )
         self.surrender_button = Button(
-            pygame.Rect(15, config.SCREEN_SIZE[1] - 110, 150, 40),
+            pygame.Rect(15, Config.SCREEN_SIZE[1] - 110, 150, 40),
             "Surrender",
             font_size=20,
             color=(80, 30, 30),
@@ -52,7 +52,7 @@ class GameHUD:
             player_label = "Your Turn" if is_local_turn else "Opponent Turn"
             label_color = (100, 255, 100) if is_local_turn else (255, 100, 100)
 
-        panel_rect = pygame.Rect(10, SCREEN_SIZE[1] - 235, 160, 235)
+        panel_rect = pygame.Rect(10, Config.SCREEN_SIZE[1] - 235, 160, 235)
         panel_surf = pygame.Surface(
             (panel_rect.width, panel_rect.height), pygame.SRCALPHA)
         panel_surf.set_alpha(175)

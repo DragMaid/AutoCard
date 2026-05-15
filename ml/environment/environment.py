@@ -3,15 +3,15 @@ from __future__ import annotations
 import numpy as np
 import logging
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 from ml.environment.renderer import Renderer
 from ml.environment.reward_system import RewardCalculator, RewardConfig, create_enhanced_snapshot
 from ml.environment.action_resolvers import TrapStageResolvers
 from ml.environment.action_resolvers import NormalResolvers
 from core.logic.game_engine import GameEngine
 from core.data.player import Player
-from core.config import config
-from ml.config import Config as MLConfig
+from core.config import Config as game_config
+from ml.config import Config as ml_config
 from .action_codec import ActionCodec
 from .encoder import encode_state
 from . import action_handlers
@@ -64,7 +64,7 @@ class GameEnv:
     @property
     def num_actions(self) -> int:
         """Return the number of actions in the action space."""
-        return MLConfig.NUM_ACTIONS
+        return ml_config.NUM_ACTIONS
 
     @property
     def state_dim(self) -> int:
@@ -92,7 +92,7 @@ class GameEnv:
         self.engine.start_game()
 
         # Update reward calculator with max stats
-        max_stats = config.MAX_STATS
+        max_stats = game_config.MAX_STATS
         self.reward_calculator.max_stats = max_stats
         self.reward_calculator.reset_episode_tracking()
 
@@ -178,7 +178,7 @@ class GameEnv:
 
         tm = self.engine.turn_manager
         if tm.is_trap_stage() and tm.get_trapper() == player:
-            if not remaining_actions or actions_taken >= MLConfig.MAX_ACTIONS_PER_TURN:
+            if not remaining_actions or actions_taken >= ml_config.MAX_ACTIONS_PER_TURN:
                 before_snap = create_enhanced_snapshot(self.engine, player)
                 num_activated = len(self.engine.game_state.activated_traps)
                 if num_activated > 0:
@@ -219,11 +219,12 @@ class GameEnv:
         player: Player,
         player_actions: List[Tuple[int, Optional[Dict]]],
         max_actions: Optional[int] = None,
-        use_random: bool = True
+        use_random: bool = False,
+        callback: Optional[Callable] = None
     ) -> Tuple[float, int, int, bool]:
         """Perform a segment of actions for a single player."""
         if max_actions is None:
-            max_actions = MLConfig.MAX_ACTIONS_PER_TURN
+            max_actions = ml_config.MAX_ACTIONS_PER_TURN
 
         total_turn_reward = 0.0
         action_pointer = 0
@@ -259,6 +260,9 @@ class GameEnv:
             total_turn_reward += reward
             actions_taken += 1
 
+            if callback:
+                callback()
+
             if done or action_name == "end_turn":
                 break
 
@@ -267,11 +271,11 @@ class GameEnv:
     def get_card_slot_idx(self, player_id: str, card: Any) -> int:
         """Get the 0-9 slot index for a card on the field."""
         gs = self.engine.game_state
-        cols = config.COLS
-        rows_per_player = config.ROWS // 2
+        cols = game_config.COLS
+        rows_per_player = game_config.ROWS // 2
 
-        for r in range(config.ROWS):
-            for c in range(config.COLS):
+        for r in range(game_config.ROWS):
+            for c in range(game_config.COLS):
                 if gs.field_matrix[r][c] == card.id:
                     if gs.field_matrix_ownership[r][c] == player_id:
                         if player_id == self.engine.game_state.players[0].id:
@@ -287,7 +291,7 @@ class GameEnv:
         else:
             player = self.engine.game_state.players_lookup[player_id]
 
-        mask = np.zeros(MLConfig.NUM_ACTIONS, dtype=bool)
+        mask = np.zeros(ml_config.NUM_ACTIONS, dtype=bool)
         legal_actions = self._get_legal_actions(player)
 
         for action_id in legal_actions:

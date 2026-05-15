@@ -35,6 +35,3 @@ class Config:
     # Networking config
     DEFAULT_PORT: int = 5555
     DEFAULT_HOST: str = "localhost"
-
-
-config = Config()

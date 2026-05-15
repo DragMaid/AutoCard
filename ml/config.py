@@ -31,7 +31,6 @@ class Config:
         RENDER: Whether to render the game.
         SEED: Random seed for reproducibility.
         CHECKPOINT_PATH: Path to the model checkpoint.
-        RUNS_PATH: Path to the run logs.
         USER: Database user.
         PASSWORD: Database password.
         DB: Database name.
@@ -45,6 +44,8 @@ class Config:
 
     # Training duration
     MAX_FRAMES: int = 1_000_000
+    # NOTE: the higher this is, the more it stutters
+    # when training via cpu
     BATCH_SIZE: int = 64
     BUFFER_SIZE: int = 200_000
 
@@ -67,16 +68,18 @@ class Config:
     ETA: float = 0.1
 
     # Logging & evaluation
-    EVALUATION_INTERVAL: int = 1000
+    EVALUATION_INTERVAL: int = 10_000
     RENDER: bool = False
     SEED: int = 42
 
     MAX_ACTIONS_PER_TURN: int = 50
 
-    CHECKPOINT_PATH: Path = Path(BASE_PATH, "ml/saves/checkpoint.pth")
-    RUNS_PATH: Path = Path(BASE_PATH, "mlruns")
+    REWARD_DEBUG: bool = False
+
+    CHECKPOINT_PATH: Path = Path(BASE_PATH, "saves/checkpoint.pth")
 
     # Database
+    EXPERIMENT_NAME = "autocard"
     USER: Optional[str] = os.getenv("POSTGRES_USER")
     PASSWORD: Optional[str] = os.getenv("POSTGRES_PASSWORD")
     DB: Optional[str] = os.getenv("POSTGRES_DB")

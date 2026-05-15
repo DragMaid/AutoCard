@@ -8,7 +8,7 @@ from core.cards.spell_card import SpellCard
 from core.cards.trap_card import TrapCard
 from core.data.player import Player
 from gui.background.hand import CollectionInfo
-from core.config import config
+from core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +129,14 @@ class GameState(BaseModel):
         self.game_over = False
         self.entity_lookup = {}
         self.field_matrix = \
-            [[None for _ in range(config.COLS)] for _ in range(config.ROWS)]
+            [[None for _ in range(Config.COLS)] for _ in range(Config.ROWS)]
 
         enemy_rows: List[List[str]] = \
             [[self.players[1].id] *
-                config.COLS for _ in range(config.ROWS // 2)]
+                Config.COLS for _ in range(Config.ROWS // 2)]
         player_rows: List[List[str]] = \
             [[self.players[0].id] *
-                config.COLS for _ in range(config.ROWS // 2)]
+                Config.COLS for _ in range(Config.ROWS // 2)]
         self.field_matrix_ownership = enemy_rows + player_rows
 
         self.triggerable_traps = {}
@@ -168,13 +168,13 @@ class GameState(BaseModel):
         ModifyMode(mode)
 
         if mode is ModifyMode.ADD:
-            if not (0 <= row < config.ROWS and 0 <= col < config.COLS):
+            if not (0 <= row < Config.ROWS and 0 <= col < Config.COLS):
                 logger.error(
                     "Field modify failed",
                     extra={
                         "reason": "Invalid position",
                         "pos": pos,
-                        "fieldSize": f"{config.ROWS}x{config.COLS}",
+                        "fieldSize": f"{Config.ROWS}x{Config.COLS}",
                     },
                 )
                 return
@@ -209,7 +209,7 @@ class GameState(BaseModel):
             self.entity_lookup[card.id] = card
             card.pos_in_matrix = pos
 
-            logger.info(
+            logger.debug(
                 "Field modified: card placed",
                 extra={
                     "cardName": card.name,
@@ -219,7 +219,7 @@ class GameState(BaseModel):
             )
 
         elif mode is ModifyMode.REMOVE:
-            if not (0 <= row < config.ROWS and 0 <= col < config.COLS):
+            if not (0 <= row < Config.ROWS and 0 <= col < Config.COLS):
                 logger.error(
                     "Field modify failed",
                     extra={
@@ -234,7 +234,7 @@ class GameState(BaseModel):
                 existing_card = self.entity_lookup.get(existing_card_id)
                 if existing_card:
                     try:
-                        logger.info(
+                        logger.debug(
                             "Field modified: card removed",
                             extra={
                                 "cardName": existing_card.name,
@@ -287,8 +287,8 @@ class GameState(BaseModel):
         """
         return [
             self.entity_lookup[self.field_matrix[r][c]]
-            for r in range(config.ROWS)
-            for c in range(config.COLS)
+            for r in range(Config.ROWS)
+            for c in range(Config.COLS)
             if self.field_matrix[r][c] is not None
             and self.field_matrix_ownership[r][c] == player_id
         ]
@@ -315,8 +315,8 @@ class GameState(BaseModel):
         """
         empty_slots = [
             (r, c)
-            for r in range(config.ROWS)
-            for c in range(config.COLS)
+            for r in range(Config.ROWS)
+            for c in range(Config.COLS)
             if self.field_matrix[r][c] is None
             and self.field_matrix_ownership[r][c] == player_id
         ]

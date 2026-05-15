@@ -4,13 +4,13 @@ from gui.screen.matchmaking import MatchmakingScreen, ScreenState
 from core.network.server import SocketServerGame
 from core.network.client import SocketClientGame
 from core.network.ai import AIGame
-from core.config import config
+from core.config import Config
 
 
 class GameApp:
     def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode(config.SCREEN_SIZE)
+        self.screen = pygame.display.set_mode(Config.SCREEN_SIZE)
         self.clock = pygame.time.Clock()
         self.matchmaker = MatchmakingScreen(self.screen)
         self.game_app = None
@@ -18,7 +18,7 @@ class GameApp:
 
     def run(self) -> None:
         while self.running:
-            dt = self.clock.tick(config.FPS) / 1000.0
+            dt = self.clock.tick(Config.FPS) / 1000.0
             self._tick(dt)
 
         self._cleanup_game()
@@ -131,6 +131,9 @@ class GameApp:
 def parse_args():
     from argparse import ArgumentParser
     p = ArgumentParser()
+    p.add_argument("--checkpoint", type=str)
+    p.add_argument("--mlflow",  action="store_true")
+    p.add_argument("--resume",  action="store_true")
     p.add_argument("--train",  action="store_true")
     p.add_argument("--render",  action="store_true")
     p.add_argument("--client", action="store_true")
@@ -144,7 +147,7 @@ def parse_args():
 def run_headless_game(args):
     """Bypass matchmaking for direct CLI launches."""
     pygame.init()
-    screen = pygame.display.set_mode(config.SCREEN_SIZE)
+    screen = pygame.display.set_mode(Config.SCREEN_SIZE)
     clock = pygame.time.Clock()
 
     if args.client:
@@ -156,7 +159,7 @@ def run_headless_game(args):
 
     running = True
     while running:
-        dt = clock.tick(config.FPS) / 1000.0
+        dt = clock.tick(Config.FPS) / 1000.0
         running = app.step(dt)
 
     if hasattr(app, "cleanup"):
@@ -170,12 +173,12 @@ if __name__ == "__main__":
 
     timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
     file = f"logs/{timestamp}.log"
-    setup_logging(file, debug=True)
+    setup_logging(file, debug=False)
 
     args = parse_args()
     if args.client or args.server or args.ai:
         run_headless_game(args)
     elif args.train:
-        run(args.render)
+        run(args)
     else:
         GameApp().run()

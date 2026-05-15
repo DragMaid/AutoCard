@@ -1,11 +1,10 @@
 import random
 import torch
+from typing import List
 import torch.nn as nn
 from ml.models.mlp_base import MLPBase
-from typing import List
-
-
 from ml.models.state_encoder import GameStateEncoder
+from ml.config import Config
 
 
 class DuelingDQN(nn.Module):
@@ -27,8 +26,7 @@ class DuelingDQN(nn.Module):
         self.advantage = nn.Linear(self.feature_net.output_dim, num_actions)
         self.value = nn.Linear(self.feature_net.output_dim, 1)
 
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
+        self.device = Config.DEVICE
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.

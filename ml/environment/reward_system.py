@@ -6,8 +6,12 @@ from core.data.player import Player
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
 from core.utils import get_cards_typed
+from ml.confg import Config
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO if Config.REWARD_DEBUG else logging.ERROR)
+
+# TODO: do reconsider this for a bit
 
 
 @dataclass
@@ -564,10 +568,10 @@ class RewardCalculator:
     def _log_reward(self, player: Player, breakdown: RewardBreakdown, terminal: bool = False):
         """Log reward details."""
         if terminal:
-            logger.info(f"ERMINAL REWARD for {player.name}")
-            logger.info(f"{breakdown.get_summary()}")
+            logger.debug(f"ERMINAL REWARD for {player.name}")
+            logger.debug(f"{breakdown.get_summary()}")
         elif breakdown.total != 0:
-            logger.info(f"REWARD ({breakdown.action_type}): {
+            logger.debug(f"REWARD ({breakdown.action_type}): {
                 breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
@@ -587,13 +591,13 @@ class RewardCalculator:
     def log_episode_summary(self):
         """Log episode reward summary."""
         summary = self.get_episode_summary()
-        logger.info("EPISODE REWARD SUMMARY")
+        logger.debug("EPISODE REWARD SUMMARY")
         for category, stats in summary.items():
-            logger.info(f"\n{category.upper()}:")
-            logger.info(f"Total: {stats['total']:+.4f}")
-            logger.info(f"Mean:  {stats['mean']:+.4f}")
-            logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
-            logger.info(f"Count: {stats['count']}")
+            logger.debug(f"\n{category.upper()}:")
+            logger.debug(f"Total: {stats['total']:+.4f}")
+            logger.debug(f"Mean:  {stats['mean']:+.4f}")
+            logger.debug(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
+            logger.debug(f"Count: {stats['count']}")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:

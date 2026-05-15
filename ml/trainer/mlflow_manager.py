@@ -1,33 +1,50 @@
 import mlflow
 import logging
-from typing import Any
+from functools import wraps
+from typing import Callable, TypeVar, Any
+from ml.config import Config
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
+def if_enabled(func: F) -> F:
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if getattr(self, "enabled", False):
+            return func(self, *args, **kwargs)
+        return None
+
+    return wrapper  # type: ignore
+
+
+# TODO: setup dagshub integration
 class MLFlowManager:
     """Manages MLFlow experiment tracking and UI."""
 
-    def __init__(self, config: Any, experiment_name: str = "training"):
+    def __init__(self, experiment_name: str = Config.EXPERIMENT_NAME, enabled: bool = False):
         """Initializes MLFlow manager.
 
         Args:
-            config: Configuration object.
             experiment_name: Experiment name.
         """
         self.experiment_name = experiment_name
-        self.cfg = config
-        self._setup_mlflow()
+        self.enabled = enabled
 
+    @if_enabled
     def _setup_mlflow(self) -> None:
         """Configures MLFlow tracking URI and experiment."""
-        url = "http://localhost:5000"
+        url = f"http://{Config.HOST}:{Config.PORT}"
         mlflow.set_tracking_uri(url)
         mlflow.set_experiment(self.experiment_name)
         logging.info(f"Server is running at {url}")
 
+    @if_enabled
     def start_run(self) -> None:
         """Starts MLFlow run and launches UI."""
+        self._setup_mlflow()
         mlflow.start_run()
 
+    @if_enabled
     def log_metrics(self, metrics: dict, step: int) -> None:
         """Logs metrics to MLFlow.
 
@@ -37,6 +54,7 @@ class MLFlowManager:
         """
         mlflow.log_metrics(metrics, step=step)
 
+    @if_enabled
     def log_params(self, params: dict) -> None:
         """Logs parameters to MLFlow.
 
@@ -45,6 +63,7 @@ class MLFlowManager:
         """
         mlflow.log_params(params)
 
+    @if_enabled
     def end_run(self) -> None:
         """Ends current MLFlow run."""
         mlflow.end_run()

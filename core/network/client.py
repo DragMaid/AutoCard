@@ -5,7 +5,7 @@ import socketio
 from threading import Thread
 from typing import Optional, Any
 from gui.effects.manager import EffectManager
-from core.config import config
+from core.config import Config
 from .base import GameApp
 from .utils import resolve_to_localhost_if_self
 
@@ -23,8 +23,8 @@ class SocketClientGame(GameApp):
     def __init__(
         self,
         screen: pygame.Surface,
-        host: str = config.DEFAULT_HOST,
-        port: int = config.DEFAULT_PORT,
+        host: str = Config.DEFAULT_HOST,
+        port: int = Config.DEFAULT_PORT,
         password: str = ""
     ) -> None:
         """

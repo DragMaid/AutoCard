@@ -160,9 +160,14 @@ class GameStateEncoder(nn.Module):
         batch_size = state.shape[0]
 
         # Split flat state into components
-        # Order in encode_state: [player_feats (8), hand (MAX_HAND * card_dim), board (MAX_BOARD * card_dim)]
+        # Order in encode_state:
+        # [
+        # player_feats (single_player_dim * 2),
+        # hand (MAX_HAND * card_dim),
+        # board (MAX_BOARD * card_dim)
+        # ]
 
-        # Player features (2 players * 4 features each = 8)
+        # Player features (2 players * n features each)
         p_offset = self.player_dim
         player_feats = state[:, :p_offset]
 

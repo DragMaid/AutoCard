@@ -4,7 +4,7 @@ from core.cards.card import CardType
 from core.logic.turn_manager import TurnManager
 from core.data.game_state import GameState
 from typing import Tuple
-from core.config import config
+from core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +46,13 @@ class RuleEngine:
             )
             return False
 
-        if hand_size >= config.MAX_HAND_CARDS:
+        if hand_size >= Config.MAX_HAND_CARDS:
             logger.warning(
                 "Draw denied",
                 extra={
                     "reason": "Player hand is already full",
                     "playerID": player_id,
-                    "handCount": f"{hand_size} / {config.MAX_HAND_CARDS}"
+                    "handCount": f"{hand_size} / {Config.MAX_HAND_CARDS}"
                 }
             )
             return False
