@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from ml.config import Config as ml_config
 from ml.environment.environment import GameEnv
@@ -41,46 +40,16 @@ class Trainer:
         """
         self.env = env
         self.num_agents = num_agents
-        self.agents = self._initialize_agents()
+        self.agent = Agent(
+            state_dim=self.env.state_dim,
+            num_actions=self.env.num_actions,
+        )
         self.mlflow_enabled = mlflow_enabled
 
         self.episode_manager = EpisodeManager(num_agents)
         self.mlflow_manager = MLFlowManager(enabled=mlflow_enabled)
 
         logging.info(f"Currently running on device: {ml_config.DEVICE}")
-
-    def _initialize_agents(self) -> List[Agent]:
-        """Creates agent instances with appropriate dimensions.
-
-        Returns:
-            List[Agent]: A list of initialized agents.
-        """
-        return [
-            Agent(
-                state_dim=self.env.state_dim,
-                num_actions=self.env.num_actions,
-            )
-            for _ in range(self.num_agents)
-        ]
-
-    def load_checkpoint(self, path: str) -> None:
-        """Loads model checkpoints if available."""
-        models = {
-            f"agent_{i}": agent.dqn
-            for i, agent in enumerate(self.agents)
-        }
-        policies = {
-            f"agent_{i}": agent.policy
-            for i, agent in enumerate(self.agents)
-        }
-
-        load_model(
-            logging,
-            models=models,
-            policies=policies,
-            device=ml_config.DEVICE,
-            checkpoint_path=path,
-        )
 
     def train(self) -> None:
         """Executes the main training loop."""
@@ -89,24 +58,13 @@ class Trainer:
 
         training_loop = TrainingLoop(
             env=self.env,
-            agents=self.agents,
+            agent=self.agent,
             episode_manager=self.episode_manager,
-            mlflow_enabled=self.mlflow_enabled
         )
 
         training_loop.run()
-        self._save_final_models()
+        save_model(self.agent)
 
-    def _save_final_models(self) -> None:
-        """Saves final trained models."""
-        models = {
-            f"agent_{i}": agent.dqn
-            for i, agent in enumerate(self.agents)
-        }
-        policies = {
-            f"agent_{i}": agent.policy
-            for i, agent in enumerate(self.agents)
-        }
-
-        save_model(logging, models=models, policies=policies,
-                   checkpoint_path=ml_config.CHECKPOINT_PATH)
+    def load_checkpoint(self, device: str, path: str):
+        """Load the agent checkpoint."""
+        load_model(self.agent, device, path)

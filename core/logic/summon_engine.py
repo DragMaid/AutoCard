@@ -80,7 +80,7 @@ class SummonEngine:
         if isinstance(card, MonsterCard):
             details.update({
                 "attack": card.attack,
-                "defened": card.defend,
+                "defend": card.defend,
                 "level": card.star
             })
 

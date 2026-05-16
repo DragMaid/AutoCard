@@ -1,24 +1,18 @@
+from __future__ import annotations
+
 import logging
 import torch
 import numpy as np
-import mlflow
 import math
 import random
-import datetime
+from typing import TYPE_CHECKING, Callable
 from pathlib import Path
-from typing import Sequence, Callable
 from ml.config import Config
 
+if TYPE_CHECKING:
+    from ml.trainer.agent import Agent
 
-def update_target(current_model: torch.nn.Module, target_model: torch.nn.Module) -> None:
-    """
-    Copy weights from current_model to target_model.
-
-    Args:
-        current_model: The model to copy weights from.
-        target_model: The model to copy weights to.
-    """
-    target_model.load_state_dict(current_model.state_dict())
+logger = logging.getLogger(__name__)
 
 
 def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay: int = 50000) -> Callable[[int], float]:
@@ -39,89 +33,6 @@ def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay
     return function
 
 
-def log_training_metrics(
-    frame_idx: int,
-    max_frames: int,
-    rewards: Sequence[float],
-    lengths: Sequence[int],
-    rl_losses: Sequence[float],
-    sl_losses: Sequence[float],
-    wins: Sequence[int],
-    update_freq: int,
-    duration: float,
-    logger: logging.Logger,
-    mlfow_enabled: bool = False
-) -> None:
-    """
-    Logs training metrics for reinforcement learning and supervised learning progress.
-
-    This function aggregates and reports key training statistics such as reward trends,
-    episode lengths, loss values, and win rates at a given training step. It is typically
-    called at fixed intervals during training to monitor model performance and stability.
-
-    Args:
-        frame_idx (int): Current training step or frame index.
-        max_frames (int): Total number of training frames planned.
-        rewards (Sequence[float]): Reward values collected over recent episodes.
-        lengths (Sequence[int]): Episode lengths (number of steps per episode).
-        rl_losses (Sequence[float]): Reinforcement learning loss values over recent updates.
-        sl_losses (Sequence[float]): Supervised learning loss values over recent updates.
-        wins (Sequence[int]): Binary or count-based win indicators (e.g., 1 for win, 0 for loss).
-        update_freq (int): Number of frames between logging updates.
-        duration (float): Time elapsed since last logging event (in seconds).
-        logger (logging.Logger): Logger instance used for outputting metrics.
-
-    Returns:
-        None
-    """
-    def mean_safe(x):
-        return np.mean(x) if len(x) > 0 else 0.0
-
-    # Compute metrics
-    p1_avg_reward = mean_safe(rewards[0])
-    p2_avg_reward = mean_safe(rewards[1])
-    avg_length = mean_safe(lengths)
-    p1_rl, p2_rl = map(mean_safe, rl_losses)
-    p1_sl, p2_sl = map(mean_safe, sl_losses)
-    p1_wins, p2_wins = wins
-    total_wins = max(p1_wins + p2_wins, 1)
-    fps = int(update_freq/duration)
-    time_left = datetime.timedelta(seconds=int((max_frames-frame_idx)/fps))
-
-    # Console logging
-    logging.info(
-        f"[Frame {frame_idx}] \n | "
-        f"Len={avg_length:.1f} \n | "
-        f"Progress={frame_idx/max_frames*100:.2f}% \n | "
-        f"FPS={fps} \n | "
-        f"Expected time={str(time_left)} \n | "
-        f"P1 RL={p1_rl:.4f}, SL={p1_sl:.4f} \n | "
-        f"P2 RL={p2_rl:.4f}, SL={p2_sl:.4f} \n | "
-        f"P1 Avg R={p1_avg_reward:.2f} \n | "
-        f"P2 Avg R={p2_avg_reward:.2f} \n | "
-        f"P1 wins={p1_wins} ({p1_wins / total_wins:.2f}) \n | "
-        f"P2 wins={p2_wins} ({p2_wins / total_wins:.2f})"
-    )
-
-    # MLflow logging
-    if mlfow_enabled:
-        mlflow.log_metric("P1/Reward/Average", p1_avg_reward, step=frame_idx)
-        mlflow.log_metric("P2/Reward/Average", p2_avg_reward, step=frame_idx)
-        mlflow.log_metric("Episode/Length", avg_length, step=frame_idx)
-        mlflow.log_metric("P1/RL_Loss", p1_rl, step=frame_idx)
-        mlflow.log_metric("P1/SL_Loss", p1_sl, step=frame_idx)
-        mlflow.log_metric("P2/RL_Loss", p2_rl, step=frame_idx)
-        mlflow.log_metric("P2/SL_Loss", p2_sl, step=frame_idx)
-        mlflow.log_metric("P1/Wins", p1_wins, step=frame_idx)
-        mlflow.log_metric("P2/Wins", p2_wins, step=frame_idx)
-        mlflow.log_metric("P1/WinRate", p1_wins / total_wins, step=frame_idx)
-        mlflow.log_metric("P2/WinRate", p2_wins / total_wins, step=frame_idx)
-
-    # Reset buffers for next interval
-    for buf in [*rewards, *rl_losses, *sl_losses, lengths]:
-        buf.clear()
-
-
 def set_global_seeds(seed=42):
     """Set seeds for reproducibility."""
     torch.manual_seed(seed)
@@ -131,179 +42,41 @@ def set_global_seeds(seed=42):
     random.seed(seed)
 
 
-def hard_update(target, source):
-    for t, s in zip(target.parameters(), source.parameters()):
-        t.data.copy_(s.data)
-
-
-def soft_update(target, source, tau):
-    for t, s in zip(target.parameters(), source.parameters()):
-        t.data.copy_(t.data * (1.0 - tau) + s.data * tau)
-
-
-def save_model(logging, models, policies, checkpoint_path):
+def save_model(agent: Agent, path: str = Config.CHECKPOINT_PATH):
     """
     Save all models to a single checkpoint file.
 
     Args:
-        logging: Logger instance
-        models: Dict with keys like 'agent_0', 'agent_1', etc.
-        policies: Dict with keys like 'agent_0', 'agent_1', etc.
-        checkpoint_path: Path object or string to checkpoint file (e.g., 'checkpoints/checkpoint.pth')
+        agent: Agent
+        path: Path object or string to checkpoint file
     """
-    checkpoint_path = Path(checkpoint_path)
+    checkpoint_path = Path(path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Build checkpoint dict with proper naming
     checkpoint = {}
-
-    # Save models with format: agent_0_model, agent_1_model, etc.
-    for key, model in models.items():
-        checkpoint[f"{key}_model"] = model.state_dict()
-
-    # Save policies with format: agent_0_policy, agent_1_policy, etc.
-    for key, policy in policies.items():
-        if policy is not None:  # Handle case where policy might be None
-            checkpoint[f"{key}_policy"] = policy.state_dict()
+    checkpoint["dqn"] = agent.dqn.state_dict()
+    checkpoint["policy"] = agent.policy.state_dict()
 
     torch.save(checkpoint, checkpoint_path)
-    logging.info(f"Models saved to {checkpoint_path}")
+    logger.info(f"Models saved to {checkpoint_path}")
 
 
-def load_model(logging, models, policies, device="cpu", checkpoint_path=None):
+def load_model(agent: Agent, device="cpu", path=Config.CHECKPOINT_PATH):
     """
     Load all models from a single checkpoint file.
 
     Args:
-        logging: Logger instance
-        models: Dict with keys like 'agent_0', 'agent_1', etc.
-        policies: Dict with keys like 'agent_0', 'agent_1', etc.
+        agent: Agent
         device: Device to load models to
         checkpoint_path: Path to checkpoint file
     """
-    if checkpoint_path is None:
-        checkpoint_path = Path("saves/checkpoint.pth")
-    else:
-        checkpoint_path = Path(checkpoint_path)
-
+    checkpoint_path = Path(path)
     if not checkpoint_path.exists():
         raise ValueError(f"No model found at {checkpoint_path}")
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    # Load models
-    for key, model in models.items():
-        model_key = f"{key}_model"
-        if model_key in checkpoint:
-            model.load_state_dict(checkpoint[model_key])
-            logging.info(f"Loaded {model_key}")
-        else:
-            logging.warning(f"Model key '{model_key}' not found in checkpoint")
-
-    # Load policies
-    for key, policy in policies.items():
-        if policy is None:
-            continue
-
-        policy_key = f"{key}_policy"
-        if policy_key in checkpoint:
-            policy.load_state_dict(checkpoint[policy_key])
-            logging.info(f"Loaded {policy_key}")
-        else:
-            logging.warning(
-                f"Policy key '{policy_key}' not found in checkpoint")
-
-    logging.info(f"Models loaded from {checkpoint_path}")
-
-
-def load_single_agent(logging, agent_id: int, dqn_model, policy_model=None,
-                      device="cpu", checkpoint_path=None):
-    """
-    Load a single agent from checkpoint file.
-
-    This is useful for loading one agent to play against.
-
-    Args:
-        logging: Logger instance
-        agent_id: Which agent to load (0, 1, etc.)
-        dqn_model: The DQN model to load weights into
-        policy_model: Optional policy model
-        device: Device to load to
-        checkpoint_path: Path to checkpoint file
-
-    Returns:
-        True if successful, False otherwise
-    """
-    if checkpoint_path is None:
-        checkpoint_path = Path("saves/checkpoint.pth")
-    else:
-        checkpoint_path = Path(checkpoint_path)
-
-    if not checkpoint_path.exists():
-        logging.error(f"No model found at {checkpoint_path}")
-        return False
-
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    # Load DQN
-    model_key = f"agent_{agent_id}_model"
-    if model_key in checkpoint:
-        dqn_model.load_state_dict(checkpoint[model_key])
-        logging.info(f"Loaded {model_key} from {checkpoint_path}")
-    else:
-        logging.error(f"Model key '{model_key}' not found in checkpoint")
-        return False
-
-    # Load policy if provided
-    if policy_model is not None:
-        policy_key = f"agent_{agent_id}_policy"
-        if policy_key in checkpoint:
-            policy_model.load_state_dict(checkpoint[policy_key])
-            logging.info(f"Loaded {policy_key} from {checkpoint_path}")
-        else:
-            logging.warning(
-                f"Policy key '{policy_key}' not found in checkpoint")
-
-    return True
-
-
-def save_training_checkpoint(trainer, checkpoint_path="checkpoints/checkpoint.pth"):
-    """
-    Convenience function to save all agents from trainer.
-
-    Args:
-        trainer: Trainer instance with agents
-        checkpoint_path: Where to save
-    """
-    import logging
-
-    models = {f"agent_{i}": agent.dqn for i,
-              agent in enumerate(trainer.agents)}
-    policies = {f"agent_{i}": agent.policy for i,
-                agent in enumerate(trainer.agents)}
-
-    save_model(logging, models, policies, Path(checkpoint_path))
-
-
-def load_training_checkpoint(trainer, checkpoint_path="checkpoints/checkpoint.pth"):
-    """
-    Convenience function to load all agents into trainer.
-
-    Args:
-        trainer: Trainer instance with agents
-        checkpoint_path: Where to load from
-    """
-    import logging
-
-    models = {f"agent_{i}": agent.dqn for i,
-              agent in enumerate(trainer.agents)}
-    policies = {f"agent_{i}": agent.policy for i,
-                agent in enumerate(trainer.agents)}
-
-    load_model(
-        logging, models, policies,
-        device=Config.DEVICE,
-        checkpoint_path=Path(checkpoint_path)
-    )
+    agent.dqn.load_state_dict(checkpoint["dqn"])
+    agent.policy.load_state_dict(checkpoint["policy"])
+    logger.info(f"Models loaded from {checkpoint_path}")

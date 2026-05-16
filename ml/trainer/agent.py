@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from typing import List, Tuple
+from typing import Tuple
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -10,7 +10,6 @@ from ml.models import DuelingDQN, AveragePolicy
 from ml.models.state_encoder import GameStateEncoder
 from ml.environment.encoder import get_card_feature_dim, get_player_feature_dim
 from ml.trainer.buffer_manager import BufferManager
-from ml.utils import update_target
 
 from core.config import Config as game_config
 from ml.config import Config as ml_config
@@ -47,7 +46,8 @@ class Agent:
         self.update_target_network()
 
         # Average policy
-        self.policy = AveragePolicy(self.encoder, num_actions).to(ml_config.DEVICE)
+        self.policy = AveragePolicy(
+            self.encoder, num_actions).to(ml_config.DEVICE)
 
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(ml_config.BUFFER_SIZE)
@@ -58,10 +58,6 @@ class Agent:
         # Buffer manager for temporary state, reward containment till
         # enough samples are met to be flushed into replay and reservoir
         self.buffer_manager = BufferManager(self)
-
-        # Metrics
-        self.rl_losses: List[float] = []
-        self.sl_losses: List[float] = []
 
     def select_action(self, state: np.ndarray, epsilon: float, best_response: bool = True) -> int:
         """Selects action using either DQN or average policy.
@@ -89,11 +85,8 @@ class Agent:
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
 
-        rl_loss = self._update_rl_network()
-        sl_loss = self._update_sl_network()
-
-        self.rl_losses.append(rl_loss.item())
-        self.sl_losses.append(sl_loss.item())
+        self._update_rl_network()
+        self._update_sl_network()
 
     def _can_update(self) -> bool:
         """Checks if buffers have enough samples.
@@ -169,7 +162,7 @@ class Agent:
 
     def update_target_network(self) -> None:
         """Copies weights from DQN to target DQN."""
-        update_target(self.dqn, self.target_dqn)
+        self.target_dqn.load_state_dict(self.dqn.state_dict())
 
     def select_action_with_mask(
             self,
@@ -189,9 +182,7 @@ class Agent:
         Returns:
             Selected action and tensor of q-values or logits
         """
-        if not np.any(action_mask):
-            # No valid actions - should never happen, but fallback
-            return 0
+        assert np.any(action_mask)
 
         # This assume that batch size will be 1
         tensor = torch.FloatTensor(state).unsqueeze(0).to(ml_config.DEVICE)
@@ -220,7 +211,8 @@ class Agent:
         if random.random() < epsilon:
             # Explore: choose randomly from valid actions
             valid_actions = torch.where(mask_tensor[0] == 1)[0]
-            return random.choice(valid_actions.tolist())
+            # TODO: how should I handle no q values ?
+            return random.choice(valid_actions.tolist()), None
 
         # Exploit: choose best valid action
         return masked_q[0].argmax().item(), q_values
@@ -247,8 +239,7 @@ class Agent:
         assert torch.isfinite(logits).all(), "Logits must be finite"
 
         # handle edge case: no valid actions
-        if mask_tensor.sum().item() == 0:
-            return 0
+        assert not mask_tensor.sum().item() == 0
 
         # mask the logits with -inf
         masked_logits = logits.clone()
@@ -256,8 +247,7 @@ class Agent:
             mask_tensor == 0, float("-inf"))
 
         # In case everything is just masked (should be impossible now)
-        if torch.isinf(masked_logits).all():
-            return 0
+        assert not torch.isinf(masked_logits).all()
 
         # softmax over valid actions only
         probs = torch.softmax(masked_logits, dim=1)

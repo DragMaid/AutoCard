@@ -131,16 +131,17 @@ class GameApp:
 def parse_args():
     from argparse import ArgumentParser
     p = ArgumentParser()
+    p.add_argument("--device",     type=str, default="cpu")
     p.add_argument("--checkpoint", type=str)
-    p.add_argument("--mlflow",  action="store_true")
-    p.add_argument("--resume",  action="store_true")
-    p.add_argument("--train",  action="store_true")
-    p.add_argument("--render",  action="store_true")
-    p.add_argument("--client", action="store_true")
-    p.add_argument("--server", action="store_true")
-    p.add_argument("--ai",     action="store_true")
-    p.add_argument("--host",   type=str, default="localhost")
-    p.add_argument("--port",   type=int, default=5555)
+    p.add_argument("--mlflow",     action="store_true")
+    p.add_argument("--resume",     action="store_true")
+    p.add_argument("--train",      action="store_true")
+    p.add_argument("--render",     action="store_true")
+    p.add_argument("--client",     action="store_true")
+    p.add_argument("--server",     action="store_true")
+    p.add_argument("--ai",         action="store_true")
+    p.add_argument("--host",       type=str, default="localhost")
+    p.add_argument("--port",       type=int, default=5555)
     return p.parse_args()
 
 

@@ -28,6 +28,7 @@ class AIGame(GameApp):
             env=self.env,
             checkpoint_path=Config.CHECKPOINT_PATH,
             agent_id=1,
+            device=Config.DEVICE
         )
         self.ai_manager: HumanVsAIManager = HumanVsAIManager(
             game_engine=self.game_engine,
@@ -45,10 +46,10 @@ class AIGame(GameApp):
         """
         Updates the game state per frame, including AI execution.
         """
-        self._maybe_start_ai_turn()
+        self._update_decision()
         self._tick_rendering()
 
-    def _maybe_start_ai_turn(self) -> None:
+    def _update_decision(self) -> None:
         """
         Checks if it's the AI's turn and triggers the execution if not already running.
         """
@@ -61,7 +62,7 @@ class AIGame(GameApp):
         if current == self.player2 and not self._ai_running:
             self._ai_running = True
             self._ai_thread = Thread(
-                target=self.ai_manager.execute_ai_turn,
+                target=self.ai_manager.execute,
                 kwargs={
                     "on_complete": lambda: setattr(self, "_ai_running", False),
                     "callback": lambda: force_align(),
