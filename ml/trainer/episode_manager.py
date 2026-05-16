@@ -18,7 +18,7 @@ class EpisodeManager:
 
         Args:
             num_agents (int): The number of agents.
-        """
+ -       """
         self.num_agents = num_agents
 
         # Per-agent metrics

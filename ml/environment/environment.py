@@ -18,7 +18,7 @@ from . import action_handlers
 
 logger = logging.getLogger(__name__)
 
-action_type = List[Tuple[int, Optional[Dict]]]
+Action = Tuple[int, Optional[Dict]]
 
 
 class GameEnv:
@@ -56,7 +56,7 @@ class GameEnv:
             reward_config: Optional configuration for rewards.
         """
         self.render = render
-        self.engine: GameEngine = engine
+        self.engine = engine
         self.reward_calculator = RewardCalculator(config=reward_config)
         if self.render:
             self.renderer = Renderer(engine=self.engine)
@@ -69,10 +69,8 @@ class GameEnv:
     @property
     def state_dim(self) -> int:
         """Return the dimension of the state space."""
-        if not self.engine:
-            return 0
-        p1 = self.engine.game_state.players[0]
-        return len(self._get_state(p1))
+        dummy = self.engine.game_state.players[0]
+        return len(self.get_state(dummy))
 
     def get_winner(self) -> Optional[int]:
         """Get the index of the winning player, or None if game is not over."""
@@ -81,12 +79,13 @@ class GameEnv:
                 return 1 - idx
         return None
 
-    def reset(self) -> Tuple[np.ndarray, np.ndarray]:
+    def reset(self) -> None:
         """Start a new game and return initial states for both players.
 
         Returns:
             A tuple of (state_player1, state_player2).
         """
+        # TODO: fix the reward calculator
         self.reward_calculator.log_episode_summary()
         self.engine.reset()
         self.engine.start_game()
@@ -102,171 +101,83 @@ class GameEnv:
             self.renderer.matrix.set_game_state(
                 self.engine.game_state, force=True)
 
-        p1, p2 = self.engine.game_state.players
-        return self._get_state(p1), self._get_state(p2)
-
-    def step(self, actions: Optional[Dict[str, action_type]] = None):
+    def step(self, action: Optional[Action] = None):
         """Execute a segment for the currently acting player."""
-        assert self.engine is not None
-
-        players = self.engine.game_state.players
-        rewards: List[float] = [0.0 for _ in players]
-        info: Dict[str, Any] = {
-            "player_1_actions": 0,
-            "player_2_actions": 0,
-            "acting_player_idx": -1
-        }
-
-        acting_player = self._get_acting_player()
-        if acting_player is None or self.engine.game_state.is_game_over():
-            return self._step_result(players, rewards, info)
-
-        acting_idx = self._get_player_index(acting_player)
-        if acting_idx == -1:
-            return self._step_result(players, rewards, info)
-
-        info["acting_player_idx"] = acting_idx
-
-        # Execute a segment for the acting player
-        action_queues = {k: list(v)
-                         for k, v in actions.items()} if actions else {}
-        segment_actions_list = action_queues.get(str(acting_idx + 1), [])
-
-        total_turn_reward, actions_taken, _, _ = self.step_single(
-            acting_player, segment_actions_list, use_random=actions is None
+        acting_player = self.get_acting_player()
+        use_random = action is None
+        reward, _ = self.execute(
+            player=acting_player,
+            action=action,
+            use_random=use_random
         )
 
-        rewards[acting_idx] += total_turn_reward
-        info[f"player_{acting_idx + 1}_actions"] += actions_taken
-
-        # Handle turn/stage ending
-        rewards[acting_idx] += self._handle_turn_end(
-            acting_player, actions_taken, segment_actions_list
-        )
-
+        # TODO: calculate the handle turn end
         # Add terminal rewards if game ended
         if self.engine.game_state.is_game_over():
-            terminal_rewards = self._get_terminal_rewards(players)
-            for i, r in enumerate(terminal_rewards):
-                rewards[i] += r
+            terminal_rewards = self.reward_calculator.calculate_terminal_reward(
+                acting_player, self.get_winner())
+            reward += terminal_rewards.total
 
-        return self._step_result(players, rewards, info)
+        next_state = self.get_state(acting_player)
+        done = self.engine.game_state.is_game_over()
+        return next_state, reward, done
 
-    def _get_acting_player(self) -> Optional[Player]:
+    def get_acting_player(self) -> Optional[Player]:
         """Determine the currently acting player (trapper or current)."""
         tm = self.engine.turn_manager
         if tm.is_trap_stage():
             return tm.get_trapper()
         return tm.get_current_player()
 
-    def _get_player_index(self, player: Player) -> int:
-        """Find the index of a player in the engine's player list."""
-        for i, p in enumerate(self.engine.game_state.players):
-            if p.id == player.id:
-                return i
-        return -1
-
-    def _handle_turn_end(
+    def execute(
         self,
         player: Player,
-        actions_taken: int,
-        remaining_actions: List[Any]
-    ) -> float:
-        """End turn/stage if necessary and return associated reward."""
-        if self.engine.game_state.is_game_over():
-            return 0.0
-
-        tm = self.engine.turn_manager
-        if tm.is_trap_stage() and tm.get_trapper() == player:
-            if not remaining_actions or actions_taken >= ml_config.MAX_ACTIONS_PER_TURN:
-                before_snap = create_enhanced_snapshot(self.engine, player)
-                num_activated = len(self.engine.game_state.activated_traps)
-                if num_activated > 0:
-                    self.reward_calculator.set_trap_triggers(num_activated)
-
-                self.engine.end_turn()
-
-                after_snap = create_enhanced_snapshot(self.engine, player)
-                breakdown = self.reward_calculator.calculate_action_reward(
-                    "end_turn", player, None, True, before_snap, after_snap
-                )
-                return breakdown.total
-        return 0.0
-
-    def _get_terminal_rewards(self, players: List[Player]) -> List[float]:
-        """Calculate rewards for the end of the game."""
-        rewards = []
-        for player in players:
-            terminal_breakdown = self.reward_calculator.calculate_terminal_reward(
-                player, won=(player.life_points > 0)
-            )
-            rewards.append(terminal_breakdown.total)
-        return rewards
-
-    def _step_result(
-        self,
-        players: List[Player],
-        rewards: List[float],
-        info: Dict[str, Any]
-    ) -> Tuple[Tuple[np.ndarray, ...], List[float], bool, Dict[str, Any]]:
-        """Package the results of a step."""
-        states = tuple(self._get_state(p) for p in players)
-        done = self.engine.game_state.is_game_over()
-        return states, rewards, done, info
-
-    def step_single(
-        self,
-        player: Player,
-        player_actions: List[Tuple[int, Optional[Dict]]],
-        max_actions: Optional[int] = None,
+        action: Action,
         use_random: bool = False,
         callback: Optional[Callable] = None
-    ) -> Tuple[float, int, int, bool]:
+    ) -> Tuple[float, bool]:
         """Perform a segment of actions for a single player."""
-        if max_actions is None:
-            max_actions = ml_config.MAX_ACTIONS_PER_TURN
+        if use_random:
+            mask, _ = self.get_legal_actions(player.id)
+            legal_ids = np.where(mask)[0]
+            action_id = random.choice(legal_ids)
+        else:
+            action_id, _ = action
 
-        total_turn_reward = 0.0
-        action_pointer = 0
-        actions_taken = 0
-        done = False
+        action_name, action_params = ActionCodec.decode(action_id)
+        before_snapshot = create_enhanced_snapshot(self.engine, player)
+        reward, done, _ = self._apply_action(
+            player=player,
+            action_name=action_name,
+            params=action_params,
+            before_snapshot=before_snapshot
+        )
 
-        while actions_taken < max_actions:
-            mask, legal_actions = self.get_legal_actions(player.id)
-            if not np.any(mask):
-                break
+        if hasattr(self, "renderer") and self.render:
+            self.renderer.render()
 
-            if action_pointer < len(player_actions):
-                action_id, _ = player_actions[action_pointer]
-                action_pointer += 1
-            elif use_random:
-                legal_ids = np.where(mask)[0]
-                action_id = random.choice(legal_ids)
-            else:
-                break
+        if callback:
+            callback()
 
-            if action_id in legal_actions:
-                action_name, action_params = legal_actions[action_id]
-            else:
-                action_name, action_params = ActionCodec.decode(action_id)
+        return reward, done
 
-            before_snapshot = create_enhanced_snapshot(self.engine, player)
-            reward, done, _ = self._apply_action(
-                player, action_name, action_params, before_snapshot)
+    def get_card_id_at_slot(self, player_id: str, slot_idx: int) -> Optional[int]:
+        """Get the card ID at a player's field slot index (0-9)."""
+        gs = self.engine.game_state
+        cols = game_config.COLS
+        rows_per_player = game_config.ROWS // 2
 
-            if hasattr(self, "renderer") and self.render:
-                self.renderer.render()
+        row = slot_idx // cols
+        col = slot_idx % cols
 
-            total_turn_reward += reward
-            actions_taken += 1
+        if (
+            0 <= row < rows_per_player and
+            0 <= col < cols and
+            gs.field_matrix_ownership[row][col] == player_id
+        ):
+            return gs.field_matrix[row][col]
 
-            if callback:
-                callback()
-
-            if done or action_name == "end_turn":
-                break
-
-        return total_turn_reward, actions_taken, action_pointer, done
+        return None
 
     def get_card_slot_idx(self, player_id: str, card: Any) -> int:
         """Get the 0-9 slot index for a card on the field."""
@@ -284,19 +195,12 @@ class GameEnv:
                             return (rows_per_player - 1 - r) * cols + c
         return -1
 
-    def get_legal_actions(self, player_id: str | int) -> Tuple[np.ndarray, Dict[int, Tuple[str, Dict[str, Any]]]]:
+    def get_legal_actions(self, player: Player) -> Tuple[np.ndarray, Dict[int, Tuple[str, Dict[str, Any]]]]:
         """Return mask for legal actions."""
-        if isinstance(player_id, int):
-            player = self.engine.game_state.players[player_id]
-        else:
-            player = self.engine.game_state.players_lookup[player_id]
-
         mask = np.zeros(ml_config.NUM_ACTIONS, dtype=bool)
         legal_actions = self._get_legal_actions(player)
-
         for action_id in legal_actions:
             mask[action_id] = True
-
         return mask, legal_actions
 
     def _get_legal_actions(self, player: Player) -> Dict[int, Tuple[str, Dict[str, Any]]]:
@@ -331,13 +235,18 @@ class GameEnv:
         """Apply action and calculate reward."""
         handler = self._action_handlers[action_name]
         success = handler.perform(self, player, params)
-        assert success
+        assert success, params
+        # TODO: why not do both snapshots here
         after_snapshot = create_enhanced_snapshot(self.engine, player)
         breakdown = self.reward_calculator.calculate_action_reward(
             action_name, player, params, success, before_snapshot, after_snapshot)
         done = self.engine.game_state.is_game_over()
         return breakdown.total, done, success
 
-    def _get_state(self, player: Player) -> np.ndarray:
-        """Return a flat state vector for a given player."""
+    def get_player_index(self, player: Player):
+        """Return the index of the player in game state list."""
+        return self.engine.game_state.players.index(player)
+
+    def get_state(self, player: Player) -> np.ndarray:
+        """Return a flat state vector for a given player"""
         return encode_state(self, player.id)

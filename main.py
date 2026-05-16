@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
     timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
     file = f"logs/{timestamp}.log"
-    setup_logging(file, debug=False)
+    setup_logging(file, debug=True)
 
     args = parse_args()
     if args.client or args.server or args.ai:

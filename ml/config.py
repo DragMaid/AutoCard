@@ -72,7 +72,7 @@ class Config:
     RENDER: bool = False
     SEED: int = 42
 
-    MAX_ACTIONS_PER_TURN: int = 50
+    MAX_ACTIONS_PER_EPISODE: int = 300
 
     REWARD_DEBUG: bool = False
 

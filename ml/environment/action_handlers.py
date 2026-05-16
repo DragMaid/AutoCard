@@ -50,7 +50,7 @@ class ActivateHandler(ActionHandler):
             slot_idx = params.get("trap")
             if slot_idx is None:
                 return False
-            card_id = env._get_card_id_at_slot(player.id, slot_idx)
+            card_id = env.get_card_id_at_slot(player.id, slot_idx)
 
         if not card_id:
             return False
@@ -132,7 +132,7 @@ class AttackHandler(ActionHandler):
 
         if not attacker_id:
             attacker_slot = params.get("attacker", 0)
-            attacker_id = env._get_card_id_at_slot(player.id, attacker_slot)
+            attacker_id = env.get_card_id_at_slot(player.id, attacker_slot)
 
         attacker = gs.get_card_by_id(attacker_id)
         if not attacker or attacker.card_type != CardType.MONSTER:
@@ -146,7 +146,7 @@ class AttackHandler(ActionHandler):
                 target_id = opp_id
                 target_is_player = True
             else:
-                target_id = env._get_card_id_at_slot(opp_id, target_slot)
+                target_id = env.get_card_id_at_slot(opp_id, target_slot)
 
         if not target_id:
             return False
@@ -202,10 +202,10 @@ class CastSpellHandler(ActionHandler):
         if not target_id and "target_id" not in params:  # target_id can be None for non-targeted spells
             target_val = params.get("target", 0)  # 0=None, 1-10=Own, 11-20=Opp
             if 1 <= target_val <= 10:
-                target_id = env._get_card_id_at_slot(player.id, target_val - 1)
+                target_id = env.get_card_id_at_slot(player.id, target_val - 1)
             elif 11 <= target_val <= 20:
                 opp_id = gs.get_opponent_id(player.id)
-                target_id = env._get_card_id_at_slot(opp_id, target_val - 11)
+                target_id = env.get_card_id_at_slot(opp_id, target_val - 11)
 
         # Attempt to cast spell
         success = env.engine.cast_spell(spell_card.id, target_id)
@@ -276,7 +276,7 @@ class ToggleHandler(ActionHandler):
 
         if not card_id:
             slot_idx = params.get("toggle", 0)
-            card_id = env._get_card_id_at_slot(player.id, slot_idx)
+            card_id = env.get_card_id_at_slot(player.id, slot_idx)
 
         card = gs.get_card_by_id(card_id)
         if not card or card.card_type != CardType.MONSTER:
@@ -316,8 +316,8 @@ class CombineHandler(ActionHandler):
             pair_slots = params.get("pair")
             if not pair_slots or len(pair_slots) != 2:
                 return False
-            card1_id = env._get_card_id_at_slot(player.id, pair_slots[0])
-            card2_id = env._get_card_id_at_slot(player.id, pair_slots[1])
+            card1_id = env.get_card_id_at_slot(player.id, pair_slots[0])
+            card2_id = env.get_card_id_at_slot(player.id, pair_slots[1])
 
         if not card1_id or not card2_id:
             return False
