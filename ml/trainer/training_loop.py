@@ -1,13 +1,12 @@
+import torch
 import logging
 import random
-from typing import List, Dict, Any, Tuple
-
+from typing import Any, Tuple
 from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, save_model
-
 from ml.config import Config as ml_config
-from ml.environment.environment import GameEnv, Action
+from ml.environment.environment import GameEnv
 from core.data.player import Player
 
 logger = logging.getLogger(__name__)
@@ -45,8 +44,6 @@ class TrainingLoop:
 
         for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
             epsilon = self.epsilon_scheduler(frame_idx)
-
-            # Execute single step
             acting_player = self.env.get_acting_player()
             state = self.env.get_state(acting_player)
             _, done = self._execute_step(
@@ -55,20 +52,17 @@ class TrainingLoop:
                 epsilon=epsilon
             )
 
-            # Update networks
             if frame_idx % ml_config.TRAIN_FREQ == 0:
                 self.agent.update_networks()
 
-            # Periodic target network updates
             if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
                 self.agent.update_target_network()
 
-            # Handle episode completion
             if done or self._episode_too_long():
-                self._handle_episode_end()
+                self.episode_manager.finalize_episode()
+                self.agent.buffer_manager.clear()
                 self.env.reset()
 
-            # Periodic evaluation and checkpointing
             if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
                 self._evaluate_and_save(frame_idx)
 
@@ -87,7 +81,7 @@ class TrainingLoop:
         best_response = random.random() >= ml_config.ETA
 
         # Select actions for all agents
-        action = self._select_action(
+        action_id, q_values = self._select_action(
             player=player,
             state=state,
             epsilon=epsilon,
@@ -95,14 +89,14 @@ class TrainingLoop:
         )
 
         # Step environment
-        next_state, reward, done = self.env.step(action)
+        assert action_id is not None
+        next_state, reward, done = self.env.step(action_id)
 
         # Record winner if episode done
         if done:
             self._record_winner()
 
         # Store transitions for agents
-        action_id = action[0]
         self.agent.buffer_manager.append_transition(
             state=state,
             action=action_id,
@@ -124,7 +118,7 @@ class TrainingLoop:
         state: Any,
         epsilon: float,
         best_response: bool
-    ) -> Action:
+    ) -> Tuple[str, torch.Tensor]:
         """Select action for the given player.
 
         Args:
@@ -134,18 +128,16 @@ class TrainingLoop:
             best_response: Best response flag.
 
         Returns:
-            Singular Action type
+            Singular action_id and q values or probability logits
         """
-        # Get current action mask from environment
         mask, _ = self.env.get_legal_actions(player)
-        action_id = self.agent.select_action_with_mask(
+        action_id, q_logits = self.agent.select_action_with_mask(
             state=state,
             action_mask=mask,
             epsilon=epsilon,
             best_response=best_response
         )
-        action = (int(action_id), None)
-        return action
+        return action_id, q_logits
 
     def _record_winner(self) -> None:
         """Records the winner of the episode."""
@@ -162,8 +154,6 @@ class TrainingLoop:
 
     def _handle_episode_end(self) -> None:
         """Handles end of episode cleanup."""
-        self.episode_manager.finalize_episode()
-        self.agent.buffer_manager.clear()
 
     def _evaluate_and_save(self, frame_idx: int) -> None:
         """Evaluates current performance and saves models."""

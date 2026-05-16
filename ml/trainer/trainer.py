@@ -9,6 +9,7 @@ from ml.trainer.training_loop import TrainingLoop
 from ml.utils import (
     set_global_seeds,
     save_model,
+    load_model
 )
 
 logging.basicConfig(
@@ -63,3 +64,7 @@ class Trainer:
 
         training_loop.run()
         save_model(self.agent)
+
+    def load_checkpoint(self, device: str, path: str):
+        """Load the agent checkpoint."""
+        load_model(self.agent, device, path)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import logging
 import random
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Dict, Optional, Tuple, Callable
 from ml.environment.renderer import Renderer
 from ml.environment.reward_system import RewardCalculator, RewardConfig, create_enhanced_snapshot
 from ml.environment.action_resolvers import TrapStageResolvers
@@ -12,13 +12,10 @@ from core.logic.game_engine import GameEngine
 from core.data.player import Player
 from core.config import Config as game_config
 from ml.config import Config as ml_config
-from .action_codec import ActionCodec
 from .encoder import encode_state
 from . import action_handlers
 
 logger = logging.getLogger(__name__)
-
-Action = Tuple[int, Optional[Dict]]
 
 
 class GameEnv:
@@ -85,8 +82,6 @@ class GameEnv:
         Returns:
             A tuple of (state_player1, state_player2).
         """
-        # TODO: fix the reward calculator
-        self.reward_calculator.log_episode_summary()
         self.engine.reset()
         self.engine.start_game()
 
@@ -101,18 +96,16 @@ class GameEnv:
             self.renderer.matrix.set_game_state(
                 self.engine.game_state, force=True)
 
-    def step(self, action: Optional[Action] = None):
+    def step(self, action_id: Optional[str] = None):
         """Execute a segment for the currently acting player."""
         acting_player = self.get_acting_player()
-        use_random = action is None
+        use_random = action_id is None
         reward, _ = self.execute(
             player=acting_player,
-            action=action,
+            action_id=action_id,
             use_random=use_random
         )
 
-        # TODO: calculate the handle turn end
-        # Add terminal rewards if game ended
         if self.engine.game_state.is_game_over():
             terminal_rewards = self.reward_calculator.calculate_terminal_reward(
                 acting_player, self.get_winner())
@@ -132,25 +125,22 @@ class GameEnv:
     def execute(
         self,
         player: Player,
-        action: Action,
+        action_id: str,
         use_random: bool = False,
         callback: Optional[Callable] = None
     ) -> Tuple[float, bool]:
         """Perform a segment of actions for a single player."""
+        mask, legal_actions = self.get_legal_actions(player)
+
         if use_random:
-            mask, _ = self.get_legal_actions(player.id)
             legal_ids = np.where(mask)[0]
             action_id = random.choice(legal_ids)
-        else:
-            action_id, _ = action
 
-        action_name, action_params = ActionCodec.decode(action_id)
-        before_snapshot = create_enhanced_snapshot(self.engine, player)
+        action_name, action_params = legal_actions[action_id]
         reward, done, _ = self._apply_action(
             player=player,
             action_name=action_name,
-            params=action_params,
-            before_snapshot=before_snapshot
+            params=action_params
         )
 
         if hasattr(self, "renderer") and self.render:
@@ -230,13 +220,12 @@ class GameEnv:
         player: Player,
         action_name: str,
         params: Optional[Dict],
-        before_snapshot: Dict[str, Any]
     ) -> Tuple[float, bool, bool]:
         """Apply action and calculate reward."""
         handler = self._action_handlers[action_name]
+        before_snapshot = create_enhanced_snapshot(self.engine, player)
         success = handler.perform(self, player, params)
         assert success, params
-        # TODO: why not do both snapshots here
         after_snapshot = create_enhanced_snapshot(self.engine, player)
         breakdown = self.reward_calculator.calculate_action_reward(
             action_name, player, params, success, before_snapshot, after_snapshot)

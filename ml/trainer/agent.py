@@ -49,7 +49,6 @@ class Agent:
         self.policy = AveragePolicy(
             self.encoder, num_actions).to(ml_config.DEVICE)
 
-        # TODO: put these things outside instead
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(ml_config.BUFFER_SIZE)
         self.reservoir = ReservoirBuffer(ml_config.BUFFER_SIZE)
@@ -107,7 +106,6 @@ class Agent:
         Returns:
             Loss tensor.
         """
-        # TODO: move the loss calculation somewhere else
         batch = self.replay_buffer.sample(ml_config.BATCH_SIZE)
         state, action, reward, next_state, done = batch
 
@@ -184,9 +182,7 @@ class Agent:
         Returns:
             Selected action and tensor of q-values or logits
         """
-        if not np.any(action_mask):
-            # No valid actions - should never happen, but fallback
-            return 0
+        assert np.any(action_mask)
 
         # This assume that batch size will be 1
         tensor = torch.FloatTensor(state).unsqueeze(0).to(ml_config.DEVICE)
@@ -215,7 +211,8 @@ class Agent:
         if random.random() < epsilon:
             # Explore: choose randomly from valid actions
             valid_actions = torch.where(mask_tensor[0] == 1)[0]
-            return random.choice(valid_actions.tolist())
+            # TODO: how should I handle no q values ?
+            return random.choice(valid_actions.tolist()), None
 
         # Exploit: choose best valid action
         return masked_q[0].argmax().item(), q_values
@@ -242,8 +239,7 @@ class Agent:
         assert torch.isfinite(logits).all(), "Logits must be finite"
 
         # handle edge case: no valid actions
-        if mask_tensor.sum().item() == 0:
-            return 0
+        assert not mask_tensor.sum().item() == 0
 
         # mask the logits with -inf
         masked_logits = logits.clone()
@@ -251,8 +247,7 @@ class Agent:
             mask_tensor == 0, float("-inf"))
 
         # In case everything is just masked (should be impossible now)
-        if torch.isinf(masked_logits).all():
-            return 0
+        assert not torch.isinf(masked_logits).all()
 
         # softmax over valid actions only
         probs = torch.softmax(masked_logits, dim=1)

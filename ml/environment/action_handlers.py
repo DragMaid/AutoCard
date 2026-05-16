@@ -1,9 +1,12 @@
-import logging
-from typing import Optional, Dict, Any
+from __future__ import annotations
 
+import logging
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from core.data.player import Player
-from core.cards.card import CardType
 from core.data.game_state import AttackEntry
+
+if TYPE_CHECKING:
+    from ml.environment.environment import GameEnv
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +17,7 @@ class ActionHandler:
     Subclasses must implement :meth:`perform` to execute the action.
     """
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Perform the action.
 
         Args:
@@ -31,7 +34,7 @@ class ActionHandler:
 class ActivateHandler(ActionHandler):
     """Handler for activating triggerable traps."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Activate a triggerable trap in a specific slot.
 
         Args:
@@ -54,7 +57,7 @@ class ActivateHandler(ActionHandler):
 class SummonHandler(ActionHandler):
     """Handler for summoning monsters."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Summon a monster from a hand slot.
 
         Args:
@@ -78,7 +81,7 @@ class SummonHandler(ActionHandler):
 class AttackHandler(ActionHandler):
     """Handler for attacking with monsters."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Perform an attack from an attacker slot to a target slot.
 
         Args:
@@ -113,7 +116,7 @@ class AttackHandler(ActionHandler):
 class CastSpellHandler(ActionHandler):
     """Handler for casting spells."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Cast a spell from a hand slot on a target slot.
 
         Args:
@@ -138,7 +141,7 @@ class CastSpellHandler(ActionHandler):
 class SetTrapHandler(ActionHandler):
     """Handler for setting traps."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Set a trap from a hand slot.
 
         Args:
@@ -161,7 +164,7 @@ class SetTrapHandler(ActionHandler):
 class ToggleHandler(ActionHandler):
     """Handler for toggling monster modes."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Toggle a monster in a specific slot.
 
         Args:
@@ -187,7 +190,7 @@ class ToggleHandler(ActionHandler):
 class CombineHandler(ActionHandler):
     """Handler for combining monsters."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """Combine two monsters in specific slots.
 
         Args:
@@ -210,7 +213,7 @@ class CombineHandler(ActionHandler):
 class EndTurnHandler(ActionHandler):
     """Handler for ending a player's turn."""
 
-    def perform(env: Any, player: Player, params: Optional[Dict[str, Any]]) -> bool:
+    def perform(env: GameEnv, player: Player, params: Optional[Dict[str, Any]]) -> bool:
         """End the current player's turn.
 
         Args:
