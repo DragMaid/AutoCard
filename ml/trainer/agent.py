@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from typing import List
+from typing import List, Tuple
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -177,7 +177,7 @@ class Agent:
             action_mask: np.ndarray,
             epsilon: float,
             best_response: bool = True
-    ) -> int:
+    ) -> Tuple[int, torch.Tensor]:
         """Selects action with masking.
 
         Args:
@@ -187,7 +187,7 @@ class Agent:
             best_response: Use DQN (True) or policy (False).
 
         Returns:
-            Selected action.
+            Selected action and tensor of q-values or logits
         """
         if not np.any(action_mask):
             # No valid actions - should never happen, but fallback
@@ -208,7 +208,7 @@ class Agent:
             state_tensor: torch.Tensor,
             mask_tensor: torch.Tensor,
             epsilon: float
-    ) -> int:
+    ) -> Tuple[int, torch.Tensor]:
         """DQN selection with masking."""
         q_values = self.dqn(state_tensor)
 
@@ -223,13 +223,13 @@ class Agent:
             return random.choice(valid_actions.tolist())
 
         # Exploit: choose best valid action
-        return masked_q[0].argmax().item()
+        return masked_q[0].argmax().item(), q_values
 
     def _select_with_policy_masked(
         self,
         state_tensor: torch.Tensor,
         mask_tensor: torch.Tensor
-    ) -> int:
+    ) -> Tuple[int, torch.Tensor]:
         """Policy selection using logit masking BEFORE softmax."""
         encoded = self.policy.encoder(state_tensor)
         feat = self.policy.feature_net(encoded)
@@ -266,4 +266,4 @@ class Agent:
         assert torch.isfinite(probs).all(), "Probs must be finite"
 
         action = torch.multinomial(probs[0], 1).item()
-        return action
+        return action, probs

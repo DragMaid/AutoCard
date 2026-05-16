@@ -8,6 +8,7 @@ from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, log_training_metrics, save_model
 
 from ml.config import Config as ml_config
+from ml.environment.environment import GameEnv
 
 
 class TrainingLoop:
@@ -15,7 +16,7 @@ class TrainingLoop:
 
     def __init__(
         self,
-        env: Any,
+        env: GameEnv,
         agents: List[Agent],
         episode_manager: EpisodeManager,
         mlflow_enabled: bool = False
@@ -84,7 +85,7 @@ class TrainingLoop:
         best_response = random.random() >= ml_config.ETA
 
         # Select actions for all agents
-        env_actions = self._select_all_actions(
+        env_actions, _ = self._select_all_actions(
             self.agents, states, epsilon, best_response)
 
         # Step environment
