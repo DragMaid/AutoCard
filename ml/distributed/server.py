@@ -10,8 +10,9 @@ from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Response, 
 from pydantic import BaseModel
 from ml.config import Config
 
+# Set up logging with DEBUG level
 logger = logging.getLogger("rl_server")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 
 DEFAULT_PASSWORD = Config.AUTH_CODE
@@ -23,6 +24,7 @@ class StatusResponse(BaseModel):
     rl_queue_size: int
     sl_queue_size: int
     learner_connected: bool
+    actor_count: int
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
@@ -41,6 +43,15 @@ class RLServerState:
 
         self.learner_connected = False
         self.active_learner_ws: Optional[WebSocket] = None
+
+        self.actor_counter = 0
+        self._actor_lock = threading.Lock()
+
+    def register_actor(self) -> int:
+        with self._actor_lock:
+            actor_id = self.actor_counter
+            self.actor_counter += 1
+            return actor_id
 
     def push_rl(self, item: Any) -> None:
         if self.rl_queue.full():
@@ -76,7 +87,8 @@ class RLServerState:
         return {
             "rl_queue_size": self.rl_queue.qsize(),
             "sl_queue_size": self.sl_queue.qsize(),
-            "learner_connected": self.learner_connected
+            "learner_connected": self.learner_connected,
+            "actor_count": self.actor_counter
         }
 
 
@@ -89,6 +101,8 @@ class RLService:
             raw = await file.read()
             data = pickle.loads(raw)
             self.state.push_rl(data)
+            logger.debug(f"Ingested RL batch. Queue size: {
+                         self.state.rl_queue.qsize()}")
         except Exception as e:
             logger.exception(f"Failed RL ingestion: {e}")
 
@@ -97,6 +111,8 @@ class RLService:
             raw = await file.read()
             data = pickle.loads(raw)
             self.state.push_sl(data)
+            logger.debug(f"Ingested SL transitions. Queue size: {
+                         self.state.sl_queue.qsize()}")
         except Exception as e:
             logger.exception(f"Failed SL ingestion: {e}")
 
@@ -147,10 +163,13 @@ async def emit_data(
         await service.ingest_sl_transitions(sl_transitions)
 
     params = service.get_parameters()
-    
-    headers = {"X-Learner-Connected": "True" if state.learner_connected else "False"}
-    
+
+    headers = {
+        "X-Learner-Connected": "True" if state.learner_connected else "False"}
+
     if params:
+        logger.debug(
+            "Sending model parameters to actor in emit_data response.")
         return Response(content=params, media_type="application/octet-stream", headers=headers)
 
     return Response(content=pickle.dumps({"status": "received"}), headers=headers)
@@ -162,6 +181,7 @@ async def fetch_params(_: bool = Depends(verify_password)):
     if not params:
         raise HTTPException(status_code=404, detail="No parameters available")
 
+    logger.debug("Sending model parameters to requester.")
     return Response(content=params, media_type="application/octet-stream")
 
 
@@ -172,6 +192,7 @@ async def get_data(_: bool = Depends(verify_password)):
     if data is None:
         return Response(status_code=204)
 
+    logger.debug("Sending training data to requester.")
     return Response(content=data, media_type="application/octet-stream")
 
 
@@ -182,6 +203,7 @@ async def push_params(
 ):
     raw = await params.read()
     service.set_parameters(raw)
+    logger.info("New model parameters received and stored.")
     return {"status": "updated"}
 
 
@@ -193,10 +215,15 @@ async def status(_: bool = Depends(verify_password)):
     )
 
 
+@app.post("/register_actor")
+async def register_actor(_: bool = Depends(verify_password)):
+    actor_id = state.register_actor()
+    logger.info(f"Registered new actor with ID: {actor_id}")
+    return {"actor_id": actor_id}
+
+
 @app.websocket("/learner_stream")
 async def learner_stream(websocket: WebSocket):
-    # Simple check for password in query params or headers for WS
-    # For simplicity, we'll check a 'token' query param
     token = websocket.query_params.get("token")
     if token != DEFAULT_PASSWORD:
         await websocket.close(code=4001)
@@ -209,14 +236,13 @@ async def learner_stream(websocket: WebSocket):
 
     try:
         while True:
-            # Continuously send data if available
             data = service.fetch_training_data()
             if data:
+                logger.debug("Streaming data to learner via WebSocket.")
                 await websocket.send_bytes(data)
             else:
-                await asyncio.sleep(0.1)  # Wait for data
+                await asyncio.sleep(0.1)
 
-            # Keep connection alive/check for closure
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=0.01)
             except asyncio.TimeoutError:

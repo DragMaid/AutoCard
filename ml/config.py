@@ -83,9 +83,11 @@ class Config:
     UPDATE_INTERVAL: int = 400
     PUSH_INTERVAL: int = 400
 
+    SERVER_URL: str = "http://localhost:5000"
     AUTH_CODE: str = "1234"
     QUEUE_MAX_SIZE: int = 100
     SERVER_PORT: int = 5000
+    SAMPLE_THRESHOLD: int = 10_000
 
     BETA: int = 0.4
     ALPHA: int = 0.6

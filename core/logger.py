@@ -71,3 +71,6 @@ def setup_logging(file: Optional[str] = None, level=logging.INFO) -> None:
         root.addHandler(file_handler)
 
     root.addHandler(console)
+
+
+setup_logging(file=None, level=logging.INFO)

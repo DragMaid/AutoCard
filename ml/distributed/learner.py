@@ -1,20 +1,18 @@
+from ml.config import Config as ml_config
+from ml.utils import save_model
+from ml.storage.reservoir_buffer import ReservoirBuffer
+from ml.storage.prioritized_replay_buffer import CustomPrioritizedReplayBuffer
+from ml.trainer.agent import Agent
+import websocket
+from queue import Queue, Empty
+from typing import Any
+import threading
+import requests
+import torch.nn.functional as F
+import torch
+import pickle
 import time
 import logging
-import pickle
-import torch
-import torch.nn.functional as F
-import requests
-import threading
-from typing import Any
-from queue import Queue, Empty
-import websocket
-
-from ml.trainer.agent import Agent
-from ml.storage.prioritized_replay_buffer import CustomPrioritizedReplayBuffer
-from ml.storage.reservoir_buffer import ReservoirBuffer
-from ml.utils import save_model
-
-from ml.config import Config as ml_config
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +108,7 @@ class LearnerLoop:
         self._stop_event = threading.Event()
 
     def _data_receiver(self):
-        """WebSocket client to receive data from server constantly."""
+        """WebSocket client to receive data from server constantly with retry logic."""
         ws_url_with_token = f"{self.ws_url}?token={self.password}"
         logger.info(f"Connecting to data stream at {self.ws_url}")
 
@@ -119,19 +117,21 @@ class LearnerLoop:
                 data = pickle.loads(message)
                 if "rl_batch" in data:
                     self.rl_batch_queue.put(data["rl_batch"])
+                    logger.info("Received RL batch via WebSocket.")
                 if "sl_transitions" in data:
                     self.sl_transition_queue.put(data["sl_transitions"])
+                    logger.info("Received SL transitions via WebSocket.")
             except Exception as e:
-                logger.error(f"Error processing message: {e}")
+                logger.error(f"Error processing WebSocket message: {e}")
 
         def on_error(ws, error):
             logger.error(f"WebSocket error: {error}")
 
         def on_close(ws, close_status_code, close_msg):
-            logger.info("WebSocket connection closed")
+            logger.info(f"WebSocket closed: {close_status_code} - {close_msg}")
 
         def on_open(ws):
-            logger.info("WebSocket connection established")
+            logger.info("WebSocket connection established.")
 
         while not self._stop_event.is_set():
             try:
@@ -144,7 +144,7 @@ class LearnerLoop:
                 )
                 ws.run_forever()
             except Exception as e:
-                logger.error(f"WebSocket loop error: {e}")
+                logger.error(f"WebSocket loop crash: {e}")
 
             if not self._stop_event.is_set():
                 logger.info("Retrying WebSocket connection in 5 seconds...")
@@ -158,20 +158,24 @@ class LearnerLoop:
         receiver_thread.start()
 
         logger.info("Starting Learner Loop...")
-        frame_idx = 0
+        frame_idx = 1
 
         while True:
-            frame_idx += 1
-
             self.insert_transition()
 
-            if len(self.agent.replay_buffer) >= 1000:
+            if len(self.agent.replay_buffer) >= ml_config.SAMPLE_THRESHOLD:
+                # Only increment when its actually sampling
+                frame_idx += 1
+
                 sample = self.agent.replay_buffer.sample(
                     ml_config.BATCH_SIZE, ml_config.BETA)
                 loss, (idxes, new_prios) = self.agent._update_rl_network(sample)
 
                 # Update local priorities
                 self.agent.replay_buffer.update_priorities(idxes, new_prios)
+
+                if frame_idx % 500 == 0:
+                    logger.info(f"Learner: Step {frame_idx}, Loss {loss.item():.4f}")
 
             if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
                 self.agent._update_sl_network()
@@ -186,7 +190,8 @@ class LearnerLoop:
             if frame_idx % ml_config.PUSH_INTERVAL == 0:
                 state_dict = {
                     'dqn': self.agent.dqn.state_dict(),
-                    'policy': self.agent.policy.state_dict()
+                    'policy': self.agent.policy.state_dict(),
+                    'encoder': self.agent.encoder.state_dict()
                 }
                 self._push_weights(state_dict)
 
@@ -218,20 +223,28 @@ class LearnerLoop:
         save_folder = ml_config.CHECKPOINT_PATH.parent
         save_path = save_folder / f"cp_{frame_idx}.pth"
         save_model(self.agent, save_path)
+        logger.info(f"Checkpoint saved: {save_path}")
 
     def _push_weights(self, state_dict: dict):
-        """Pushes parameters to the central server."""
+        """Pushes parameters to the central server with error handling."""
+        headers = {"X-Password": self.password}
         try:
             data = pickle.dumps(state_dict)
             files = {'params': ('params.pkl', data)}
-            headers = {"X-Password": self.password}
-            requests.post(f"{self.server_url}/push_params", files=files,
-                          headers=headers, timeout=5)
-            logger.info("Parameters pushed to server.")
+            response = requests.post(f"{self.server_url}/push_params", files=files,
+                                     headers=headers, timeout=10)
+            if response.status_code == 200:
+                logger.info("Successfully pushed model parameters to server.")
+            else:
+                logger.warning(f"Failed to push parameters: Server returned {
+                               response.status_code}")
         except Exception as e:
             logger.error(f"Failed to push parameters: {e}")
 
 
 if __name__ == "__main__":
-    learner = LearnerLoop()
+    learner = LearnerLoop(
+        server_url=ml_config.SERVER_URL,
+        password=ml_config.PASSWORD
+    )
     learner.run()
