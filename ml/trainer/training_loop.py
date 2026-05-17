@@ -161,4 +161,4 @@ class TrainingLoop:
         logger.info(stats)
         save_folder = ml_config.CHECKPOINT_PATH.parent
         save_path = save_folder / f"cp_{frame_idx}.pth"
-        save_model(self.agents, save_path)
+        save_model(self.agent, save_path)
