@@ -59,12 +59,13 @@ class TrainingLoop:
                 self.agent.update_target_network()
 
             if done or self._episode_too_long():
+                logger.info(f"Episode ended at frame {frame_idx}!")
                 self.episode_manager.finalize_episode()
                 self.agent.buffer_manager.clear()
                 self.env.reset()
 
             if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
-                self._evaluate_and_save(frame_idx)
+                self.save_checkpoint(frame_idx)
 
     def _execute_step(self, player: Player, state: Any, epsilon: float) -> tuple[Any, bool]:
         """Executes a single training step for all agents.
@@ -152,13 +153,8 @@ class TrainingLoop:
             ml_config.MAX_ACTIONS_PER_EPISODE
         )
 
-    def _handle_episode_end(self) -> None:
-        """Handles end of episode cleanup."""
-
-    def _evaluate_and_save(self, frame_idx: int) -> None:
+    def save_checkpoint(self, frame_idx: int) -> None:
         """Evaluates current performance and saves models."""
-        stats = self.episode_manager.get_statistics()
-        logger.info(stats)
         save_folder = ml_config.CHECKPOINT_PATH.parent
         save_path = save_folder / f"cp_{frame_idx}.pth"
         save_model(self.agent, save_path)

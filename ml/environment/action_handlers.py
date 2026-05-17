@@ -45,12 +45,11 @@ class ActivateHandler(ActionHandler):
         Returns:
             bool: True if activation was successful, False otherwise.
         """
+        gs = env.engine.game_state
         card_id = params["card_id"]
+        trap = gs.get_card_by_id(card_id)
         env.engine.toggle_trap_activation(card_id, activated=True)
-        logger.debug(
-            "Trap activated",
-            extra={"card_id": card_id}
-        )
+        logger.debug(f"Trap activated {trap.name}")
         return True
 
 

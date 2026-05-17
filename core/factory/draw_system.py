@@ -74,7 +74,7 @@ class DrawSystem:
             )
 
         except Exception:
-            logger.exception(
+            logger.errorx(
                 "Failed to draw card",
                 extra={
                     "category": category,
@@ -103,7 +103,7 @@ class DrawSystem:
         card = CardRegistry.create(category, player_id, card_name)
 
         if card is None:
-            logger.error(
+            logger.errorx(
                 "Failed to create card",
                 extra={
                     "category": category,
@@ -138,7 +138,7 @@ class DrawSystem:
         ]
 
         if not candidates:
-            logger.warning(
+            logger.warningx(
                 "No monsters found for level",
                 extra={"level": level},
             )
@@ -150,7 +150,7 @@ class DrawSystem:
         card = factory.load(player_id, monster_name)
 
         if card is None:
-            logger.error(
+            logger.errorx(
                 "Failed to load monster",
                 extra={
                     "monster_name": monster_name,
@@ -179,7 +179,7 @@ class DrawSystem:
             try:
                 normalized[key] = max(float(weight), 0)
             except (TypeError, ValueError):
-                logger.warning(
+                logger.warningx(
                     "Invalid weight encountered",
                     extra={
                         "key": key,
@@ -191,7 +191,7 @@ class DrawSystem:
         total_weight = sum(normalized.values())
 
         if total_weight <= 0:
-            logger.warning(
+            logger.warningx(
                 "All weights invalid or zero. Falling back to uniform random.")
             return random.choice(list(table.keys()))
 

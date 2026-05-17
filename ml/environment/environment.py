@@ -96,7 +96,7 @@ class GameEnv:
             self.renderer.matrix.set_game_state(
                 self.engine.game_state, force=True)
 
-    def step(self, action_id: Optional[str] = None):
+    def step(self, action_id: Optional[str] = None) -> Tuple[Any, float, bool]:
         """Execute a segment for the currently acting player."""
         acting_player = self.get_acting_player()
         use_random = action_id is None
