@@ -60,7 +60,7 @@ class Config:
     EPS_DECAY: int = 75_000
 
     # Update frequency
-    TRAIN_FREQ: int = 4
+    TRAIN_FREQ: int = 10
     UPDATE_TARGET_FREQ: int = 2000
     TAU: float = 0.005
 
@@ -77,6 +77,17 @@ class Config:
     REWARD_DEBUG: bool = False
 
     CHECKPOINT_PATH: Path = Path(BASE_PATH, "saves/checkpoint.pth")
+
+    # Distributed
+    EMIT_INTERVAL: int = 50
+    UPDATE_INTERVAL: int = 400
+    PUSH_INTERVAL: int = 400
+
+    AUTH_CODE: str = "1234"
+    QUEUE_MAX_SIZE: int = 100
+    SERVER_PORT: int = 5000
+
+    BETA: int = 0.4
 
     # Database
     EXPERIMENT_NAME = "autocard"

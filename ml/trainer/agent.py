@@ -15,31 +15,19 @@ from core.config import Config as game_config
 from ml.config import Config as ml_config
 
 
+# TODO: Would have been better if I did another level of abstraction
+# one only for action selection while the other is used for training
+
 class Agent:
     """RL agent with DQN and average policy network."""
 
-    def __init__(self, state_dim: int, num_actions: int):
-        """Initializes Agent.
-
-        Args:
-            state_dim: State dimension.
-            num_actions: Number of actions.
-        """
-        self.num_actions = num_actions
-
-        # Initialize GameStateEncoder
-        card_dim = get_card_feature_dim()
-        # Times 2 since there are 2 players
-        player_dim = get_player_feature_dim() * 2
-        self.encoder = GameStateEncoder(
-            card_dim=card_dim,
-            player_dim=player_dim,
-            max_hand_cards=game_config.MAX_HAND_CARDS,
-            max_board_cards=game_config.ROWS * game_config.COLS
-        ).to(ml_config.DEVICE)
+    def __init__(self, num_actions: int):
+        """Initializes Agent. """
+        self._init_encoder()
 
         # Core networks
-        self.dqn = DuelingDQN(self.encoder, num_actions).to(ml_config.DEVICE)
+        self.dqn = DuelingDQN(
+            self.encoder, num_actions).to(ml_config.DEVICE)
         self.target_dqn = DuelingDQN(
             self.encoder, num_actions).to(ml_config.DEVICE)
         # Initial sync params to target dqn
@@ -59,6 +47,18 @@ class Agent:
         # enough samples are met to be flushed into replay and reservoir
         self.buffer_manager = BufferManager(self)
 
+    def _init_encoder(self):
+        # Initialize GameStateEncoder
+        card_dim = get_card_feature_dim()
+        # Times 2 since there are 2 players
+        player_dim = get_player_feature_dim() * 2
+        self.encoder = GameStateEncoder(
+            card_dim=card_dim,
+            player_dim=player_dim,
+            max_hand_cards=game_config.MAX_HAND_CARDS,
+            max_board_cards=game_config.ROWS * game_config.COLS
+        ).to(ml_config.DEVICE)
+
     def select_action(self, state: np.ndarray, epsilon: float, best_response: bool = True) -> int:
         """Selects action using either DQN or average policy.
 
@@ -76,31 +76,7 @@ class Agent:
             return self.dqn.act(tensor, epsilon)
         return self.policy.act(tensor)
 
-    def update_networks(self) -> None:
-        """Updates all networks if sufficient data available."""
-        if not self._can_update():
-            return
-
-        # Normalize the parameters before updating
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
-        torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
-
-        self._update_rl_network()
-        self._update_sl_network()
-
-    def _can_update(self) -> bool:
-        """Checks if buffers have enough samples.
-
-        Returns:
-            Boolean indicating if update is possible.
-        """
-        min_samples = ml_config.BATCH_SIZE
-        return (
-            len(self.replay_buffer) > min_samples and
-            len(self.reservoir) > min_samples
-        )
-
-    def _update_rl_network(self) -> torch.Tensor:
+    def update_rl_network(self) -> torch.Tensor:
         """Updates DQN network.
 
         Returns:
@@ -116,30 +92,43 @@ class Agent:
         reward = torch.FloatTensor(reward).to(ml_config.DEVICE)
         done = torch.FloatTensor(done).to(ml_config.DEVICE)
 
+        torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
         # Compute loss
         q_values = self.dqn(state)
+        next_q_values = self.dqn(next_state)
+
         current_q = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
+        next_actions = next_q_values.nax(1)[1].unsqueeze(1)
 
         # Avoid building grad graph for the target network
         with torch.no_grad():
-            next_q_values = self.target_dqn(next_state)
-            max_next_q = next_q_values.max(1)[0]
+            target_next_q_values = self.target_dqn(next_state)
+            next_q_a_values = target_next_q_values.gather(1, next_actions).squeeze(1)
 
         # Additional discount factor
         discount_factor = ml_config.GAMMA ** ml_config.MULTI_STEP
-        expected_q = reward + discount_factor * max_next_q * (1 - done)
+        expected_q = reward + discount_factor * next_q_a_values * (1 - done)
 
         # Changed MSE loss for Huber loss, avoid huge spikes
         loss = F.smooth_l1_loss(current_q, expected_q)
+
+        td_error = torch.abs(expected_q.detach() - current_q)
+        prios = (td_error + 1e-6).data.cpu().numpy()
 
         # Optimize
         self.rl_optimizer.zero_grad()
         loss.backward()
         self.rl_optimizer.step()
 
-        return loss
+        return loss, prios
 
-    def _update_sl_network(self) -> torch.Tensor:
+    def can_update_sl(self):
+        return len(self.reservoir) >= ml_config.BATCH_SIZE
+
+    def can_update_rl(self):
+        return len(self.replay_buffer) >= ml_config.BATCH_SIZE
+
+    def update_sl_network(self) -> torch.Tensor:
         """Updates average policy network.
 
         Returns:
@@ -150,6 +139,7 @@ class Agent:
         state = torch.FloatTensor(state).to(ml_config.DEVICE)
         action = torch.LongTensor(action).to(ml_config.DEVICE)
 
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         probs = self.policy(state)
         log_probs = probs.gather(1, action.unsqueeze(1)).log()
         loss = -log_probs.mean()
@@ -211,8 +201,12 @@ class Agent:
         if random.random() < epsilon:
             # Explore: choose randomly from valid actions
             valid_actions = torch.where(mask_tensor[0] == 1)[0]
-            # TODO: how should I handle no q values ?
-            return random.choice(valid_actions.tolist()), None
+            # Still returning q_values here to assign priorities
+            # NOTE: im not sure if this is correct since the q vals
+            # here did not drive the action, but waiting for episolon
+            # to drop eventually until real dqn acts are chosen
+            # is also not a very smart idea
+            return random.choice(valid_actions.tolist()), q_values
 
         # Exploit: choose best valid action
         return masked_q[0].argmax().item(), q_values

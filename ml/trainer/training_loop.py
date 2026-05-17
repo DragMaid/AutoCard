@@ -53,7 +53,11 @@ class TrainingLoop:
             )
 
             if frame_idx % ml_config.TRAIN_FREQ == 0:
-                self.agent.update_networks()
+                if self.agent.can_update_rl():
+                    self.agent.update_rl_network()
+
+                if self.agent.can_update_sl():
+                    self.agent.update_sl_network()
 
             if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
                 self.agent.update_target_network()
@@ -131,6 +135,7 @@ class TrainingLoop:
         Returns:
             Singular action_id and q values or probability logits
         """
+        # TODO: update the get legal action since its being used too sparingly
         mask, _ = self.env.get_legal_actions(player)
         action_id, q_logits = self.agent.select_action_with_mask(
             state=state,

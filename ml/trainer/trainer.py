@@ -40,10 +40,7 @@ class Trainer:
         """
         self.env = env
         self.num_agents = num_agents
-        self.agent = Agent(
-            state_dim=self.env.state_dim,
-            num_actions=self.env.num_actions,
-        )
+        self.agent = Agent(num_actions=self.env.num_actions)
         self.mlflow_enabled = mlflow_enabled
 
         self.episode_manager = EpisodeManager(num_agents)

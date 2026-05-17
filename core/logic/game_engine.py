@@ -241,7 +241,7 @@ class GameEngine:
 
         self.game_state.player_info[card.owner_id].graveyard_cards.add(
             card_id)
-        logger.debug(
+        logger.debugx(
             "Card moved to graveyard",
             extra={
                 "card_name": card.name,
