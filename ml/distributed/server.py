@@ -1,3 +1,4 @@
+from fastapi.responses import HTMLResponse
 import uvicorn
 import logging
 import pickle
@@ -12,7 +13,7 @@ from ml.config import Config
 
 # Set up logging with DEBUG level
 logger = logging.getLogger("rl_server")
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 DEFAULT_PASSWORD = Config.AUTH_CODE
@@ -25,6 +26,7 @@ class StatusResponse(BaseModel):
     sl_queue_size: int
     learner_connected: bool
     actor_count: int
+    weights_version: int
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
@@ -35,20 +37,27 @@ def verify_password(x_password: str = Header(..., alias="X-Password")):
 
 class RLServerState:
     def __init__(self):
-        self.rl_queue: queue.Queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
-        self.sl_queue: queue.Queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
+        self._lock = threading.Lock()
+        self.reset()
 
-        self._params_lock = threading.Lock()
-        self._latest_params: Optional[bytes] = None
-
-        self.learner_connected = False
-        self.active_learner_ws: Optional[WebSocket] = None
-
-        self.actor_counter = 0
-        self._actor_lock = threading.Lock()
+    def reset(self):
+        with self._lock:
+            self.rl_queue: queue.Queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
+            self.sl_queue: queue.Queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
+            self._latest_params: Optional[bytes] = None
+            self.weights_version = 0
+            self.learner_connected = False
+            self.actor_counter = 0
+            self.metrics = {
+                "frame": 0,
+                "loss": 0.0,
+                "replay_buffer": 0,
+                "reservoir": 0
+            }
+            logger.info("Server state reset.")
 
     def register_actor(self) -> int:
-        with self._actor_lock:
+        with self._lock:
             actor_id = self.actor_counter
             self.actor_counter += 1
             return actor_id
@@ -76,19 +85,25 @@ class RLServerState:
         return self.sl_queue.get()
 
     def set_params(self, data: bytes) -> None:
-        with self._params_lock:
+        with self._lock:
             self._latest_params = data
+            self.weights_version += 1
 
     def get_params(self) -> Optional[bytes]:
-        with self._params_lock:
+        with self._lock:
             return self._latest_params
+
+    def update_metrics(self, metrics: dict):
+        with self._lock:
+            self.metrics.update(metrics)
 
     def status(self) -> Dict[str, Any]:
         return {
             "rl_queue_size": self.rl_queue.qsize(),
             "sl_queue_size": self.sl_queue.qsize(),
             "learner_connected": self.learner_connected,
-            "actor_count": self.actor_counter
+            "actor_count": self.actor_counter,
+            "weights_version": self.weights_version
         }
 
 
@@ -145,9 +160,40 @@ state = RLServerState()
 service = RLService(state)
 
 
-@app.get("/")
-async def health():
-    return {"status": "ok"}
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    s = state.status()
+    m = state.metrics
+    return f"""
+    <html>
+        <head>
+            <title>RL Hub Status</title>
+            <meta http-equiv="refresh" content="3">
+            <style>
+                body {{ font-family: monospace; background: #111; color: #eee; padding: 20px; }}
+                h3 {{ margin: 10px 0; }}
+                .green {{ color: #0f0; }}
+                .red {{ color: #f00; }}
+            </style>
+        </head>
+        <body>
+            <h1>RL Distributed Hub</h1>
+            <h3>Learner Connected: <span class="{"green" if s['learner_connected'] else "red"}">{s['learner_connected']}</span></h3>
+            <h3>Active Actors: {s['actor_count']}</h3>
+            <h3>Weights Version: {s['weights_version']}</h3>
+            <hr>
+            <h3>--- Training Metrics ---</h3>
+            <h3>Frame: {m['frame']}</h3>
+            <h3>Current Loss: {m['loss']:.6f}</h3>
+            <h3>Replay Buffer: {m['replay_buffer']}</h3>
+            <h3>Reservoir: {m['reservoir']}</h3>
+            <hr>
+            <h3>--- Queue Stats ---</h3>
+            <h3>RL Batch Queue: {s['rl_queue_size']}</h3>
+            <h3>SL Transition Queue: {s['sl_queue_size']}</h3>
+        </body>
+    </html>
+    """
 
 
 @app.post("/emit_data")
@@ -165,7 +211,9 @@ async def emit_data(
     params = service.get_parameters()
 
     headers = {
-        "X-Learner-Connected": "True" if state.learner_connected else "False"}
+        "X-Learner-Connected": "True" if state.learner_connected else "False",
+        "X-Weights-Version": str(state.weights_version)
+    }
 
     if params:
         logger.debug(
@@ -175,6 +223,11 @@ async def emit_data(
     return Response(content=pickle.dumps({"status": "received"}), headers=headers)
 
 
+@app.get("/weights_info")
+async def weights_info(_: bool = Depends(verify_password)):
+    return {"version": state.weights_version}
+
+
 @app.get("/fetch_params")
 async def fetch_params(_: bool = Depends(verify_password)):
     params = service.get_parameters()
@@ -182,18 +235,11 @@ async def fetch_params(_: bool = Depends(verify_password)):
         raise HTTPException(status_code=404, detail="No parameters available")
 
     logger.debug("Sending model parameters to requester.")
-    return Response(content=params, media_type="application/octet-stream")
-
-
-@app.get("/get_data")
-async def get_data(_: bool = Depends(verify_password)):
-    data = service.fetch_training_data()
-
-    if data is None:
-        return Response(status_code=204)
-
-    logger.debug("Sending training data to requester.")
-    return Response(content=data, media_type="application/octet-stream")
+    return Response(
+        content=params,
+        media_type="application/octet-stream",
+        headers={"X-Weights-Version": str(state.weights_version)}
+    )
 
 
 @app.post("/push_params")
@@ -203,8 +249,17 @@ async def push_params(
 ):
     raw = await params.read()
     service.set_parameters(raw)
-    logger.info("New model parameters received and stored.")
-    return {"status": "updated"}
+    logger.info(f"New model parameters received (v{state.weights_version}).")
+    return {"status": "updated", "version": state.weights_version}
+
+
+@app.post("/update_metrics")
+async def update_metrics(
+    metrics: dict,
+    _: bool = Depends(verify_password),
+):
+    state.update_metrics(metrics)
+    return {"status": "ok"}
 
 
 @app.get("/status", response_model=StatusResponse)
@@ -250,7 +305,7 @@ async def learner_stream(websocket: WebSocket):
     except (WebSocketDisconnect, Exception) as e:
         logger.info(f"Learner disconnected: {e}")
     finally:
-        state.learner_connected = False
+        state.reset()
         state.active_learner_ws = None
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from ml.utils import save_model
 from ml.storage.reservoir_buffer import ReservoirBuffer
 from ml.storage.prioritized_replay_buffer import CustomPrioritizedReplayBuffer
 from ml.trainer.agent import Agent
+import numpy as np
 import websocket
 from queue import Queue, Empty
 from typing import Any
@@ -13,7 +14,9 @@ import torch
 import pickle
 import time
 import logging
+from core.logger import setup_logging
 
+setup_logging(file="train.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -30,12 +33,13 @@ class Learner(Agent):
         states, actions, rewards, next_states, dones, weights, idxes = batch_data
 
         # Convert to tensors
-        states = torch.FloatTensor(states).to(ml_config.DEVICE)
-        next_states = torch.FloatTensor(next_states).to(ml_config.DEVICE)
-        actions = torch.LongTensor(actions).to(ml_config.DEVICE)
-        rewards = torch.FloatTensor(rewards).to(ml_config.DEVICE)
-        dones = torch.FloatTensor(dones).to(ml_config.DEVICE)
-        weights = torch.FloatTensor(weights).to(ml_config.DEVICE)
+        states = torch.FloatTensor(np.array(states)).to(self.device)
+        next_states = torch.FloatTensor(
+            np.array(next_states)).to(self.device)
+        actions = torch.LongTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).to(self.device)
+        dones = torch.FloatTensor(dones).to(self.device)
+        weights = torch.FloatTensor(weights).to(self.device)
 
         # Compute loss
         q_values = self.dqn(states)
@@ -75,8 +79,8 @@ class Learner(Agent):
 
         states, actions = self.reservoir.sample(ml_config.BATCH_SIZE)
 
-        states = torch.FloatTensor(states).to(ml_config.DEVICE)
-        actions = torch.LongTensor(actions).to(ml_config.DEVICE)
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.LongTensor(actions).to(self.device)
 
         probs = self.policy(states)
         log_probs = probs.gather(1, actions.unsqueeze(1)).log()
@@ -107,6 +111,8 @@ class LearnerLoop:
 
         self._stop_event = threading.Event()
 
+        self.current_loss = 0.0
+
     def _data_receiver(self):
         """WebSocket client to receive data from server constantly with retry logic."""
         ws_url_with_token = f"{self.ws_url}?token={self.password}"
@@ -117,10 +123,10 @@ class LearnerLoop:
                 data = pickle.loads(message)
                 if "rl_batch" in data:
                     self.rl_batch_queue.put(data["rl_batch"])
-                    logger.info("Received RL batch via WebSocket.")
+                    logger.debug("Received RL batch via WebSocket.")
                 if "sl_transitions" in data:
                     self.sl_transition_queue.put(data["sl_transitions"])
-                    logger.info("Received SL transitions via WebSocket.")
+                    logger.debug("Received SL transitions via WebSocket.")
             except Exception as e:
                 logger.error(f"Error processing WebSocket message: {e}")
 
@@ -158,42 +164,55 @@ class LearnerLoop:
         receiver_thread.start()
 
         logger.info("Starting Learner Loop...")
+
+        step = 1
         frame_idx = 1
 
         while True:
+            frame_idx += 1
             self.insert_transition()
 
             if len(self.agent.replay_buffer) >= ml_config.SAMPLE_THRESHOLD:
                 # Only increment when its actually sampling
-                frame_idx += 1
-
+                step += 1
                 sample = self.agent.replay_buffer.sample(
                     ml_config.BATCH_SIZE, ml_config.BETA)
                 loss, (idxes, new_prios) = self.agent._update_rl_network(sample)
+                self.current_loss = loss.item()
 
                 # Update local priorities
                 self.agent.replay_buffer.update_priorities(idxes, new_prios)
 
-                if frame_idx % 500 == 0:
-                    logger.info(f"Learner: Step {frame_idx}, Loss {loss.item():.4f}")
+                if step % 100 == 0:
+                    logger.info(f"Learner: Step {step}, Loss {
+                                self.current_loss:.4f}")
 
             if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
                 self.agent._update_sl_network()
 
-            if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
+            if step % ml_config.UPDATE_TARGET_FREQ == 0:
                 self.agent.update_target_network()
-                logger.info(f"Target network updated at frame {frame_idx}")
+                logger.info(f"Target network updated at step {step}")
 
-            if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
-                self.save_checkpoint(frame_idx)
+            if step % ml_config.EVALUATION_INTERVAL == 0:
+                self.save_checkpoint(step)
 
-            if frame_idx % ml_config.PUSH_INTERVAL == 0:
+            if step % ml_config.PUSH_INTERVAL == 0:
                 state_dict = {
                     'dqn': self.agent.dqn.state_dict(),
                     'policy': self.agent.policy.state_dict(),
                     'encoder': self.agent.encoder.state_dict()
                 }
                 self._push_weights(state_dict)
+
+            if frame_idx % ml_config.METRICS_INTERVAL == 0:
+                metrics = {
+                    "frame": step,
+                    "loss": self.current_loss,
+                    "replay_buffer": len(self.agent.replay_buffer),
+                    "reservoir": len(self.agent.reservoir)
+                }
+                self._push_metrics(metrics)
 
             # Small sleep to prevent 100% CPU usage if queues are empty
             if self.rl_batch_queue.empty() and self.sl_transition_queue.empty():
@@ -226,8 +245,10 @@ class LearnerLoop:
         logger.info(f"Checkpoint saved: {save_path}")
 
     def _push_weights(self, state_dict: dict):
-        """Pushes parameters to the central server with error handling."""
-        headers = {"X-Password": self.password}
+        """Pushes parameters to the central server."""
+        headers = {
+            "X-Password": self.password,
+        }
         try:
             data = pickle.dumps(state_dict)
             files = {'params': ('params.pkl', data)}
@@ -240,6 +261,20 @@ class LearnerLoop:
                                response.status_code}")
         except Exception as e:
             logger.error(f"Failed to push parameters: {e}")
+
+    def _push_metrics(self, metrics: dict):
+        """Pushes training metrics to the central server."""
+        headers = {
+            "X-Password": self.password,
+        }
+        try:
+            response = requests.post(f"{self.server_url}/update_metrics", json=metrics,
+                                     headers=headers, timeout=5)
+            if response.status_code != 200:
+                logger.warning(f"Failed to push metrics: Server returned {
+                               response.status_code}")
+        except Exception as e:
+            logger.error(f"Failed to push metrics: {e}")
 
 
 if __name__ == "__main__":

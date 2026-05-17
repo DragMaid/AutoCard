@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 class Actor(Agent):
     """RL agent with DQN and average policy network optimized for actors."""
 
-    def __init__(self, num_actions: int):
-        self._init_encoder()
+    def __init__(self, num_actions: int, device: str):
+        self._init_encoder(device)
 
         self.dqn = DuelingDQN(
-            self.encoder, num_actions).to(ml_config.DEVICE)
+            self.encoder, num_actions).to(device)
         self.policy = AveragePolicy(
-            self.encoder, num_actions).to(ml_config.DEVICE)
+            self.encoder, num_actions).to(device)
 
     def load_state_dict(self, state_dict: dict):
         """Loads state dict into DQN and policy networks."""
@@ -44,13 +44,15 @@ class ActorLoop(TrainingLoop):
         self,
         env_factory,
         server_url: str = "http://localhost:5000",
-        password: str = "1234"
+        password: str = "1234",
+        device: str = "cpu"
     ):
         self.env_factory = env_factory
         self.server_url = server_url
         self.password = password
         self.actor_id = None
         self.env = None
+        self.current_weights_version = 0
 
         # RL storage (with priorities)
         self.rl_batch_storage = BatchStorage(
@@ -133,36 +135,43 @@ class ActorLoop(TrainingLoop):
             time.sleep(delay + random.uniform(0, 1))
 
     def _weight_puller(self):
-        """Periodically pulls weights from the server with adaptive delay."""
+        """Periodically pulls weights from the server with version checking."""
         headers = {"X-Password": self.password}
         logger.info(
             f"Actor {self.actor_id}: Background weight puller started.")
 
         while not self._stop_event.is_set():
             try:
-                response = requests.get(
-                    f"{self.server_url}/fetch_params", headers=headers, timeout=10)
-                if response.status_code == 200:
-                    new_params = pickle.loads(response.content)
-                    if not self.param_queue.full():
-                        self.param_queue.put(new_params)
-                    else:
-                        try:
-                            self.param_queue.get_nowait()
-                            self.param_queue.put(new_params)
-                        except queue.Empty:
-                            self.param_queue.put(new_params)
-                    logger.info(
-                        f"Actor {self.actor_id}: Successfully pulled weights.")
-                    time.sleep(15)  # Success delay
-                elif response.status_code == 404:
-                    logger.info(
-                        f"Actor {self.actor_id}: No params on server yet. Waiting...")
-                    time.sleep(5)
-                else:
-                    logger.warning(
-                        f"Actor {self.actor_id}: Pull failed ({response.status_code}).")
-                    time.sleep(10)
+                # 1. Check version
+                info_res = requests.get(
+                    f"{self.server_url}/weights_info", headers=headers, timeout=5)
+                
+                if info_res.status_code == 200:
+                    server_version = info_res.json().get("version", 0)
+                    
+                    if server_version > self.current_weights_version:
+                        logger.info(f"Actor {self.actor_id}: New weights version v{server_version} detected. Fetching...")
+                        
+                        # 2. Fetch if newer
+                        response = requests.get(
+                            f"{self.server_url}/fetch_params", headers=headers, timeout=10)
+                        
+                        if response.status_code == 200:
+                            new_params = pickle.loads(response.content)
+                            if not self.param_queue.full():
+                                self.param_queue.put(new_params)
+                            else:
+                                try:
+                                    self.param_queue.get_nowait()
+                                    self.param_queue.put(new_params)
+                                except queue.Empty:
+                                    self.param_queue.put(new_params)
+                            
+                            self.current_weights_version = int(response.headers.get("X-Weights-Version", server_version))
+                            logger.info(f"Actor {self.actor_id}: Updated to weights v{self.current_weights_version}")
+                
+                time.sleep(15)  # Success delay
+
             except Exception as e:
                 logger.error(
                     f"Actor {self.actor_id}: Weight puller error: {e}")
@@ -231,9 +240,6 @@ class ActorLoop(TrainingLoop):
             except queue.Empty:
                 pass
 
-            if frame_idx % 500 == 0:
-                self._retrieve_transitions()
-
     def _execute_step(self, player: Player, state: Any, epsilon: float) -> tuple[Any, bool]:
         """Executes a single step, collecting transition data for RL and SL."""
         best_response = random.random() >= ml_config.ETA
@@ -284,32 +290,23 @@ class ActorLoop(TrainingLoop):
                         f"Actor {self.actor_id}: Learner disconnected. Stopping actor.")
                     self._stop_event.set()
 
+                # Update version tracker
+                server_v = int(response.headers.get("X-Weights-Version", 0))
+                if server_v > self.current_weights_version:
+                    logger.debug(f"Actor {self.actor_id}: Noticed new weights v{server_v} via emit.")
+
                 if response.headers.get('Content-Type') == 'application/octet-stream':
                     new_params = pickle.loads(response.content)
                     self.agent.load_state_dict(new_params)
+                    self.current_weights_version = server_v
                     logger.info(
-                        f"Actor {self.actor_id}: Params updated from emit response.")
+                        f"Actor {self.actor_id}: Params updated from emit response (v{server_v}).")
             else:
                 logger.warning(
                     f"Actor {self.actor_id}: Emission failed ({response.status_code}).")
         except Exception as e:
             logger.error(f"Actor {self.actor_id}: Failed to emit: {e}")
             time.sleep(1)
-
-    def _retrieve_transitions(self):
-        """Retrieves transitions from the server."""
-        headers = {"X-Password": self.password}
-        try:
-            response = requests.get(
-                f"{self.server_url}/get_data", headers=headers, timeout=5)
-            if response.status_code == 200:
-                data = pickle.loads(response.content)
-                logger.info(
-                    f"Actor {self.actor_id}: Retrieved data from server.")
-                return data
-        except Exception as e:
-            logger.error(f"Actor {self.actor_id}: Retrieval error: {e}")
-        return None
 
     def _episode_too_long(self) -> bool:
         return self.episode_manager.current_episode_length >= ml_config.MAX_ACTIONS_PER_EPISODE
@@ -318,16 +315,29 @@ class ActorLoop(TrainingLoop):
 if __name__ == "__main__":
     from core.logic.game_engine import GameEngine
     from ml.environment.environment import GameEnv
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument("--render", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--file", type=str, default=None)
+    parser.add_argument("--device", type=str, default="cpu")
+
+    args = parser.parse_args()
+
+    if args.debug:
+        setup_logging(file=args.file, level=logging.DEBUG)
 
     def create_env():
         p1 = Player(player_index=0, name="p1")
         p2 = Player(player_index=1, name="p2", is_opponent=True)
         engine = GameEngine(players=[p1, p2])
-        return GameEnv(engine=engine, render=True)
+        return GameEnv(engine=engine, render=args.render)
 
     actor = ActorLoop(
         env_factory=create_env,
         server_url=ml_config.SERVER_URL,
-        password=ml_config.PASSWORD
+        password=ml_config.PASSWORD,
+        device=args.device
     )
     actor.run()

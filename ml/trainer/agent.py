@@ -21,21 +21,22 @@ from ml.config import Config as ml_config
 class Agent:
     """RL agent with DQN and average policy network."""
 
-    def __init__(self, num_actions: int):
+    def __init__(self, num_actions: int, device: str):
         """Initializes Agent. """
-        self._init_encoder()
+        self.device = device
+        self._init_encoder(device)
 
         # Core networks
         self.dqn = DuelingDQN(
-            self.encoder, num_actions).to(ml_config.DEVICE)
+            self.encoder, num_actions).to(device)
         self.target_dqn = DuelingDQN(
-            self.encoder, num_actions).to(ml_config.DEVICE)
+            self.encoder, num_actions).to(device)
         # Initial sync params to target dqn
         self.update_target_network()
 
         # Average policy
         self.policy = AveragePolicy(
-            self.encoder, num_actions).to(ml_config.DEVICE)
+            self.encoder, num_actions).to(device)
 
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(ml_config.BUFFER_SIZE)
@@ -47,7 +48,7 @@ class Agent:
         # enough samples are met to be flushed into replay and reservoir
         self.buffer_manager = BufferManager(self)
 
-    def _init_encoder(self):
+    def _init_encoder(self, device: str):
         # Initialize GameStateEncoder
         card_dim = get_card_feature_dim()
         # Times 2 since there are 2 players
@@ -57,7 +58,7 @@ class Agent:
             player_dim=player_dim,
             max_hand_cards=game_config.MAX_HAND_CARDS,
             max_board_cards=game_config.ROWS * game_config.COLS
-        ).to(ml_config.DEVICE)
+        ).to(device)
 
     def select_action(self, state: np.ndarray, epsilon: float, best_response: bool = True) -> int:
         """Selects action using either DQN or average policy.
@@ -70,7 +71,7 @@ class Agent:
         Returns:
             Selected action.
         """
-        tensor = torch.FloatTensor(state).to(ml_config.DEVICE)
+        tensor = torch.FloatTensor(state).to(self.device)
 
         if best_response:
             return self.dqn.act(tensor, epsilon)
@@ -86,11 +87,11 @@ class Agent:
         state, action, reward, next_state, done = batch
 
         # Convert to tensors
-        state = torch.FloatTensor(state).to(ml_config.DEVICE)
-        next_state = torch.FloatTensor(next_state).to(ml_config.DEVICE)
-        action = torch.LongTensor(action).to(ml_config.DEVICE)
-        reward = torch.FloatTensor(reward).to(ml_config.DEVICE)
-        done = torch.FloatTensor(done).to(ml_config.DEVICE)
+        state = torch.FloatTensor(state).to(self.device)
+        next_state = torch.FloatTensor(next_state).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
+        reward = torch.FloatTensor(reward).to(self.device)
+        done = torch.FloatTensor(done).to(self.device)
 
         torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
         # Compute loss
@@ -137,8 +138,8 @@ class Agent:
         """
         state, action = self.reservoir.sample(ml_config.BATCH_SIZE)
 
-        state = torch.FloatTensor(state).to(ml_config.DEVICE)
-        action = torch.LongTensor(action).to(ml_config.DEVICE)
+        state = torch.FloatTensor(state).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
 
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
         probs = self.policy(state)
@@ -176,9 +177,9 @@ class Agent:
         assert np.any(action_mask)
 
         # This assume that batch size will be 1
-        tensor = torch.FloatTensor(state).unsqueeze(0).to(ml_config.DEVICE)
+        tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         mask_tensor = torch.FloatTensor(
-            action_mask).unsqueeze(0).to(ml_config.DEVICE)
+            action_mask).unsqueeze(0).to(self.device)
         q_values = self.dqn(tensor)
 
         if best_response:
