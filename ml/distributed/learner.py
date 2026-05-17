@@ -4,8 +4,10 @@ import pickle
 import torch
 import torch.nn.functional as F
 import requests
+import threading
 from typing import Any
 from queue import Queue, Empty
+import websocket
 
 from ml.trainer.agent import Agent
 from ml.storage.prioritized_replay_buffer import CustomPrioritizedReplayBuffer
@@ -22,7 +24,7 @@ class Learner(Agent):
         super().__init__(num_actions)
         # Distributed-optimized buffers
         self.replay_buffer = CustomPrioritizedReplayBuffer(
-            ml_config.BUFFER_SIZE, alpha=0.6)
+            ml_config.BUFFER_SIZE, alpha=ml_config.ALPHA)
         self.reservoir = ReservoirBuffer(ml_config.BUFFER_SIZE)
 
     def _update_rl_network(self, batch_data: tuple) -> tuple[torch.Tensor, Any]:
@@ -90,55 +92,86 @@ class Learner(Agent):
         return loss
 
 
-# TODO: connect the learner to dagshub, log out the grad norm
-# TODO: write a script that automatically install everything and run it
 class LearnerLoop:
-    def __init__(self):
+    def __init__(
+        self,
+        server_url: str = "http://localhost:5000",
+        password: str = "1234"
+    ):
         self.agent = Learner(ml_config.NUM_ACTIONS)
+        self.server_url = server_url
+        self.ws_url = server_url.replace("http", "ws") + "/learner_stream"
+        self.password = password
 
         self.rl_batch_queue = Queue(maxsize=100)
         self.sl_transition_queue = Queue(maxsize=100)
         self.prios_queue = Queue(maxsize=100)
 
+        self._stop_event = threading.Event()
+
+    def _data_receiver(self):
+        """WebSocket client to receive data from server constantly."""
+        ws_url_with_token = f"{self.ws_url}?token={self.password}"
+        logger.info(f"Connecting to data stream at {self.ws_url}")
+
+        def on_message(ws, message):
+            try:
+                data = pickle.loads(message)
+                if "rl_batch" in data:
+                    self.rl_batch_queue.put(data["rl_batch"])
+                if "sl_transitions" in data:
+                    self.sl_transition_queue.put(data["sl_transitions"])
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
+
+        def on_error(ws, error):
+            logger.error(f"WebSocket error: {error}")
+
+        def on_close(ws, close_status_code, close_msg):
+            logger.info("WebSocket connection closed")
+
+        def on_open(ws):
+            logger.info("WebSocket connection established")
+
+        while not self._stop_event.is_set():
+            try:
+                ws = websocket.WebSocketApp(
+                    ws_url_with_token,
+                    on_message=on_message,
+                    on_error=on_error,
+                    on_close=on_close,
+                    on_open=on_open
+                )
+                ws.run_forever()
+            except Exception as e:
+                logger.error(f"WebSocket loop error: {e}")
+
+            if not self._stop_event.is_set():
+                logger.info("Retrying WebSocket connection in 5 seconds...")
+                time.sleep(5)
+
     def run(self) -> None:
         """Executes the learner loop."""
+        # Start background data receiver
+        receiver_thread = threading.Thread(
+            target=self._data_receiver, daemon=True)
+        receiver_thread.start()
+
         logger.info("Starting Learner Loop...")
         frame_idx = 0
 
         while True:
             frame_idx += 1
 
-            try:
-                # RL data is (batch, prios)
-                rl_msg = self.rl_batch_queue.get_nowait()
-                batch, prios = rl_msg
-                for i in range(len(prios)):
-                    self.agent.replay_buffer.add(
-                        batch[0][i], batch[1][i], batch[2][i],
-                        batch[3][i], batch[4][i], prios[i]
-                    )
-            except Empty:
-                pass
+            self.insert_transition()
 
-            try:
-                # SL data is a list of (state, action)
-                sl_transitions = self.sl_transition_queue.get()
-                for state, action in sl_transitions:
-                    self.agent.reservoir.push(state, action)
-            except Empty:
-                pass
-
-            if len(self.agent.replay_buffer) >= ml_config.BATCH_SIZE:
+            if len(self.agent.replay_buffer) >= 1000:
                 sample = self.agent.replay_buffer.sample(
                     ml_config.BATCH_SIZE, ml_config.BETA)
                 loss, (idxes, new_prios) = self.agent._update_rl_network(sample)
 
                 # Update local priorities
                 self.agent.replay_buffer.update_priorities(idxes, new_prios)
-
-                # Queue priorities for TCP thread to send back
-                if not self.prios_queue.full():
-                    self.prios_queue.put((idxes, new_prios))
 
             if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
                 self.agent._update_sl_network()
@@ -150,16 +183,35 @@ class LearnerLoop:
             if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
                 self.save_checkpoint(frame_idx)
 
-            if frame_idx % ml_config.PUSH_INTERVA == 0:
+            if frame_idx % ml_config.PUSH_INTERVAL == 0:
                 state_dict = {
                     'dqn': self.agent.dqn.state_dict(),
                     'policy': self.agent.policy.state_dict()
                 }
-                self._push_to_server(state_dict)
+                self._push_weights(state_dict)
 
             # Small sleep to prevent 100% CPU usage if queues are empty
             if self.rl_batch_queue.empty() and self.sl_transition_queue.empty():
                 time.sleep(0.001)
+
+    def insert_transition(self):
+        # Process RL data from queue
+        try:
+            rl_msg = self.rl_batch_queue.get(timeout=0.01)
+            batch, prios = rl_msg
+            states, actions, rewards, next_states, dones = batch
+            for sample in zip(states, actions, rewards, next_states, dones, prios):
+                self.agent.replay_buffer.add(*sample)
+        except Empty:
+            pass
+
+        # Process SL data from queue
+        try:
+            sl_transitions = self.sl_transition_queue.get(timeout=0.01)
+            for state, action in sl_transitions:
+                self.agent.reservoir.push(state, action)
+        except Empty:
+            pass
 
     def save_checkpoint(self, frame_idx: int) -> None:
         """Evaluates current performance and saves models."""
@@ -167,14 +219,19 @@ class LearnerLoop:
         save_path = save_folder / f"cp_{frame_idx}.pth"
         save_model(self.agent, save_path)
 
-    def _push_to_server(self, state_dict: dict):
+    def _push_weights(self, state_dict: dict):
         """Pushes parameters to the central server."""
         try:
             data = pickle.dumps(state_dict)
             files = {'params': ('params.pkl', data)}
             headers = {"X-Password": self.password}
-            requests.post(self.server_url, files=files,
+            requests.post(f"{self.server_url}/push_params", files=files,
                           headers=headers, timeout=5)
             logger.info("Parameters pushed to server.")
         except Exception as e:
             logger.error(f"Failed to push parameters: {e}")
+
+
+if __name__ == "__main__":
+    learner = LearnerLoop()
+    learner.run()

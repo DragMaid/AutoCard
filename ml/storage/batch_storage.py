@@ -61,7 +61,6 @@ class BatchStorage:
         self.q_values = []
         self.next_q_values = []
 
-    # TODO: I think you should
     def compute_priorities(self):
         # TODO: Should I seperate this method from BatchStorage class?
         actions = np.array(self.actions)
@@ -82,6 +81,7 @@ class BatchStorage:
         prios = self.compute_priorities()
         batch = [self.states, self.actions,
                  self.rewards, self.next_states, self.dones]
+        assert np.isfinite(prios).all()
         return batch, prios
 
     def multi_step_reward(self, *rewards):

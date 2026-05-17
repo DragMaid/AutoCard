@@ -88,6 +88,7 @@ class Config:
     SERVER_PORT: int = 5000
 
     BETA: int = 0.4
+    ALPHA: int = 0.6
 
     # Database
     EXPERIMENT_NAME = "autocard"

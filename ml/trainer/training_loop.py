@@ -135,7 +135,6 @@ class TrainingLoop:
         Returns:
             Singular action_id and q values or probability logits
         """
-        # TODO: update the get legal action since its being used too sparingly
         mask, _ = self.env.get_legal_actions(player)
         action_id, q_logits = self.agent.select_action_with_mask(
             state=state,

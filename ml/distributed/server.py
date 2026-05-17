@@ -3,9 +3,10 @@ import logging
 import pickle
 import queue
 import threading
+import asyncio
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Response, Depends
+from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Response, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from ml.config import Config
 
@@ -21,6 +22,7 @@ class StatusResponse(BaseModel):
     status: str
     rl_queue_size: int
     sl_queue_size: int
+    learner_connected: bool
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
@@ -36,6 +38,9 @@ class RLServerState:
 
         self._params_lock = threading.Lock()
         self._latest_params: Optional[bytes] = None
+
+        self.learner_connected = False
+        self.active_learner_ws: Optional[WebSocket] = None
 
     def push_rl(self, item: Any) -> None:
         if self.rl_queue.full():
@@ -71,6 +76,7 @@ class RLServerState:
         return {
             "rl_queue_size": self.rl_queue.qsize(),
             "sl_queue_size": self.sl_queue.qsize(),
+            "learner_connected": self.learner_connected
         }
 
 
@@ -141,10 +147,13 @@ async def emit_data(
         await service.ingest_sl_transitions(sl_transitions)
 
     params = service.get_parameters()
+    
+    headers = {"X-Learner-Connected": "True" if state.learner_connected else "False"}
+    
     if params:
-        return Response(content=params, media_type="application/octet-stream")
+        return Response(content=params, media_type="application/octet-stream", headers=headers)
 
-    return {"status": "received"}
+    return Response(content=pickle.dumps({"status": "received"}), headers=headers)
 
 
 @app.get("/fetch_params")
@@ -163,7 +172,6 @@ async def get_data(_: bool = Depends(verify_password)):
     if data is None:
         return Response(status_code=204)
 
-    # Returning raw binary data for weight
     return Response(content=data, media_type="application/octet-stream")
 
 
@@ -183,6 +191,41 @@ async def status(_: bool = Depends(verify_password)):
         status="running",
         **state.status()
     )
+
+
+@app.websocket("/learner_stream")
+async def learner_stream(websocket: WebSocket):
+    # Simple check for password in query params or headers for WS
+    # For simplicity, we'll check a 'token' query param
+    token = websocket.query_params.get("token")
+    if token != DEFAULT_PASSWORD:
+        await websocket.close(code=4001)
+        return
+
+    await websocket.accept()
+    state.learner_connected = True
+    state.active_learner_ws = websocket
+    logger.info("Learner connected via WebSocket")
+
+    try:
+        while True:
+            # Continuously send data if available
+            data = service.fetch_training_data()
+            if data:
+                await websocket.send_bytes(data)
+            else:
+                await asyncio.sleep(0.1)  # Wait for data
+
+            # Keep connection alive/check for closure
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=0.01)
+            except asyncio.TimeoutError:
+                pass
+    except (WebSocketDisconnect, Exception) as e:
+        logger.info(f"Learner disconnected: {e}")
+    finally:
+        state.learner_connected = False
+        state.active_learner_ws = None
 
 if __name__ == "__main__":
     uvicorn.run(

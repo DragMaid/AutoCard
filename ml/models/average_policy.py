@@ -38,7 +38,8 @@ class AveragePolicy(nn.Module):
             Action probabilities.
         """
         # Encode state
-        x = self.encoder(x)
+        # NOTE: encoder only updated by dqn
+        x = self.encoder(x).detach()
 
         # Feature extraction
         x = self.feature_net(x)

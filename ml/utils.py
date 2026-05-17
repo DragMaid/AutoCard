@@ -57,6 +57,7 @@ def save_model(agent: Agent, path: str = Config.CHECKPOINT_PATH):
     checkpoint = {}
     checkpoint["dqn"] = agent.dqn.state_dict()
     checkpoint["policy"] = agent.policy.state_dict()
+    checkpoint["encoder"] = agent.encoder.state_dict()
 
     torch.save(checkpoint, checkpoint_path)
     logger.info(f"Models saved to {checkpoint_path}")
@@ -79,4 +80,33 @@ def load_model(agent: Agent, device="cpu", path=Config.CHECKPOINT_PATH):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     agent.dqn.load_state_dict(checkpoint["dqn"])
     agent.policy.load_state_dict(checkpoint["policy"])
+    agent.encoder.load_state_dict(checkpoint["encoder"])
     logger.info(f"Models loaded from {checkpoint_path}")
+
+
+def safe_mask(mask: torch.Tensor) -> torch.Tensor:
+    """
+    Ensures every sequence has at least one valid token.
+
+    Args:
+        mask: Bool tensor of shape (B, T)
+              True = valid token, False = invalid
+
+    Returns:
+        mask with guarantee that each row has >= 1 True
+    """
+
+    # find rows where everything is invalid
+    empty_rows = mask.any(dim=1)
+
+    # if no empty rows, return original (no copy needed)
+    if not empty_rows.any():
+        return mask
+
+    # clone only when needed
+    safe = mask.clone()
+
+    # force token 0 to be valid for empty rows
+    safe[empty_rows, 0] = False
+
+    return safe

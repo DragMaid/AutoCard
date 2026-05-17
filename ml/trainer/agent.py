@@ -103,7 +103,8 @@ class Agent:
         # Avoid building grad graph for the target network
         with torch.no_grad():
             target_next_q_values = self.target_dqn(next_state)
-            next_q_a_values = target_next_q_values.gather(1, next_actions).squeeze(1)
+            next_q_a_values = target_next_q_values.gather(
+                1, next_actions).squeeze(1)
 
         # Additional discount factor
         discount_factor = ml_config.GAMMA ** ml_config.MULTI_STEP
@@ -178,21 +179,21 @@ class Agent:
         tensor = torch.FloatTensor(state).unsqueeze(0).to(ml_config.DEVICE)
         mask_tensor = torch.FloatTensor(
             action_mask).unsqueeze(0).to(ml_config.DEVICE)
+        q_values = self.dqn(tensor)
 
         if best_response:
-            return self._select_with_dqn_masked(tensor, mask_tensor, epsilon)
+            return self._select_with_dqn_masked(q_values, tensor, mask_tensor, epsilon), q_values
         else:
-            return self._select_with_policy_masked(tensor, mask_tensor)
+            return self._select_with_policy_masked(tensor, mask_tensor), q_values
 
     def _select_with_dqn_masked(
             self,
+            q_values: torch.Tensor,
             state_tensor: torch.Tensor,
             mask_tensor: torch.Tensor,
             epsilon: float
     ) -> Tuple[int, torch.Tensor]:
         """DQN selection with masking."""
-        q_values = self.dqn(state_tensor)
-
         # Apply mask (set invalid actions to -inf)
         masked_q = q_values.masked_fill(mask_tensor == 0, float('-inf'))
 
@@ -206,10 +207,10 @@ class Agent:
             # here did not drive the action, but waiting for episolon
             # to drop eventually until real dqn acts are chosen
             # is also not a very smart idea
-            return random.choice(valid_actions.tolist()), q_values
+            return random.choice(valid_actions.tolist())
 
         # Exploit: choose best valid action
-        return masked_q[0].argmax().item(), q_values
+        return masked_q[0].argmax().item()
 
     def _select_with_policy_masked(
         self,
@@ -250,4 +251,4 @@ class Agent:
         assert torch.isfinite(probs).all(), "Probs must be finite"
 
         action = torch.multinomial(probs[0], 1).item()
-        return action, probs
+        return action
