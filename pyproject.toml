@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.5",
+    "dagshub>=0.7.0",
     "dotenv>=0.9.9",
     "gunicorn>=25.3.0",
     "mlflow>=3.11.1",

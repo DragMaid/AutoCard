@@ -25,7 +25,8 @@ class Actor(Agent):
     """RL agent with DQN and average policy network optimized for actors."""
 
     def __init__(self, num_actions: int, device: str):
-        self._init_encoder(device)
+        self.device = device
+        self._init_encoder(self.device)
 
         self.dqn = DuelingDQN(
             self.encoder, num_actions).to(device)
@@ -47,6 +48,7 @@ class ActorLoop(TrainingLoop):
         password: str = "1234",
         device: str = "cpu"
     ):
+        self.device = device
         self.env_factory = env_factory
         self.server_url = server_url
         self.password = password
@@ -125,7 +127,7 @@ class ActorLoop(TrainingLoop):
                     status = response.json()
                     if status.get("learner_connected"):
                         logger.info(
-                            f"Actor {self.actor_id}: Learner detected. Starting loop.")
+                            f"Actor {self.actor_id}: Learner detected.")
                         break
                 delay = self.retry_base_delay  # Reset on successful status check
             except Exception as e:
@@ -142,20 +144,20 @@ class ActorLoop(TrainingLoop):
 
         while not self._stop_event.is_set():
             try:
-                # 1. Check version
                 info_res = requests.get(
                     f"{self.server_url}/weights_info", headers=headers, timeout=5)
-                
+
                 if info_res.status_code == 200:
                     server_version = info_res.json().get("version", 0)
-                    
+
+                    # Only fetch the new weights if its older than the current one
                     if server_version > self.current_weights_version:
-                        logger.info(f"Actor {self.actor_id}: New weights version v{server_version} detected. Fetching...")
-                        
-                        # 2. Fetch if newer
+                        logger.info(f"Actor {self.actor_id}: New weights version v{
+                                    server_version} detected. Fetching...")
+
                         response = requests.get(
                             f"{self.server_url}/fetch_params", headers=headers, timeout=10)
-                        
+
                         if response.status_code == 200:
                             new_params = pickle.loads(response.content)
                             if not self.param_queue.full():
@@ -166,10 +168,12 @@ class ActorLoop(TrainingLoop):
                                     self.param_queue.put(new_params)
                                 except queue.Empty:
                                     self.param_queue.put(new_params)
-                            
-                            self.current_weights_version = int(response.headers.get("X-Weights-Version", server_version))
-                            logger.info(f"Actor {self.actor_id}: Updated to weights v{self.current_weights_version}")
-                
+
+                            self.current_weights_version = int(
+                                response.headers.get("X-Weights-Version", server_version))
+                            logger.info(f"Actor {self.actor_id}: Updated to weights v{
+                                        self.current_weights_version}")
+
                 time.sleep(15)  # Success delay
 
             except Exception as e:
@@ -184,7 +188,7 @@ class ActorLoop(TrainingLoop):
         self._wait_for_learner()
 
         # Start background weight puller
-        self.agent = Actor(ml_config.NUM_ACTIONS)
+        self.agent = Actor(ml_config.NUM_ACTIONS, self.device)
         self.episode_manager = EpisodeManager(2)
         puller_thread = threading.Thread(
             target=self._weight_puller, daemon=True)
@@ -271,7 +275,7 @@ class ActorLoop(TrainingLoop):
         if rl_data is not None:
             files["rl_batch"] = ("rl.pkl", pickle.dumps(rl_data))
         if sl_data is not None:
-            files["sl_batch"] = ("sl.pkl", pickle.dumps(sl_data))
+            files["sl_transitions"] = ("sl.pkl", pickle.dumps(sl_data))
 
         headers = {
             "X-Password": self.password,
@@ -287,13 +291,14 @@ class ActorLoop(TrainingLoop):
                     "X-Learner-Connected") == "True"
                 if not learner_connected:
                     logger.warning(
-                        f"Actor {self.actor_id}: Learner disconnected. Stopping actor.")
-                    self._stop_event.set()
+                        f"Actor {self.actor_id}: Learner disconnected. Waiting for reconnection...")
+                    self._wait_for_learner()
 
                 # Update version tracker
                 server_v = int(response.headers.get("X-Weights-Version", 0))
                 if server_v > self.current_weights_version:
-                    logger.debug(f"Actor {self.actor_id}: Noticed new weights v{server_v} via emit.")
+                    logger.debug(f"Actor {self.actor_id}: Noticed new weights v{
+                                 server_v} via emit.")
 
                 if response.headers.get('Content-Type') == 'application/octet-stream':
                     new_params = pickle.loads(response.content)
@@ -303,10 +308,12 @@ class ActorLoop(TrainingLoop):
                         f"Actor {self.actor_id}: Params updated from emit response (v{server_v}).")
             else:
                 logger.warning(
-                    f"Actor {self.actor_id}: Emission failed ({response.status_code}).")
+                    f"Actor {self.actor_id}: Emission failed ({response.status_code}). Waiting...")
+                self._wait_for_learner()
         except Exception as e:
-            logger.error(f"Actor {self.actor_id}: Failed to emit: {e}")
-            time.sleep(1)
+            logger.error(f"Actor {self.actor_id}: Failed to emit: {
+                         e}. Waiting for reconnection...")
+            self._wait_for_learner()
 
     def _episode_too_long(self) -> bool:
         return self.episode_manager.current_episode_length >= ml_config.MAX_ACTIONS_PER_EPISODE
@@ -337,7 +344,7 @@ if __name__ == "__main__":
     actor = ActorLoop(
         env_factory=create_env,
         server_url=ml_config.SERVER_URL,
-        password=ml_config.PASSWORD,
+        password=ml_config.AUTH_CODE,
         device=args.device
     )
     actor.run()

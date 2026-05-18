@@ -20,7 +20,7 @@ def new_players() -> Tuple[Player, Player]:
 def run(args):
     engine = GameEngine(players=new_players())
     env = GameEnv(engine=engine, render=args.render)
-    trainer = Trainer(env, mlflow_enabled=args.mlflow)
+    trainer = Trainer(env, args.device, args.mlflow)
     if args.checkpoint:
         trainer.load_checkpoint(args.device, args.checkpoint)
     elif args.resume:

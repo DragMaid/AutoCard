@@ -1,3 +1,5 @@
+import time
+from collections import deque
 from fastapi.responses import HTMLResponse
 import uvicorn
 import logging
@@ -27,6 +29,9 @@ class StatusResponse(BaseModel):
     learner_connected: bool
     actor_count: int
     weights_version: int
+    rps: float
+    avg_packet_size: float
+    latest_weights_size: int
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
@@ -51,9 +56,17 @@ class RLServerState:
             self.metrics = {
                 "frame": 0,
                 "loss": 0.0,
-                "replay_buffer": 0,
-                "reservoir": 0
+                "grad_norm": 0.0,
+                "sl_loss": 0.0,
+                "sl_grad_norm": 0.0,
+                "replay_buffer_size": 0,
+                "reservoir_size": 0
             }
+            # Performance metrics
+            self.request_times = deque(maxlen=1000)
+            self.total_packet_size = 0
+            self.packet_count = 0
+            self.latest_weights_size = 0
             logger.info("Server state reset.")
 
     def register_actor(self) -> int:
@@ -61,6 +74,15 @@ class RLServerState:
             actor_id = self.actor_counter
             self.actor_counter += 1
             return actor_id
+
+    def record_request(self):
+        with self._lock:
+            self.request_times.append(time.time())
+
+    def record_packet(self, size: int):
+        with self._lock:
+            self.total_packet_size += size
+            self.packet_count += 1
 
     def push_rl(self, item: Any) -> None:
         if self.rl_queue.full():
@@ -87,6 +109,7 @@ class RLServerState:
     def set_params(self, data: bytes) -> None:
         with self._lock:
             self._latest_params = data
+            self.latest_weights_size = len(data)
             self.weights_version += 1
 
     def get_params(self) -> Optional[bytes]:
@@ -97,14 +120,32 @@ class RLServerState:
         with self._lock:
             self.metrics.update(metrics)
 
+    def learner_disconnect(self) -> None:
+        with self._lock:
+            self.learner_connected = False
+            logger.info(
+                "Learner disconnected. State preserved for reconnection.")
+
     def status(self) -> Dict[str, Any]:
-        return {
-            "rl_queue_size": self.rl_queue.qsize(),
-            "sl_queue_size": self.sl_queue.qsize(),
-            "learner_connected": self.learner_connected,
-            "actor_count": self.actor_counter,
-            "weights_version": self.weights_version
-        }
+        with self._lock:
+            now = time.time()
+            # Calculate RPS over last 10 seconds
+            recent_requests = [t for t in self.request_times if now - t <= 10]
+            rps = len(recent_requests) / 10.0 if recent_requests else 0.0
+
+            avg_packet_size = self.total_packet_size / \
+                self.packet_count if self.packet_count > 0 else 0
+
+            return {
+                "rl_queue_size": self.rl_queue.qsize(),
+                "sl_queue_size": self.sl_queue.qsize(),
+                "learner_connected": self.learner_connected,
+                "actor_count": self.actor_counter,
+                "weights_version": self.weights_version,
+                "rps": rps,
+                "avg_packet_size": avg_packet_size,
+                "latest_weights_size": self.latest_weights_size
+            }
 
 
 class RLService:
@@ -114,6 +155,7 @@ class RLService:
     async def ingest_rl_batch(self, file: UploadFile):
         try:
             raw = await file.read()
+            self.state.record_packet(len(raw))
             data = pickle.loads(raw)
             self.state.push_rl(data)
             logger.debug(f"Ingested RL batch. Queue size: {
@@ -124,6 +166,7 @@ class RLService:
     async def ingest_sl_transitions(self, file: UploadFile):
         try:
             raw = await file.read()
+            self.state.record_packet(len(raw))
             data = pickle.loads(raw)
             self.state.push_sl(data)
             logger.debug(f"Ingested SL transitions. Queue size: {
@@ -181,12 +224,18 @@ async def dashboard():
             <h3>Learner Connected: <span class="{"green" if s['learner_connected'] else "red"}">{s['learner_connected']}</span></h3>
             <h3>Active Actors: {s['actor_count']}</h3>
             <h3>Weights Version: {s['weights_version']}</h3>
+            <h3>Latest Weights Size: {s['latest_weights_size'] / 1024 / 1024:.2f} MB</h3>
+            <hr>
+            <h3>--- Performance Metrics ---</h3>
+            <h3>Requests Per Second: {s['rps']:.2f}</h3>
+            <h3>Avg Packet Size: {s['avg_packet_size'] / 1024:.2f} KB</h3>
             <hr>
             <h3>--- Training Metrics ---</h3>
-            <h3>Frame: {m['frame']}</h3>
-            <h3>Current Loss: {m['loss']:.6f}</h3>
-            <h3>Replay Buffer: {m['replay_buffer']}</h3>
-            <h3>Reservoir: {m['reservoir']}</h3>
+            <h3>Iteration: {m['frame']}</h3>
+            <h3>RL Loss: {m['loss']:.6f} (norm: {m['grad_norm']:.4f})</h3>
+            <h3>SL Loss: {m['sl_loss']:.6f} (norm: {m['sl_grad_norm']:.4f})</h3>
+            <h3>Replay Buffer: {m['replay_buffer_size']}</h3>
+            <h3>Reservoir: {m['reservoir_size']}</h3>
             <hr>
             <h3>--- Queue Stats ---</h3>
             <h3>RL Batch Queue: {s['rl_queue_size']}</h3>
@@ -202,6 +251,7 @@ async def emit_data(
     sl_transitions: Optional[UploadFile] = File(None),
     _: bool = Depends(verify_password),
 ):
+    state.record_request()
     if rl_batch:
         await service.ingest_rl_batch(rl_batch)
 
@@ -305,8 +355,9 @@ async def learner_stream(websocket: WebSocket):
     except (WebSocketDisconnect, Exception) as e:
         logger.info(f"Learner disconnected: {e}")
     finally:
-        state.reset()
-        state.active_learner_ws = None
+        state.learner_disconnect()
+        if hasattr(state, "active_learner_ws"):
+            state.active_learner_ws = None
 
 if __name__ == "__main__":
     uvicorn.run(

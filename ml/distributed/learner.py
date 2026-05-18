@@ -3,6 +3,7 @@ from ml.utils import save_model
 from ml.storage.reservoir_buffer import ReservoirBuffer
 from ml.storage.prioritized_replay_buffer import CustomPrioritizedReplayBuffer
 from ml.trainer.agent import Agent
+from ml.trainer.mlflow_manager import MLFlowManager
 import numpy as np
 import websocket
 from queue import Queue, Empty
@@ -21,14 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 class Learner(Agent):
-    def __init__(self, num_actions: int):
-        super().__init__(num_actions)
+    def __init__(self, num_actions: int, device: str):
+        super().__init__(num_actions, device)
         # Distributed-optimized buffers
         self.replay_buffer = CustomPrioritizedReplayBuffer(
             ml_config.BUFFER_SIZE, alpha=ml_config.ALPHA)
         self.reservoir = ReservoirBuffer(ml_config.BUFFER_SIZE)
 
-    def _update_rl_network(self, batch_data: tuple) -> tuple[torch.Tensor, Any]:
+    def update_rl_network(self, batch_data: tuple) -> tuple[torch.Tensor, Any, float]:
         """Updates DQN network with a provided batch."""
         states, actions, rewards, next_states, dones, weights, idxes = batch_data
 
@@ -65,42 +66,23 @@ class Learner(Agent):
         # Optimize
         self.rl_optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.dqn.parameters(), max_norm=1.0)
         self.rl_optimizer.step()
 
         # Return new priorities
         new_prios = torch.abs(td_error).detach().cpu().numpy() + 1e-6
-        return loss, (idxes, new_prios)
-
-    def _update_sl_network(self) -> torch.Tensor:
-        """Updates average policy network from reservoir."""
-        if len(self.reservoir) < ml_config.BATCH_SIZE:
-            return None
-
-        states, actions = self.reservoir.sample(ml_config.BATCH_SIZE)
-
-        states = torch.FloatTensor(states).to(self.device)
-        actions = torch.LongTensor(actions).to(self.device)
-
-        probs = self.policy(states)
-        log_probs = probs.gather(1, actions.unsqueeze(1)).log()
-        loss = -log_probs.mean()
-
-        self.sl_optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
-        self.sl_optimizer.step()
-
-        return loss
+        return loss, (idxes, new_prios), float(grad_norm)
 
 
 class LearnerLoop:
     def __init__(
         self,
+        device: str,
         server_url: str = "http://localhost:5000",
-        password: str = "1234"
+        password: str = "1234",
     ):
-        self.agent = Learner(ml_config.NUM_ACTIONS)
+        self.agent = Learner(ml_config.NUM_ACTIONS, device)
         self.server_url = server_url
         self.ws_url = server_url.replace("http", "ws") + "/learner_stream"
         self.password = password
@@ -112,6 +94,11 @@ class LearnerLoop:
         self._stop_event = threading.Event()
 
         self.current_loss = 0.0
+        self.current_grad_norm = 0.0
+        self.current_sl_loss = 0.0
+        self.current_sl_grad_norm = 0.0
+
+        self.mlflow = MLFlowManager(enabled=True, dagshub=True)
 
     def _data_receiver(self):
         """WebSocket client to receive data from server constantly with retry logic."""
@@ -164,59 +151,81 @@ class LearnerLoop:
         receiver_thread.start()
 
         logger.info("Starting Learner Loop...")
-
+        self.mlflow.start_run()
+        self.mlflow.log_params({
+            "batch_size": ml_config.BATCH_SIZE,
+            "gamma": ml_config.GAMMA,
+            "alpha": ml_config.ALPHA,
+            "beta": ml_config.BETA,
+            "multi_step": ml_config.MULTI_STEP,
+            "update_target_freq": ml_config.UPDATE_TARGET_FREQ
+        })
         step = 1
         frame_idx = 1
 
-        while True:
-            frame_idx += 1
-            self.insert_transition()
+        try:
+            while not self._stop_event.is_set():
+                frame_idx += 1
+                self.insert_transition()
 
-            if len(self.agent.replay_buffer) >= ml_config.SAMPLE_THRESHOLD:
-                # Only increment when its actually sampling
-                step += 1
-                sample = self.agent.replay_buffer.sample(
-                    ml_config.BATCH_SIZE, ml_config.BETA)
-                loss, (idxes, new_prios) = self.agent._update_rl_network(sample)
-                self.current_loss = loss.item()
+                if len(self.agent.replay_buffer) >= ml_config.SAMPLE_THRESHOLD:
+                    # Only increment when its actually sampling
+                    step += 1
+                    sample = self.agent.replay_buffer.sample(
+                        ml_config.BATCH_SIZE, ml_config.BETA)
+                    loss, (idxes, new_prios), grad_norm = self.agent.update_rl_network(
+                        sample)
+                    self.current_loss = loss.item()
+                    self.current_grad_norm = grad_norm
 
-                # Update local priorities
-                self.agent.replay_buffer.update_priorities(idxes, new_prios)
+                    # Update local priorities
+                    self.agent.replay_buffer.update_priorities(
+                        idxes, new_prios)
 
-                if step % 100 == 0:
-                    logger.info(f"Learner: Step {step}, Loss {
-                                self.current_loss:.4f}")
+                if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
+                    sl_loss, sl_grad_norm = self.agent.update_sl_network()
+                    self.current_sl_loss = sl_loss.item()
+                    self.current_sl_grad_norm = sl_grad_norm
 
-            if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
-                self.agent._update_sl_network()
+                if step % ml_config.UPDATE_TARGET_FREQ == 0:
+                    self.agent.update_target_network()
+                    logger.info(f"Target network updated at step {step}")
 
-            if step % ml_config.UPDATE_TARGET_FREQ == 0:
-                self.agent.update_target_network()
-                logger.info(f"Target network updated at step {step}")
+                if step % ml_config.SAVE_INTERVAL == 0:
+                    path = self.save_checkpoint(step)
+                    self.mlflow.log_artifact(path)
 
-            if step % ml_config.EVALUATION_INTERVAL == 0:
-                self.save_checkpoint(step)
+                if step % ml_config.PUSH_INTERVAL == 0:
+                    state_dict = {
+                        'dqn': self.agent.dqn.state_dict(),
+                        'policy': self.agent.policy.state_dict(),
+                        'encoder': self.agent.encoder.state_dict()
+                    }
+                    self._push_weights(state_dict)
 
-            if step % ml_config.PUSH_INTERVAL == 0:
-                state_dict = {
-                    'dqn': self.agent.dqn.state_dict(),
-                    'policy': self.agent.policy.state_dict(),
-                    'encoder': self.agent.encoder.state_dict()
-                }
-                self._push_weights(state_dict)
+                if frame_idx % ml_config.METRICS_INTERVAL == 0:
+                    metrics = {
+                        "frame": frame_idx,
+                        "loss": self.current_loss,
+                        "grad_norm": self.current_grad_norm,
+                        "sl_loss": self.current_sl_loss,
+                        "sl_grad_norm": self.current_sl_grad_norm,
+                        "replay_buffer_size": len(self.agent.replay_buffer),
+                        "reservoir_size": len(self.agent.reservoir)
+                    }
+                    logger.info(metrics)
+                    self._push_metrics(metrics)
+                    self.mlflow.log_metrics(metrics, step=frame_idx)
 
-            if frame_idx % ml_config.METRICS_INTERVAL == 0:
-                metrics = {
-                    "frame": step,
-                    "loss": self.current_loss,
-                    "replay_buffer": len(self.agent.replay_buffer),
-                    "reservoir": len(self.agent.reservoir)
-                }
-                self._push_metrics(metrics)
-
-            # Small sleep to prevent 100% CPU usage if queues are empty
-            if self.rl_batch_queue.empty() and self.sl_transition_queue.empty():
-                time.sleep(0.001)
+                # Small sleep to prevent 100% CPU usage if queues are empty
+                if self.rl_batch_queue.empty() \
+                        and self.sl_transition_queue.empty():
+                    time.sleep(0.001)
+        except Exception as e:
+            logger.error(f"Learner loop error: {e}")
+            raise e
+        finally:
+            self.mlflow.end_run()
 
     def insert_transition(self):
         # Process RL data from queue
@@ -237,12 +246,13 @@ class LearnerLoop:
         except Empty:
             pass
 
-    def save_checkpoint(self, frame_idx: int) -> None:
+    def save_checkpoint(self, frame_idx: int) -> str:
         """Evaluates current performance and saves models."""
         save_folder = ml_config.CHECKPOINT_PATH.parent
         save_path = save_folder / f"cp_{frame_idx}.pth"
         save_model(self.agent, save_path)
         logger.info(f"Checkpoint saved: {save_path}")
+        return save_path
 
     def _push_weights(self, state_dict: dict):
         """Pushes parameters to the central server."""
@@ -278,8 +288,13 @@ class LearnerLoop:
 
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument("--device", type=str, required=True)
+    args = parser.parse_args()
     learner = LearnerLoop(
+        device=args.device,
         server_url=ml_config.SERVER_URL,
-        password=ml_config.PASSWORD
+        password=ml_config.AUTH_CODE
     )
     learner.run()

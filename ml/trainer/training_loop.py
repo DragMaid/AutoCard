@@ -1,12 +1,13 @@
 import torch
 import logging
 import random
-from typing import Any, Tuple
+from typing import Any, Tuple, Optional
 from ml.trainer.agent import Agent
 from ml.trainer.episode_manager import EpisodeManager
 from ml.utils import epsilon_scheduler, save_model
 from ml.config import Config as ml_config
 from ml.environment.environment import GameEnv
+from ml.trainer.mlflow_manager import MLFlowManager
 from core.data.player import Player
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class TrainingLoop:
         env: GameEnv,
         agent: Agent,
         episode_manager: EpisodeManager,
+        mlflow: Optional[MLFlowManager] = None
     ):
         """Initializes TrainingLoop.
 
@@ -27,9 +29,11 @@ class TrainingLoop:
             env: Environment.
             agents: List of agents.
             episode_manager: Episode manager.
+            mlflow: optional MLFlowManager for log.
         """
         self.env = env
         self.agent = agent
+        self.mlflow = mlflow
         self.episode_manager = episode_manager
 
         self.epsilon_scheduler = epsilon_scheduler(
@@ -41,6 +45,15 @@ class TrainingLoop:
     def run(self) -> None:
         """Executes the main training loop."""
         self.env.reset()
+        self.mlflow.start_run()
+        self.mlflow.log_params({
+            "batch_size": ml_config.BATCH_SIZE,
+            "gamma": ml_config.GAMMA,
+            "alpha": ml_config.ALPHA,
+            "beta": ml_config.BETA,
+            "multi_step": ml_config.MULTI_STEP,
+            "update_target_freq": ml_config.UPDATE_TARGET_FREQ
+        })
 
         for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
             epsilon = self.epsilon_scheduler(frame_idx)
@@ -54,10 +67,20 @@ class TrainingLoop:
 
             if frame_idx % ml_config.TRAIN_FREQ == 0:
                 if self.agent.can_update_rl():
-                    self.agent.update_rl_network()
+                    loss, grad_norm = self.agent.update_rl_network()
+                    self.mlflow.log_metrics({
+                        "rl_loss": loss,
+                        "rl_grad_norm": grad_norm,
+                        "rl_buffer_size": len(self.agent.replay_buffer)
+                    })
 
                 if self.agent.can_update_sl():
-                    self.agent.update_sl_network()
+                    loss, grad_norm = self.agent.update_sl_network()
+                    self.mlflow.log_metrics({
+                        "sl_loss": loss,
+                        "sl_grad_norm": grad_norm,
+                        "sl_buffer_size": len(self.agent.reservoir)
+                    })
 
             if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
                 self.agent.update_target_network()
@@ -68,7 +91,7 @@ class TrainingLoop:
                 self.agent.buffer_manager.clear()
                 self.env.reset()
 
-            if frame_idx % ml_config.EVALUATION_INTERVAL == 0:
+            if frame_idx % ml_config.SAVE_INTERVAL == 0:
                 self.save_checkpoint(frame_idx)
 
     def _execute_step(self, player: Player, state: Any, epsilon: float) -> tuple[Any, bool]:

@@ -77,6 +77,12 @@ class Agent:
             return self.dqn.act(tensor, epsilon)
         return self.policy.act(tensor)
 
+    def can_update_sl(self):
+        return len(self.reservoir) >= ml_config.BATCH_SIZE
+
+    def can_update_rl(self):
+        return len(self.replay_buffer) >= ml_config.BATCH_SIZE
+
     def update_rl_network(self) -> torch.Tensor:
         """Updates DQN network.
 
@@ -84,73 +90,65 @@ class Agent:
             Loss tensor.
         """
         batch = self.replay_buffer.sample(ml_config.BATCH_SIZE)
-        state, action, reward, next_state, done = batch
+        states, actions, rewards, next_states, dones = batch
 
         # Convert to tensors
-        state = torch.FloatTensor(state).to(self.device)
-        next_state = torch.FloatTensor(next_state).to(self.device)
-        action = torch.LongTensor(action).to(self.device)
-        reward = torch.FloatTensor(reward).to(self.device)
-        done = torch.FloatTensor(done).to(self.device)
+        states = torch.FloatTensor(np.array(states)).to(self.device)
+        next_states = torch.FloatTensor(
+            np.array(next_states)).to(self.device)
+        actions = torch.LongTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).to(self.device)
+        dones = torch.FloatTensor(dones).to(self.device)
 
-        torch.nn.utils.clip_grad_norm_(self.dqn.parameters(), max_norm=1.0)
         # Compute loss
-        q_values = self.dqn(state)
-        next_q_values = self.dqn(next_state)
+        q_values = self.dqn(states)
+        next_q_values = self.dqn(next_states)
 
-        current_q = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
-        next_actions = next_q_values.nax(1)[1].unsqueeze(1)
+        current_q = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # Avoid building grad graph for the target network
+        # Double DQN logic
         with torch.no_grad():
-            target_next_q_values = self.target_dqn(next_state)
+            next_actions = next_q_values.max(1)[1].unsqueeze(1)
+            target_next_q_values = self.target_dqn(next_states)
             next_q_a_values = target_next_q_values.gather(
                 1, next_actions).squeeze(1)
 
-        # Additional discount factor
         discount_factor = ml_config.GAMMA ** ml_config.MULTI_STEP
-        expected_q = reward + discount_factor * next_q_a_values * (1 - done)
+        expected_q = rewards + discount_factor * next_q_a_values * (1 - dones)
 
-        # Changed MSE loss for Huber loss, avoid huge spikes
-        loss = F.smooth_l1_loss(current_q, expected_q)
-
-        td_error = torch.abs(expected_q.detach() - current_q)
-        prios = (td_error + 1e-6).data.cpu().numpy()
+        loss = F.smooth_l1_loss(current_q, expected_q, reduction='mean')
 
         # Optimize
         self.rl_optimizer.zero_grad()
         loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.dqn.parameters(), max_norm=1.0)
         self.rl_optimizer.step()
 
-        return loss, prios
+        return loss, float(grad_norm)
 
-    def can_update_sl(self):
-        return len(self.reservoir) >= ml_config.BATCH_SIZE
-
-    def can_update_rl(self):
-        return len(self.replay_buffer) >= ml_config.BATCH_SIZE
-
-    def update_sl_network(self) -> torch.Tensor:
+    def update_sl_network(self) -> Tuple[torch.Tensor, float]:
         """Updates average policy network.
 
         Returns:
             Loss tensor.
         """
-        state, action = self.reservoir.sample(ml_config.BATCH_SIZE)
+        states, actions = self.reservoir.sample(ml_config.BATCH_SIZE)
 
-        state = torch.FloatTensor(state).to(self.device)
-        action = torch.LongTensor(action).to(self.device)
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.LongTensor(actions).to(self.device)
 
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
-        probs = self.policy(state)
-        log_probs = probs.gather(1, action.unsqueeze(1)).log()
+        probs = self.policy(states)
+        log_probs = probs.gather(1, actions.unsqueeze(1)).log()
         loss = -log_probs.mean()
 
         self.sl_optimizer.zero_grad()
         loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.policy.parameters(), max_norm=ml_config.MAX_NORM)
         self.sl_optimizer.step()
 
-        return loss
+        return loss, float(grad_norm)
 
     def update_target_network(self) -> None:
         """Copies weights from DQN to target DQN."""
@@ -183,9 +181,11 @@ class Agent:
         q_values = self.dqn(tensor)
 
         if best_response:
-            return self._select_with_dqn_masked(q_values, tensor, mask_tensor, epsilon), q_values
+            return self._select_with_dqn_masked(
+                q_values, tensor, mask_tensor, epsilon), q_values
         else:
-            return self._select_with_policy_masked(tensor, mask_tensor), q_values
+            return self._select_with_policy_masked(
+                tensor, mask_tensor), q_values
 
     def _select_with_dqn_masked(
             self,

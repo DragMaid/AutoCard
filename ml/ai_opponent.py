@@ -42,16 +42,14 @@ class AIOpponent:
         self.device = device
         self.agent_id = agent_id
 
-        self.agent = Agent(
-            state_dim=env.state_dim,
-            num_actions=env.num_actions,
-        )
-        
+        self.agent = Agent(num_actions=env.num_actions, device="cpu")
+
         if checkpoint_path and checkpoint_path.exists():
             load_model(self.agent, path=checkpoint_path)
             logger.info(f"Loaded AI checkpoint from {checkpoint_path}")
         else:
-            logger.warning("No valid checkpoint found for AI; using untrained agent.")
+            logger.warning(
+                "No valid checkpoint found for AI; using untrained agent.")
 
         self.agent.dqn.to(device)
         self.agent.dqn.eval()
@@ -155,8 +153,8 @@ class HumanVsAIManager:
         return True
 
     def execute_turn(
-        self, 
-        delay: float = 0.5, 
+        self,
+        delay: float = 0.5,
         on_step: Optional[Callable] = None,
         on_complete: Optional[Callable] = None
     ) -> None:
@@ -173,7 +171,6 @@ class HumanVsAIManager:
                 break
             if delay > 0:
                 time.sleep(delay)
-        
+
         if on_complete:
             on_complete()
-
