@@ -98,7 +98,22 @@ class LearnerLoop:
         self.current_sl_loss = 0.0
         self.current_sl_grad_norm = 0.0
 
+        self.active_actor_count = 0
         self.mlflow = MLFlowManager(enabled=True, dagshub=True)
+
+    def _status_monitor(self):
+        """Periodically fetches server status to track active actors."""
+        headers = {"X-Password": self.password}
+        while not self._stop_event.is_set():
+            try:
+                response = requests.get(
+                    f"{self.server_url}/status", headers=headers, timeout=5)
+                if response.status_code == 200:
+                    status = response.json()
+                    self.active_actor_count = status.get("actor_count", 0)
+            except Exception as e:
+                logger.error(f"Status monitor error: {e}")
+            time.sleep(10)
 
     def _data_receiver(self):
         """WebSocket client to receive data from server constantly with retry logic."""
@@ -145,10 +160,13 @@ class LearnerLoop:
 
     def run(self) -> None:
         """Executes the learner loop."""
-        # Start background data receiver
+        # Start background threads
         receiver_thread = threading.Thread(
             target=self._data_receiver, daemon=True)
+        monitor_thread = threading.Thread(
+            target=self._status_monitor, daemon=True)
         receiver_thread.start()
+        monitor_thread.start()
 
         logger.info("Starting Learner Loop...")
         self.mlflow.start_run()
@@ -162,10 +180,20 @@ class LearnerLoop:
         })
         step = 1
         frame_idx = 1
+        waiting_shown = False 
 
         try:
             while not self._stop_event.is_set():
                 frame_idx += 1
+
+                if self.active_actor_count == 0:
+                    if not waiting_shown:
+                        logger.info("Waiting for active actors...")
+                        waiting_shown = True
+                    time.sleep(1)
+                    continue
+
+                waiting_shown = False
                 self.insert_transition()
 
                 if len(self.agent.replay_buffer) >= ml_config.SAMPLE_THRESHOLD:

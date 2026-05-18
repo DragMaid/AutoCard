@@ -40,6 +40,9 @@ def verify_password(x_password: str = Header(..., alias="X-Password")):
     return True
 
 
+ACTOR_TTL = 10  # seconds
+
+
 class RLServerState:
     def __init__(self):
         self._lock = threading.Lock()
@@ -53,6 +56,8 @@ class RLServerState:
             self.weights_version = 0
             self.learner_connected = False
             self.actor_counter = 0
+            # actor_id -> last_seen_time
+            self.active_actors: Dict[int, float] = {}
             self.metrics = {
                 "frame": 0,
                 "loss": 0.0,
@@ -73,7 +78,20 @@ class RLServerState:
         with self._lock:
             actor_id = self.actor_counter
             self.actor_counter += 1
+            self.active_actors[actor_id] = time.time()
             return actor_id
+
+    def update_actor_presence(self, actor_id: int):
+        with self._lock:
+            self.active_actors[actor_id] = time.time()
+
+    def _prune_actors(self):
+        now = time.time()
+        expired = [aid for aid, last_seen in self.active_actors.items()
+                   if now - last_seen > ACTOR_TTL]
+        for aid in expired:
+            del self.active_actors[aid]
+            logger.info(f"Actor {aid} timed out and was removed.")
 
     def record_request(self):
         with self._lock:
@@ -128,6 +146,7 @@ class RLServerState:
 
     def status(self) -> Dict[str, Any]:
         with self._lock:
+            self._prune_actors()
             now = time.time()
             # Calculate RPS over last 10 seconds
             recent_requests = [t for t in self.request_times if now - t <= 10]
@@ -140,7 +159,7 @@ class RLServerState:
                 "rl_queue_size": self.rl_queue.qsize(),
                 "sl_queue_size": self.sl_queue.qsize(),
                 "learner_connected": self.learner_connected,
-                "actor_count": self.actor_counter,
+                "actor_count": len(self.active_actors),
                 "weights_version": self.weights_version,
                 "rps": rps,
                 "avg_packet_size": avg_packet_size,
@@ -249,9 +268,12 @@ async def dashboard():
 async def emit_data(
     rl_batch: Optional[UploadFile] = File(None),
     sl_transitions: Optional[UploadFile] = File(None),
+    x_actor_id: Optional[int] = Header(None, alias="X-Actor-ID"),
     _: bool = Depends(verify_password),
 ):
     state.record_request()
+    if x_actor_id is not None:
+        state.update_actor_presence(x_actor_id)
     if rl_batch:
         await service.ingest_rl_batch(rl_batch)
 
