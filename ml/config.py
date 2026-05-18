@@ -18,6 +18,7 @@ class Config:
     # Action Space
     NUM_ACTIONS: int = 461
 
+    # TODO: reconsider a better duration for 3 hours of training
     # Training duration
     MAX_FRAMES: int = 1_000_000
     # NOTE: the higher this is, the more it stutters
@@ -39,8 +40,8 @@ class Config:
     EPS_DECAY: int = 75_000
 
     # Update frequency
-    TRAIN_INTERVAL: int = 10
-    UPDATE_TARGET_INTERVAL: int = 2000
+    TRAIN_INTERVAL: int = 4
+    UPDATE_TARGET_INTERVAL: int = 4000
 
     # Self-play / best response
     ETA: float = 0.1
@@ -57,7 +58,6 @@ class Config:
     # Distributed client
     QUEUE_SIZE: int = 16
     EMIT_DATA_INTERVAL: int = 50
-    UPDATE_PARAM_INTERVAL: int = 400
     PUSH_PARAM_INTERVAL: int = 400
     EMIT_METRICS_INTERVAL: int = 50
     SAMPLE_THRESHOLD: int = 10_000

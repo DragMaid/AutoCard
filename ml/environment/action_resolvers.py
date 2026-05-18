@@ -222,7 +222,7 @@ class CombineResolver(LegalActionResolver):
                         s1 = env.get_card_slot_idx(player.id, m1)
                         s2 = env.get_card_slot_idx(player.id, m2)
                         # TODO: handle this later, no 5 stars yet
-                        if m1.star > 4:
+                        if m1.star >= 4:
                             continue
                         aid1 = ActionCodec.encode(
                             "combine", slot_1=s1, slot_2=s2)

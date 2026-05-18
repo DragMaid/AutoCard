@@ -1,3 +1,4 @@
+import sys
 import logging
 from pathlib import Path
 from typing import Optional
@@ -38,7 +39,23 @@ class DictFormatter(logging.Formatter):
         return base
 
 
-def setup_logging(file: Optional[str] = None, level=logging.INFO) -> None:
+def enable_console(name: str, level=logging.INFO):
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+    logger.propagate = False
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(console_handler)
+    return logger
+
+
+def setup_logging(file: Optional[str] = None, level=logging.INFO, console: bool = True) -> None:
     """Configures logging for the application.
 
     Args:
@@ -56,11 +73,11 @@ def setup_logging(file: Optional[str] = None, level=logging.INFO) -> None:
     root.setLevel(level)
 
     # Console output
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    console.setFormatter(formatter)
-
-    logging.captureWarnings(True)
+    if console:
+        console = logging.StreamHandler()
+        console.setLevel(level)
+        console.setFormatter(formatter)
+        root.addHandler(console)
 
     # File output
     if file is not None:
@@ -70,7 +87,7 @@ def setup_logging(file: Optional[str] = None, level=logging.INFO) -> None:
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
-    root.addHandler(console)
+    logging.captureWarnings(True)
 
 
 setup_logging(file=None, level=logging.INFO)

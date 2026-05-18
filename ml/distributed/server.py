@@ -32,7 +32,10 @@ class StatusResponse(BaseModel):
     rps: float
     avg_packet_size: float
     latest_weights_size: int
-    total_data_received: int
+    total_ingress: int
+    total_egress: int
+    ingress_rate: float
+    egress_rate: float
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
@@ -67,10 +70,13 @@ class RLServerState:
             }
             # Performance metrics
             self.request_times = deque(maxlen=1000)
+            self.ingress_history = deque(maxlen=1000)  # (time, size)
+            self.egress_history = deque(maxlen=1000)   # (time, size)
             self.total_packet_size = 0
             self.packet_count = 0
             self.latest_weights_size = 0
-            self.total_data_received = 0
+            self.total_ingress = 0
+            self.total_egress = 0
             logger.info("Server state reset.")
 
     def register_actor(self) -> int:
@@ -96,11 +102,19 @@ class RLServerState:
         with self._lock:
             self.request_times.append(time.time())
 
-    def record_packet(self, size: int):
+    def record_ingress(self, size: int):
         with self._lock:
+            now = time.time()
+            self.ingress_history.append((now, size))
             self.total_packet_size += size
             self.packet_count += 1
-            self.total_data_received += size
+            self.total_ingress += size
+
+    def record_egress(self, size: int):
+        with self._lock:
+            now = time.time()
+            self.egress_history.append((now, size))
+            self.total_egress += size
 
     def push_rl(self, item: Any) -> None:
         if self.rl_queue.full():
@@ -128,7 +142,8 @@ class RLServerState:
         with self._lock:
             self._latest_params = data
             self.latest_weights_size = len(data)
-            self.total_data_received += len(data)
+            self.total_ingress += len(data)
+            self.ingress_history.append((time.time(), len(data)))
             self.weights_version += 1
 
     def get_params(self) -> Optional[bytes]:
@@ -153,6 +168,15 @@ class RLServerState:
             recent_requests = [t for t in self.request_times if now - t <= 10]
             rps = len(recent_requests) / 10.0 if recent_requests else 0.0
 
+            # Calculate rates over last 10 seconds
+            recent_ingress = sum(
+                s for t, s in self.ingress_history if now - t <= 10)
+            ingress_rate = recent_ingress / 10.0
+
+            recent_egress = sum(
+                s for t, s in self.egress_history if now - t <= 10)
+            egress_rate = recent_egress / 10.0
+
             avg_packet_size = self.total_packet_size / \
                 self.packet_count if self.packet_count > 0 else 0
 
@@ -165,7 +189,10 @@ class RLServerState:
                 "rps": rps,
                 "avg_packet_size": avg_packet_size,
                 "latest_weights_size": self.latest_weights_size,
-                "total_data_received": self.total_data_received
+                "total_ingress": self.total_ingress,
+                "total_egress": self.total_egress,
+                "ingress_rate": ingress_rate,
+                "egress_rate": egress_rate
             }
 
 
@@ -176,7 +203,7 @@ class RLService:
     async def ingest_rl_batch(self, file: UploadFile):
         try:
             raw = await file.read()
-            self.state.record_packet(len(raw))
+            self.state.record_ingress(len(raw))
             data = pickle.loads(raw)
             self.state.push_rl(data)
             logger.debug(f"Ingested RL batch. Queue size: {
@@ -187,7 +214,7 @@ class RLService:
     async def ingest_sl_transitions(self, file: UploadFile):
         try:
             raw = await file.read()
-            self.state.record_packet(len(raw))
+            self.state.record_ingress(len(raw))
             data = pickle.loads(raw)
             self.state.push_sl(data)
             logger.debug(f"Ingested SL transitions. Queue size: {
@@ -228,6 +255,7 @@ service = RLService(state)
 async def dashboard():
     s = state.status()
     m = state.metrics
+    total_traffic = s['total_ingress'] + s['total_egress']
     return f"""
     <html>
         <head>
@@ -238,30 +266,49 @@ async def dashboard():
                 h3 {{ margin: 10px 0; }}
                 .green {{ color: #0f0; }}
                 .red {{ color: #f00; }}
+                .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
+                .card {{ border: 1px solid #444; padding: 15px; border-radius: 5px; background: #222; }}
+                hr {{ border: 0; border-top: 1px solid #444; margin: 20px 0; }}
             </style>
         </head>
         <body>
             <h1>RL Distributed Hub</h1>
-            <h3>Learner Connected: <span class="{"green" if s['learner_connected'] else "red"}">{s['learner_connected']}</span></h3>
-            <h3>Active Actors: {s['actor_count']}</h3>
-            <h3>Weights Version: {s['weights_version']}</h3>
-            <h3>Latest Weights Size: {s['latest_weights_size'] / 1024 / 1024:.2f} MB</h3>
-            <h3>Total Data Received: {s['total_data_received'] / 1024 / 1024:.2f} MB</h3>
+            <div class="metrics-grid">
+                <div class="card">
+                    <h2>Status</h2>
+                    <h3>Learner Connected: <span class="{"green" if s['learner_connected'] else "red"}">{s['learner_connected']}</span></h3>
+                    <h3>Active Actors: {s['actor_count']}</h3>
+                    <h3>Weights Version: {s['weights_version']}</h3>
+                    <h3>Latest Weights Size: {s['latest_weights_size'] / 1024 / 1024:.2f} MB</h3>
+                </div>
+                <div class="card">
+                    <h2>Bandwidth Usage</h2>
+                    <h3 class="green">Ingress Rate: {s['ingress_rate'] / 1024:.2f} KB/s</h3>
+                    <h3 class="red">Egress Rate: {s['egress_rate'] / 1024:.2f} KB/s</h3>
+                    <hr>
+                    <h3>Total Ingress: {s['total_ingress'] / 1024 / 1024:.2f} MB</h3>
+                    <h3>Total Egress: {s['total_egress'] / 1024 / 1024:.2f} MB</h3>
+                    <h3 style="color: #0af;">Total Traffic: {total_traffic / 1024 / 1024:.2f} MB</h3>
+                </div>
+            </div>
             <hr>
-            <h3>--- Performance Metrics ---</h3>
-            <h3>Requests Per Second: {s['rps']:.2f}</h3>
-            <h3>Avg Packet Size: {s['avg_packet_size'] / 1024:.2f} KB</h3>
-            <hr>
-            <h3>--- Training Metrics ---</h3>
-            <h3>Iteration: {m['frame']}</h3>
-            <h3>RL Loss: {m['loss']:.6f} (norm: {m['grad_norm']:.4f})</h3>
-            <h3>SL Loss: {m['sl_loss']:.6f} (norm: {m['sl_grad_norm']:.4f})</h3>
-            <h3>Replay Buffer: {m['replay_buffer_size']}</h3>
-            <h3>Reservoir: {m['reservoir_size']}</h3>
-            <hr>
-            <h3>--- Queue Stats ---</h3>
-            <h3>RL Batch Queue: {s['rl_queue_size']}</h3>
-            <h3>SL Transition Queue: {s['sl_queue_size']}</h3>
+            <div class="metrics-grid">
+                <div class="card">
+                    <h2>Performance</h2>
+                    <h3>Requests Per Second: {s['rps']:.2f}</h3>
+                    <h3>Avg Packet Size: {s['avg_packet_size'] / 1024:.2f} KB</h3>
+                    <h3>RL Batch Queue: {s['rl_queue_size']}</h3>
+                    <h3>SL Transition Queue: {s['sl_queue_size']}</h3>
+                </div>
+                <div class="card">
+                    <h2>Training Metrics</h2>
+                    <h3>Iteration: {m['frame']}</h3>
+                    <h3>RL Loss: {m['loss']:.6f} (norm: {m['grad_norm']:.4f})</h3>
+                    <h3>SL Loss: {m['sl_loss']:.6f} (norm: {m['sl_grad_norm']:.4f})</h3>
+                    <h3>Replay Buffer: {m['replay_buffer_size']}</h3>
+                    <h3>Reservoir: {m['reservoir_size']}</h3>
+                </div>
+            </div>
         </body>
     </html>
     """
@@ -288,7 +335,9 @@ async def emit_data(
         "X-Weights-Version": str(state.weights_version)
     }
 
-    return Response(content=pickle.dumps({"status": "received"}), headers=headers)
+    resp_data = pickle.dumps({"status": "received"})
+    state.record_egress(len(resp_data))
+    return Response(content=resp_data, headers=headers)
 
 
 @app.get("/weights_info")
@@ -303,6 +352,7 @@ async def fetch_params(_: bool = Depends(verify_password)):
         raise HTTPException(status_code=404, detail="No parameters available")
 
     logger.debug("Sending model parameters to requester.")
+    state.record_egress(len(params))
     return Response(
         content=params,
         media_type="application/octet-stream",
@@ -362,6 +412,7 @@ async def learner_stream(websocket: WebSocket):
             data = service.fetch_training_data()
             if data:
                 logger.debug("Streaming data to learner via WebSocket.")
+                state.record_egress(len(data))
                 await websocket.send_bytes(data)
             else:
                 await asyncio.sleep(0.1)

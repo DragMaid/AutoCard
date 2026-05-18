@@ -5,6 +5,8 @@ import pickle
 import queue
 import requests
 import threading
+import concurrent.futures
+from tqdm import tqdm
 from typing import Any
 from core.data.player import Player
 from core.logger import setup_logging
@@ -74,6 +76,9 @@ class ActorLoop(TrainingLoop):
         # Retry settings
         self.retry_base_delay = 1.0
         self.retry_max_delay = 60.0
+
+        # Non-blocking emitter
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     def _register_with_server(self):
         """Registers with the server to get a unique actor_id with exponential backoff."""
@@ -209,7 +214,7 @@ class ActorLoop(TrainingLoop):
         logger.info(
             f"Actor {self.actor_id}: Environment reset. Starting frames.")
 
-        for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
+        for frame_idx in tqdm(range(1, ml_config.MAX_FRAMES + 1)):
             if self._stop_event.is_set():
                 break
 
@@ -223,23 +228,14 @@ class ActorLoop(TrainingLoop):
                 epsilon=epsilon
             )
 
+            # Non-blocking data emission pipeline
+            self._push_data(force_flush=done)
+
             if done or self._episode_too_long():
-                logger.info(
+                logger.debug(
                     f"Actor {self.actor_id}: Episode ended at frame {frame_idx}")
                 self.episode_manager.finalize_episode()
                 self.env.reset()
-
-            # Emit RL data (DQN)
-            if len(self.rl_batch_storage) >= ml_config.BATCH_SIZE:
-                batch, prios = self.rl_batch_storage.make_batch()
-                self.rl_batch_storage.reset()
-                self._emit_state_transition(rl_data=(batch, prios))
-
-            # Emit SL data (Average Policy)
-            if len(self.sl_transitions) >= ml_config.BATCH_SIZE:
-                sl_data = list(self.sl_transitions)
-                self.sl_transitions.clear()
-                self._emit_state_transition(sl_data=sl_data)
 
             # Check for local param updates
             try:
@@ -277,6 +273,33 @@ class ActorLoop(TrainingLoop):
         self.episode_manager.add_reward(player_idx, reward)
         return next_state, done
 
+    def _push_data(self, force_flush: bool = False):
+        """Checks thresholds and submits data for emission on a background thread."""
+        rl_data = None
+        sl_data = None
+
+        # Thread-safe data extraction from storages
+        if force_flush or len(self.rl_batch_storage) >= ml_config.BATCH_SIZE:
+            if len(self.rl_batch_storage) > 0:
+                rl_data = self.rl_batch_storage.make_batch()
+                self.rl_batch_storage.reset()
+
+        if force_flush or len(self.sl_transitions) >= ml_config.BATCH_SIZE:
+            if len(self.sl_transitions) > 0:
+                sl_data = list(self.sl_transitions)
+                self.sl_transitions.clear()
+
+        if rl_data is not None or sl_data is not None:
+            self.executor.submit(self._background_emit, rl_data, sl_data)
+
+    def _background_emit(self, rl_data: Any = None, sl_data: Any = None):
+        """Worker function for background thread to catch and log errors."""
+        try:
+            self._emit_state_transition(rl_data=rl_data, sl_data=sl_data)
+        except Exception as e:
+            logger.error(
+                f"Actor {self.actor_id}: Background emission error: {e}")
+
     def _emit_state_transition(self, sl_data=None, rl_data=None):
         """Sends data with connection error tolerance."""
         if self._stop_event.is_set():
@@ -311,7 +334,7 @@ class ActorLoop(TrainingLoop):
 
                 server_v = int(response.headers.get("X-Weights-Version", 0))
                 if server_v > self.current_weights_version:
-                    logger.debug(f"Actor {self.actor_id}: Noticed new weights v{
+                    logger.info(f"Actor {self.actor_id}: Noticed new weights v{
                                  server_v} via emit.")
             else:
                 logger.warning(f"Actor {self.actor_id}: Emission failed ({
@@ -343,11 +366,13 @@ if __name__ == "__main__":
     if args.debug:
         import os
         from datetime import datetime
+        from core.logger import enable_console
         pid = os.getpid()
         timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
         filename = f"actor_{timestamp}_{pid}.log"
         filepath = ml_config.LOG_FOLDER / "actors" / filename
-        setup_logging(file=filepath, level=logging.DEBUG)
+        setup_logging(file=filepath, level=logging.DEBUG, console=False)
+        logger = enable_console(__name__)
 
     def create_env():
         p1 = Player(player_index=0, name="p1")

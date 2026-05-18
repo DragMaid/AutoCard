@@ -175,7 +175,7 @@ class LearnerLoop:
             "alpha": ml_config.ALPHA,
             "beta": ml_config.BETA,
             "multi_step": ml_config.MULTI_STEP,
-            "update_target_freq": ml_config.UPDATE_PARAM_INTERVAL
+            "update_target_freq": ml_config.UPDATE_TARGET_INTERVAL
         })
         step = 1
         frame_idx = 1
@@ -230,7 +230,7 @@ class LearnerLoop:
                     }
                     self._push_weights(state_dict)
 
-                if frame_idx % ml_config.METRICS_INTERVAL == 0:
+                if frame_idx % ml_config.EMIT_METRICS_INTERVAL == 0:
                     metrics = {
                         "frame": frame_idx,
                         "loss": self.current_loss,
