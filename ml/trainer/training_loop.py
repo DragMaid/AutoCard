@@ -52,7 +52,7 @@ class TrainingLoop:
             "alpha": ml_config.ALPHA,
             "beta": ml_config.BETA,
             "multi_step": ml_config.MULTI_STEP,
-            "update_target_freq": ml_config.UPDATE_TARGET_FREQ
+            "update_target_freq": ml_config.UPDATE_TARGET_INTERVAL
         })
 
         for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
@@ -65,7 +65,7 @@ class TrainingLoop:
                 epsilon=epsilon
             )
 
-            if frame_idx % ml_config.TRAIN_FREQ == 0:
+            if frame_idx % ml_config.TRAIN_INTERVAL == 0:
                 if self.agent.can_update_rl():
                     loss, grad_norm = self.agent.update_rl_network()
                     self.mlflow.log_metrics({
@@ -82,7 +82,7 @@ class TrainingLoop:
                         "sl_buffer_size": len(self.agent.reservoir)
                     })
 
-            if frame_idx % ml_config.UPDATE_TARGET_FREQ == 0:
+            if frame_idx % ml_config.UPDATE_TARGET_INTERVAL == 0:
                 self.agent.update_target_network()
 
             if done or self._episode_too_long():

@@ -17,7 +17,6 @@ import time
 import logging
 from core.logger import setup_logging
 
-setup_logging(file="train.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -87,9 +86,9 @@ class LearnerLoop:
         self.ws_url = server_url.replace("http", "ws") + "/learner_stream"
         self.password = password
 
-        self.rl_batch_queue = Queue(maxsize=100)
-        self.sl_transition_queue = Queue(maxsize=100)
-        self.prios_queue = Queue(maxsize=100)
+        self.rl_batch_queue = Queue(maxsize=ml_config.QUEUE_SIZE)
+        self.sl_transition_queue = Queue(maxsize=ml_config.QUEUE_SIZE)
+        self.prios_queue = Queue(maxsize=ml_config.QUEUE_SIZE)
 
         self._stop_event = threading.Event()
 
@@ -113,7 +112,7 @@ class LearnerLoop:
                     self.active_actor_count = status.get("actor_count", 0)
             except Exception as e:
                 logger.error(f"Status monitor error: {e}")
-            time.sleep(10)
+            time.sleep(3)
 
     def _data_receiver(self):
         """WebSocket client to receive data from server constantly with retry logic."""
@@ -176,11 +175,11 @@ class LearnerLoop:
             "alpha": ml_config.ALPHA,
             "beta": ml_config.BETA,
             "multi_step": ml_config.MULTI_STEP,
-            "update_target_freq": ml_config.UPDATE_TARGET_FREQ
+            "update_target_freq": ml_config.UPDATE_PARAM_INTERVAL
         })
         step = 1
         frame_idx = 1
-        waiting_shown = False 
+        waiting_shown = False
 
         try:
             while not self._stop_event.is_set():
@@ -210,12 +209,12 @@ class LearnerLoop:
                     self.agent.replay_buffer.update_priorities(
                         idxes, new_prios)
 
-                if len(self.agent.reservoir) >= ml_config.BATCH_SIZE:
+                if len(self.agent.reservoir) >= ml_config.SAMPLE_THRESHOLD * ml_config.ETA:
                     sl_loss, sl_grad_norm = self.agent.update_sl_network()
                     self.current_sl_loss = sl_loss.item()
                     self.current_sl_grad_norm = sl_grad_norm
 
-                if step % ml_config.UPDATE_TARGET_FREQ == 0:
+                if step % ml_config.UPDATE_TARGET_INTERVAL == 0:
                     self.agent.update_target_network()
                     logger.info(f"Target network updated at step {step}")
 
@@ -223,7 +222,7 @@ class LearnerLoop:
                     path = self.save_checkpoint(step)
                     self.mlflow.log_artifact(path)
 
-                if step % ml_config.PUSH_INTERVAL == 0:
+                if step % ml_config.PUSH_PARAM_INTERVAL == 0:
                     state_dict = {
                         'dqn': self.agent.dqn.state_dict(),
                         'policy': self.agent.policy.state_dict(),
@@ -319,10 +318,20 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument("--device", type=str, required=True)
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
+
+    if args.debug:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+        filename = f"learner_{timestamp}.log"
+        filepath = ml_config.LOG_FOLDER / "learner" / filename
+        setup_logging(file=filepath, level=logging.INFO)
+
     learner = LearnerLoop(
         device=args.device,
         server_url=ml_config.SERVER_URL,
         password=ml_config.AUTH_CODE
     )
+
     learner.run()

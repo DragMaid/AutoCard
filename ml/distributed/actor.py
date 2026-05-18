@@ -1,9 +1,9 @@
+import signal
 import random
 import logging
 import pickle
 import queue
 import requests
-import time
 import threading
 from typing import Any
 from core.data.player import Player
@@ -17,7 +17,6 @@ from ml.models.dueling_dqn import DuelingDQN
 from ml.utils import epsilon_scheduler
 from ml.config import Config as ml_config
 
-setup_logging(file=None, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +54,7 @@ class ActorLoop(TrainingLoop):
         self.actor_id = None
         self.env = None
         self.current_weights_version = 0
+        self.learner_was_connected = False
 
         # RL storage (with priorities)
         self.rl_batch_storage = BatchStorage(
@@ -96,7 +96,7 @@ class ActorLoop(TrainingLoop):
             except Exception as e:
                 logger.error(f"Registration error: {e}. Retrying...")
 
-            time.sleep(delay + random.uniform(0, 1))
+            self._stop_event.wait(delay + random.uniform(0, 1))
             delay = min(delay * 2, self.retry_max_delay)
 
     def _seed_env(self):
@@ -114,27 +114,35 @@ class ActorLoop(TrainingLoop):
 
     def _wait_for_learner(self):
         """Waits until the server reports that a learner is connected with backoff."""
-        logger.info(
-            f"Actor {self.actor_id}: Waiting for learner to connect...")
+        if not self.learner_was_connected:
+            logger.info(
+                f"Actor {self.actor_id}: Waiting for learner to connect...")
+
         headers = {"X-Password": self.password}
         delay = self.retry_base_delay
 
         while not self._stop_event.is_set():
             try:
                 response = requests.get(
-                    f"{self.server_url}/status", headers=headers, timeout=5)
+                    f"{self.server_url}/status", headers=headers, timeout=2)
+
                 if response.status_code == 200:
                     status = response.json()
                     if status.get("learner_connected"):
-                        logger.info(
-                            f"Actor {self.actor_id}: Learner detected.")
+                        if not self.learner_was_connected:
+                            logger.info(
+                                f"Actor {self.actor_id}: Learner detected.")
+                        self.learner_was_connected = True
                         break
-                delay = self.retry_base_delay  # Reset on successful status check
+                delay = self.retry_base_delay
             except Exception as e:
                 logger.error(f"Actor {self.actor_id}: Status check error: {e}")
                 delay = min(delay * 2, self.retry_max_delay)
 
-            time.sleep(delay + random.uniform(0, 1))
+            if self._stop_event.is_set():
+                break
+
+            self._stop_event.wait(delay + random.uniform(0, 1))
 
     def _weight_puller(self):
         """Periodically pulls weights from the server with version checking."""
@@ -174,16 +182,19 @@ class ActorLoop(TrainingLoop):
                             logger.info(f"Actor {self.actor_id}: Updated to weights v{
                                         self.current_weights_version}")
 
-                time.sleep(15)  # Success delay
+                self._stop_event.wait(15)  # Success delay
 
             except Exception as e:
                 logger.error(
                     f"Actor {self.actor_id}: Weight puller error: {e}")
-                time.sleep(30)
+                self._stop_event.wait(30)
 
     def run(self) -> None:
         """Executes the actor loop."""
         self._register_with_server()
+        if self._stop_event.is_set():
+            return
+
         self._seed_env()
         self._wait_for_learner()
 
@@ -200,8 +211,6 @@ class ActorLoop(TrainingLoop):
 
         for frame_idx in range(1, ml_config.MAX_FRAMES + 1):
             if self._stop_event.is_set():
-                logger.info(
-                    f"Actor {self.actor_id}: Stop event detected. Terminating.")
                 break
 
             epsilon = self.epsilon_scheduler(frame_idx)
@@ -222,15 +231,12 @@ class ActorLoop(TrainingLoop):
 
             # Emit RL data (DQN)
             if len(self.rl_batch_storage) >= ml_config.BATCH_SIZE:
-                logger.info(f"Actor {self.actor_id}: Emitting RL batch.")
                 batch, prios = self.rl_batch_storage.make_batch()
                 self.rl_batch_storage.reset()
                 self._emit_state_transition(rl_data=(batch, prios))
 
             # Emit SL data (Average Policy)
             if len(self.sl_transitions) >= ml_config.BATCH_SIZE:
-                logger.info(
-                    f"Actor {self.actor_id}: Emitting SL transitions.")
                 sl_data = list(self.sl_transitions)
                 self.sl_transitions.clear()
                 self._emit_state_transition(sl_data=sl_data)
@@ -243,6 +249,8 @@ class ActorLoop(TrainingLoop):
                     f"Actor {self.actor_id}: Network updated from queue.")
             except queue.Empty:
                 pass
+
+        logger.info(f"Actor {self.actor_id}: Loop finished cleanly.")
 
     def _execute_step(self, player: Player, state: Any, epsilon: float) -> tuple[Any, bool]:
         """Executes a single step, collecting transition data for RL and SL."""
@@ -271,6 +279,9 @@ class ActorLoop(TrainingLoop):
 
     def _emit_state_transition(self, sl_data=None, rl_data=None):
         """Sends data with connection error tolerance."""
+        if self._stop_event.is_set():
+            return
+
         files = {}
         if rl_data is not None:
             files["rl_batch"] = ("rl.pkl", pickle.dumps(rl_data))
@@ -284,35 +295,33 @@ class ActorLoop(TrainingLoop):
 
         try:
             response = requests.post(
-                f"{self.server_url}/emit_data", files=files, headers=headers, timeout=15)
+                f"{self.server_url}/emit_data", files=files, headers=headers, timeout=5)
 
             if response.status_code == 200:
                 learner_connected = response.headers.get(
                     "X-Learner-Connected") == "True"
                 if not learner_connected:
-                    logger.warning(
-                        f"Actor {self.actor_id}: Learner disconnected. Waiting for reconnection...")
+                    if self.learner_was_connected:
+                        logger.warning(
+                            f"Actor {self.actor_id}: Learner disconnected. Waiting for reconnection...")
+                    self.learner_was_connected = False
                     self._wait_for_learner()
+                else:
+                    self.learner_was_connected = True
 
-                # Update version tracker
                 server_v = int(response.headers.get("X-Weights-Version", 0))
                 if server_v > self.current_weights_version:
                     logger.debug(f"Actor {self.actor_id}: Noticed new weights v{
                                  server_v} via emit.")
-
-                if response.headers.get('Content-Type') == 'application/octet-stream':
-                    new_params = pickle.loads(response.content)
-                    self.agent.load_state_dict(new_params)
-                    self.current_weights_version = server_v
-                    logger.info(
-                        f"Actor {self.actor_id}: Params updated from emit response (v{server_v}).")
             else:
-                logger.warning(
-                    f"Actor {self.actor_id}: Emission failed ({response.status_code}). Waiting...")
+                logger.warning(f"Actor {self.actor_id}: Emission failed ({
+                               response.status_code}). Waiting...")
+                self.learner_was_connected = False
                 self._wait_for_learner()
         except Exception as e:
             logger.error(f"Actor {self.actor_id}: Failed to emit: {
                          e}. Waiting for reconnection...")
+            self.learner_was_connected = False
             self._wait_for_learner()
 
     def _episode_too_long(self) -> bool:
@@ -327,13 +336,18 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--file", type=str, default=None)
     parser.add_argument("--device", type=str, default="cpu")
 
     args = parser.parse_args()
 
     if args.debug:
-        setup_logging(file=args.file, level=logging.DEBUG)
+        import os
+        from datetime import datetime
+        pid = os.getpid()
+        timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+        filename = f"actor_{timestamp}_{pid}.log"
+        filepath = ml_config.LOG_FOLDER / "actors" / filename
+        setup_logging(file=filepath, level=logging.DEBUG)
 
     def create_env():
         p1 = Player(player_index=0, name="p1")
@@ -347,4 +361,12 @@ if __name__ == "__main__":
         password=ml_config.AUTH_CODE,
         device=args.device
     )
+
+    def handle_sigint(signum, frame):
+        logger.info("Ctrl+C detected! Gracefully shutting down tasks...")
+        actor._stop_event.set()
+
+    # Make sure the actors don't nuke my computer
+    signal.signal(signal.SIGINT, handle_sigint)
+    signal.signal(signal.SIGTERM, handle_sigint)
     actor.run()

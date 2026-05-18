@@ -41,8 +41,10 @@ class Agent:
         # Buffers and optimizers
         self.replay_buffer = ReplayBuffer(ml_config.BUFFER_SIZE)
         self.reservoir = ReservoirBuffer(ml_config.BUFFER_SIZE)
-        self.rl_optimizer = optim.Adam(self.dqn.parameters(), lr=1e-4)
-        self.sl_optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
+        self.rl_optimizer = optim.Adam(
+            self.dqn.parameters(), lr=ml_config.LR)
+        self.sl_optimizer = optim.Adam(
+            self.policy.parameters(), lr=ml_config.LR)
 
         # Buffer manager for temporary state, reward containment till
         # enough samples are met to be flushed into replay and reservoir

@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 DEFAULT_PASSWORD = Config.AUTH_CODE
-QUEUE_MAXSIZE = Config.QUEUE_MAX_SIZE
+QUEUE_MAXSIZE = Config.SERVER_QUEUE_SIZE
 
 
 class StatusResponse(BaseModel):
@@ -32,15 +32,13 @@ class StatusResponse(BaseModel):
     rps: float
     avg_packet_size: float
     latest_weights_size: int
+    total_data_received: int
 
 
 def verify_password(x_password: str = Header(..., alias="X-Password")):
     if x_password != DEFAULT_PASSWORD:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
-
-
-ACTOR_TTL = 10  # seconds
 
 
 class RLServerState:
@@ -72,6 +70,7 @@ class RLServerState:
             self.total_packet_size = 0
             self.packet_count = 0
             self.latest_weights_size = 0
+            self.total_data_received = 0
             logger.info("Server state reset.")
 
     def register_actor(self) -> int:
@@ -88,7 +87,7 @@ class RLServerState:
     def _prune_actors(self):
         now = time.time()
         expired = [aid for aid, last_seen in self.active_actors.items()
-                   if now - last_seen > ACTOR_TTL]
+                   if now - last_seen > Config.ACTOR_TTL]
         for aid in expired:
             del self.active_actors[aid]
             logger.info(f"Actor {aid} timed out and was removed.")
@@ -101,6 +100,7 @@ class RLServerState:
         with self._lock:
             self.total_packet_size += size
             self.packet_count += 1
+            self.total_data_received += size
 
     def push_rl(self, item: Any) -> None:
         if self.rl_queue.full():
@@ -128,6 +128,7 @@ class RLServerState:
         with self._lock:
             self._latest_params = data
             self.latest_weights_size = len(data)
+            self.total_data_received += len(data)
             self.weights_version += 1
 
     def get_params(self) -> Optional[bytes]:
@@ -163,7 +164,8 @@ class RLServerState:
                 "weights_version": self.weights_version,
                 "rps": rps,
                 "avg_packet_size": avg_packet_size,
-                "latest_weights_size": self.latest_weights_size
+                "latest_weights_size": self.latest_weights_size,
+                "total_data_received": self.total_data_received
             }
 
 
@@ -244,6 +246,7 @@ async def dashboard():
             <h3>Active Actors: {s['actor_count']}</h3>
             <h3>Weights Version: {s['weights_version']}</h3>
             <h3>Latest Weights Size: {s['latest_weights_size'] / 1024 / 1024:.2f} MB</h3>
+            <h3>Total Data Received: {s['total_data_received'] / 1024 / 1024:.2f} MB</h3>
             <hr>
             <h3>--- Performance Metrics ---</h3>
             <h3>Requests Per Second: {s['rps']:.2f}</h3>
@@ -280,17 +283,10 @@ async def emit_data(
     if sl_transitions:
         await service.ingest_sl_transitions(sl_transitions)
 
-    params = service.get_parameters()
-
     headers = {
         "X-Learner-Connected": "True" if state.learner_connected else "False",
         "X-Weights-Version": str(state.weights_version)
     }
-
-    if params:
-        logger.debug(
-            "Sending model parameters to actor in emit_data response.")
-        return Response(content=params, media_type="application/octet-stream", headers=headers)
 
     return Response(content=pickle.dumps({"status": "received"}), headers=headers)
 

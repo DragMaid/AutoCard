@@ -19,10 +19,11 @@ if __name__ == "__main__":
     import logging
     from datetime import datetime
     from core.logger import setup_logging
+    from ml.config import Config
 
     # NOTE: custom logger, need to be above all other modules
     timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
-    file = f"logs/{timestamp}.log"
+    file = Config.LOG_FOLDER / f"main_{timestamp}.log"
     setup_logging(file, logging.INFO)
 
     args = parse_args()

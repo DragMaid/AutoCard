@@ -1,3 +1,5 @@
+# code from ape-x
+# https://github.com/younggyoseo/Ape-X/blob/master/memory.py
 import random
 import numpy as np
 from .segment_tree import MinSegmentTree, SumSegmentTree
