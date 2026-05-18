@@ -41,16 +41,7 @@ class SummonEngine:
         Returns:
             bool: True if successfully summoned, False otherwise.
         """
-        can_summon = self.game_engine.rule_engine.can_summon(
-            player_id, card_id, cell) or not check
-
         card = self.game_engine.game_state.get_card_by_id(card_id)
-        if not card:
-            return False
-
-        if not can_summon:
-            return False
-
         if cell is None:
             cell = random.choice(
                 self.game_engine.game_state.get_empty_slots(player_id))
@@ -60,6 +51,15 @@ class SummonEngine:
                     "reason": "No empty slots available"
                 }, False)
                 return False
+
+        can_summon = self.game_engine.rule_engine.can_summon(
+            player_id, card_id, cell) or not check
+
+        if not card:
+            return False
+
+        if not can_summon:
+            return False
 
         self.game_engine.game_state.player_info[player_id].held_cards.remove(
             card_id)
@@ -80,7 +80,7 @@ class SummonEngine:
         if isinstance(card, MonsterCard):
             details.update({
                 "attack": card.attack,
-                "defened": card.defend,
+                "defend": card.defend,
                 "level": card.star
             })
 

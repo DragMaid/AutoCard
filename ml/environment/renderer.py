@@ -1,5 +1,6 @@
 import pygame
 from typing import Optional, Tuple, List, Any
+from core.config import Config
 from core.gui.render_engine import RenderEngine
 from gui.background.matrix_field import Matrix
 from gui.effects.manager import EffectManager
@@ -15,21 +16,18 @@ class Renderer:
         screen_size: A tuple representing the screen dimensions (width, height).
         engine: The GameEngine instance to render.
         train_mode: Boolean indicating if the environment is in training mode.
-        render_delay: Float representing the render delay.
     """
 
     def __init__(
         self,
         engine: Optional[Any] = None,
-        delay: float = 0.0,
-        screen_size: Tuple[int, int] = (1280, 720),
+        screen_size: Tuple[int, int] = Config.SCREEN_SIZE,
         train_mode: bool = True,
     ) -> None:
         """Initialize the Renderer.
 
         Args:
             engine: The GameEngine instance.
-            delay: Render delay in seconds.
             screen_size: Screen dimensions.
             train_mode: Whether to run in training mode.
         """
@@ -42,7 +40,6 @@ class Renderer:
 
         self.engine = engine
         self.train_mode = train_mode
-        self.render_delay = delay
 
         # Background
         image_path = "assets/background.png"
@@ -106,7 +103,7 @@ class Renderer:
         pygame.display.flip()
         pygame.event.pump()
 
-        self.tick(fps=0 if self.train_mode else 60)
+        self.tick(fps=0 if self.train_mode else Config.FPS)
 
     def tick(self, fps: int = 60) -> None:
         """Advance the clock; should be called once per loop.

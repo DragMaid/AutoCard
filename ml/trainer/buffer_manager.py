@@ -1,5 +1,11 @@
+from __future__ import annotations
+
 from collections import deque
-from typing import Any
+from typing import Any, TYPE_CHECKING
+from ml.config import Config as ml_config
+
+if TYPE_CHECKING:
+    from ml.trainer.agent import Agent
 
 
 class BufferManager:
@@ -7,26 +13,23 @@ class BufferManager:
 
     Attributes:
         agent: The agent instance.
-        cfg: The training configuration object.
         state_deque (deque): Deque of states.
         reward_deque (deque): Deque of rewards.
         action_deque (deque): Deque of actions.
     """
 
-    def __init__(self, agent: Any, config: Any) -> None:
+    def __init__(self, agent: Agent) -> None:
         """Initializes the BufferManager.
 
         Args:
-            agent: The agent instance.
-            config: The training configuration object.
+            agent: The Agent instance.
         """
         self.agent = agent
-        self.cfg = config
 
         # Deques for multi-step accumulation
-        self.state_deque = deque(maxlen=self.cfg.MULTI_STEP)
-        self.reward_deque = deque(maxlen=self.cfg.MULTI_STEP)
-        self.action_deque = deque(maxlen=self.cfg.MULTI_STEP)
+        self.state_deque = deque(maxlen=ml_config.MULTI_STEP)
+        self.reward_deque = deque(maxlen=ml_config.MULTI_STEP)
+        self.action_deque = deque(maxlen=ml_config.MULTI_STEP)
 
     def append_transition(
         self,
@@ -62,7 +65,7 @@ class BufferManager:
         Returns:
             bool: True if ready, False otherwise.
         """
-        return len(self.state_deque) == self.cfg.MULTI_STEP or done
+        return len(self.state_deque) == ml_config.MULTI_STEP or done
 
     def _push_to_replay_buffer(self, next_state: Any, done: bool) -> None:
         """Pushes multi-step transition to replay buffer.
@@ -88,7 +91,7 @@ class BufferManager:
             float: The computed discounted reward.
         """
         return sum(
-            reward * (self.cfg.GAMMA ** i)
+            reward * (ml_config.GAMMA ** i)
             for i, reward in enumerate(self.reward_deque)
         )
 

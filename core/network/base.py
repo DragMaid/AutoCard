@@ -2,7 +2,6 @@ import pygame
 from abc import ABC, abstractmethod
 from typing import Optional
 from ml.environment.environment import GameEnv
-from ml.config import Config
 from core.data.player import Player
 from core.logic.game_engine import GameEngine
 from core.gui.input_manager import InputManager
@@ -11,7 +10,7 @@ from core.gui.render_engine import RenderEngine
 from gui.effects.manager import EffectManager
 from gui.cache import load_image
 from gui.screen.hud import GameHUD, SurrenderOverlay, GameOverOverlay, TrapStageOverlay
-from core.config import config
+from core.config import Config
 
 
 class GameApp(ABC):
@@ -20,7 +19,6 @@ class GameApp(ABC):
 
     Attributes:
         screen: The main game screen.
-        config (Config): Configuration instance.
         clock (pygame.time.Clock): Game clock.
         running (bool): Whether the application is running.
         game_started (bool): Whether the game has started.
@@ -37,7 +35,6 @@ class GameApp(ABC):
         Args:
             screen: The main game screen.
         """
-        self.config: Config = Config()
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running: bool = True
@@ -53,7 +50,7 @@ class GameApp(ABC):
         self._setup_ui()
 
         self.background = pygame.transform.scale(
-            load_image("assets/background.png"), config.SCREEN_SIZE)
+            load_image("assets/background.png"), Config.SCREEN_SIZE)
 
     def _setup_players(self) -> None:
         """Sets up the players for the game."""
@@ -89,15 +86,15 @@ class GameApp(ABC):
             on_surrender=self._on_surrender_requested,
         )
         self.surrender_overlay: SurrenderOverlay = SurrenderOverlay(
-            config.SCREEN_SIZE,
+            Config.SCREEN_SIZE,
             on_confirm=self._on_surrender_confirmed,
             on_cancel=self._on_surrender_cancelled,
         )
         self.game_over_overlay: GameOverOverlay = GameOverOverlay(
-            config.SCREEN_SIZE,
+            Config.SCREEN_SIZE,
             on_continue=self._on_return_to_menu,
         )
-        self.trap_overlay: TrapStageOverlay = TrapStageOverlay(config.SCREEN_SIZE)
+        self.trap_overlay: TrapStageOverlay = TrapStageOverlay(Config.SCREEN_SIZE)
 
     def _on_surrender_requested(self) -> None:
         """Handles surrender request."""

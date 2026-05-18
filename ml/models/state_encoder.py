@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from ml.utils import safe_mask
 from typing import Optional, Tuple
 
 
@@ -160,9 +161,14 @@ class GameStateEncoder(nn.Module):
         batch_size = state.shape[0]
 
         # Split flat state into components
-        # Order in encode_state: [player_feats (8), hand (MAX_HAND * card_dim), board (MAX_BOARD * card_dim)]
+        # Order in encode_state:
+        # [
+        # player_feats (single_player_dim * 2),
+        # hand (MAX_HAND * card_dim),
+        # board (MAX_BOARD * card_dim)
+        # ]
 
-        # Player features (2 players * 4 features each = 8)
+        # Player features (2 players * n features each)
         p_offset = self.player_dim
         player_feats = state[:, :p_offset]
 
@@ -176,19 +182,22 @@ class GameStateEncoder(nn.Module):
         board_cards = state[:, h_offset:b_offset].reshape(
             batch_size, self.max_board_cards, self.card_dim)
 
-        # Create masks based on existence bit (first bit of card encoding)
-        hand_mask = (hand_cards[:, :, 0] == 0)
-        board_mask = (board_cards[:, :, 0] == 0)
+        hand_mask = (hand_cards[:, :, 0] == 1)
+        board_mask = (board_cards[:, :, 0] == 1)
 
-        # Process Hand
+        # Hand
         h_embeds = self.card_encoder(hand_cards)
-        h_sa = self.sa_encoder(h_embeds, mask=hand_mask)
-        h_pooled, _ = self.pooling(h_sa, mask=hand_mask)
 
-        # Process Board
+        hand_mask_safe = safe_mask(hand_mask)
+        h_sa = self.sa_encoder(h_embeds, mask=hand_mask_safe)
+        h_pooled, _ = self.pooling(h_sa, mask=hand_mask_safe)
+
+        # Board
         b_embeds = self.card_encoder(board_cards)
-        b_sa = self.sa_encoder(b_embeds, mask=board_mask)
-        b_pooled, _ = self.pooling(b_sa, mask=board_mask)
+
+        board_mask_safe = safe_mask(board_mask)
+        b_sa = self.sa_encoder(b_embeds, mask=board_mask_safe)
+        b_pooled, _ = self.pooling(b_sa, mask=board_mask_safe)
 
         # Process Player features
         p_embed = self.player_encoder(player_feats)

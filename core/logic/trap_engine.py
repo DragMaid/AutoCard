@@ -204,6 +204,16 @@ class TrapEngine:
             log_action(**log)
             return False
 
+        if position is None:
+            position = random.choice(
+                self.game_engine.game_state.get_empty_slots(trap.owner_id))
+            if position is None:
+                log_action("SET_TRAP", trap.owner_id, {
+                    "card": trap.name,
+                    "reason": "No empty slots available"
+                }, False)
+                return False
+
         can_set = self.game_engine.rule_engine.can_summon(
             trap.owner_id,
             trap_id,

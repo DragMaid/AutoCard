@@ -4,7 +4,7 @@ from typing import Tuple
 from gui.sprites.sprite import Sprite
 from gui.sprites.draggable import Draggable
 from gui.cache import get_font
-from core.config import config
+from core.config import Config
 from gui.cache import load_image
 
 
@@ -36,7 +36,7 @@ class CardGUI(Sprite, Draggable):
 
         self.card_surface = None
 
-        back_path = config.ASSET_DIR / "card-back.png"
+        back_path = Config.ASSET_DIR / "card-back.png"
         self.image_face_down = load_image(back_path)
         self.is_face_down = False
         self.show_text = False

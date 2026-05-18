@@ -6,7 +6,7 @@ from core.cards.spell_card import SpellCard
 from core.factory.base_factory import BaseFactory
 from core.factory.card_registry import CardRegistry
 from core.cards.card import CardType
-from core.config import config
+from core.config import Config
 
 
 class SpellFactory(BaseFactory):
@@ -29,7 +29,7 @@ class SpellFactory(BaseFactory):
                 "Unsupported JSON format for spells (expected list)")
 
         for card_info in data:
-            image_path = str(config.ASSET_DIR / card_info["texture"].lstrip('/'))
+            image_path = str(Config.ASSET_DIR / card_info["texture"].lstrip('/'))
             card_info["_image_path"] = image_path
             self._cards[card_info["name"]] = card_info
 

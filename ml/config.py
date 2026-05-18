@@ -25,13 +25,11 @@ class Config:
         EPS_DECAY: Number of frames for epsilon decay.
         TRAIN_FREQ: Training frequency in frames.
         UPDATE_TARGET_FREQ: Target network update frequency.
-        TAU: Soft update parameter.
         ETA: Epsilon-greedy parameter for self-play.
-        EVALUATION_INTERVAL: Interval for evaluation.
+        SAVE_INTERVAL: Interval for saving weights.
         RENDER: Whether to render the game.
         SEED: Random seed for reproducibility.
         CHECKPOINT_PATH: Path to the model checkpoint.
-        RUNS_PATH: Path to the run logs.
         USER: Database user.
         PASSWORD: Database password.
         DB: Database name.
@@ -45,6 +43,8 @@ class Config:
 
     # Training duration
     MAX_FRAMES: int = 1_000_000
+    # NOTE: the higher this is, the more it stutters
+    # when training via cpu
     BATCH_SIZE: int = 64
     BUFFER_SIZE: int = 200_000
 
@@ -59,24 +59,39 @@ class Config:
     EPS_DECAY: int = 75_000
 
     # Update frequency
-    TRAIN_FREQ: int = 4
+    TRAIN_FREQ: int = 10
     UPDATE_TARGET_FREQ: int = 2000
-    TAU: float = 0.005
 
     # Self-play / best response
     ETA: float = 0.1
+    MAX_NORM: float = 1.0
 
     # Logging & evaluation
-    EVALUATION_INTERVAL: int = 1000
+    SAVE_INTERVAL: int = 5000
     RENDER: bool = False
     SEED: int = 42
+    MAX_ACTIONS_PER_EPISODE: int = 300
+    REWARD_DEBUG: bool = False
+    CHECKPOINT_PATH: Path = Path(BASE_PATH, "saves/checkpoint.pth")
 
-    MAX_ACTIONS_PER_TURN: int = 50
+    # Distributed client
+    EMIT_INTERVAL: int = 50
+    UPDATE_INTERVAL: int = 400
+    PUSH_INTERVAL: int = 400
+    METRICS_INTERVAL: int = 50
+    QUEUE_MAX_SIZE: int = 100
+    SAMPLE_THRESHOLD: int = 10_000
 
-    CHECKPOINT_PATH: Path = Path(BASE_PATH, "ml/saves/checkpoint.pth")
-    RUNS_PATH: Path = Path(BASE_PATH, "mlruns")
+    # Proxy server location
+    SERVER_URL: str = "http://localhost:5000"
+    SERVER_PORT: int = 5000
+    AUTH_CODE: str = "1234"
+
+    BETA: int = 0.4
+    ALPHA: int = 0.6
 
     # Database
+    EXPERIMENT_NAME = "autocard"
     USER: Optional[str] = os.getenv("POSTGRES_USER")
     PASSWORD: Optional[str] = os.getenv("POSTGRES_PASSWORD")
     DB: Optional[str] = os.getenv("POSTGRES_DB")

@@ -6,7 +6,7 @@ from core.cards.monster_card import MonsterCard
 from core.factory.base_factory import BaseFactory
 from core.factory.card_registry import CardRegistry
 from core.cards.card import CardType
-from core.config import config
+from core.config import Config
 
 
 class MonsterFactory(BaseFactory):
@@ -34,7 +34,7 @@ class MonsterFactory(BaseFactory):
                 card_info["monster_type"] = enum_name
                 card_info["star"] = card_info.get("star", 1)
                 image_path = \
-                    str(config.ASSET_DIR / card_info["texture"].lstrip("/"))
+                    str(Config.ASSET_DIR / card_info["texture"].lstrip("/"))
                 card_info["_image_path"] = image_path
                 self._cards[card_info["name"]] = card_info
 

@@ -2,12 +2,15 @@ import logging
 import math
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
 from core.data.player import Player
 from core.cards.card import CardType
 from core.cards.monster_card import CardMode
 from core.utils import get_cards_typed
+from ml.config import Config
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO if Config.REWARD_DEBUG else logging.ERROR)
 
 
 @dataclass
@@ -78,6 +81,366 @@ class RewardConfig:
     min_step_reward: float = -2.0
 
 
+class RewardPolicy(ABC):
+    """Abstract base for composable reward policies."""
+
+    def __init__(self, config: RewardConfig):
+        self.config = config
+
+    @abstractmethod
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate reward component. Returns 0 if policy doesn't apply."""
+        raise NotImplementedError
+
+
+class TrapActivationPolicy(RewardPolicy):
+    """Intelligent trap activation decisions."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """
+        Decide whether trap should be activated based on game state.
+        """
+        trap = context.get("trap")
+        if not trap:
+            return 0.0
+
+        # TODO: bruh I dont even know how to handle this
+        return 0.5
+
+
+class FieldAdvantagePolicy(RewardPolicy):
+    """Maintains board position awareness with temporal smoothing."""
+
+    def __init__(self, config: "RewardConfig"):
+        super().__init__(config)
+        self.prev_advantage = 0.0
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """
+        Calculate normalized field advantage with decay.
+
+        Returns delta advantage (improvement from previous turn).
+        """
+        snapshot = context.get("snapshot", {})
+
+        my_monsters = snapshot.get("my_monsters", [])
+        opp_monsters = snapshot.get("opp_monsters", [])
+
+        # Total stats advantage
+        my_total_stats = sum(
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
+            for m in my_monsters
+        )
+        opp_total_stats = sum(
+            (m.attack if m.mode == CardMode.ATTACK else m.defend)
+            for m in opp_monsters
+        )
+
+        # Trap advantage
+        my_traps = len([t for t in snapshot.get("my_cards", [])
+                       if t.card_type == CardType.TRAP])
+        opp_traps = len([t for t in snapshot.get("opp_cards", [])
+                        if t.card_type == CardType.TRAP])
+        trap_diff = (my_traps - opp_traps) * self.config.trap_advantage
+
+        # Normalize
+        total_power = my_total_stats + opp_total_stats + 1e-6
+        normalized_advantage = (my_total_stats - opp_total_stats) / total_power
+        advantage = normalized_advantage * \
+            self.config.field_advantage_multiplier + trap_diff
+        advantage = max(min(advantage, self.config.field_advantage_cap),
+                        -self.config.field_advantage_cap)
+
+        # Temporal smoothing with decay
+        smoothed_prev = self.prev_advantage * self.config.field_advantage_decay
+        delta_advantage = advantage - smoothed_prev
+        self.prev_advantage = advantage
+
+        return delta_advantage
+
+    def reset(self):
+        """Reset temporal tracking for new episode."""
+        self.prev_advantage = 0.0
+
+
+class BoardControlPolicy(RewardPolicy):
+    """Rewards board presence and control."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Rewards maintaining board advantage."""
+        snapshot = context.get("snapshot", {})
+        my_monster_count = len(snapshot.get("my_monsters", []))
+        opp_monster_count = len(snapshot.get("opp_monsters", []))
+
+        if my_monster_count == 0:
+            return self.config.no_monsters_penalty
+        if my_monster_count > opp_monster_count:
+            return self.config.board_control_bonus
+        return 0.0
+
+
+class DamagePolicy(RewardPolicy):
+    """Handles damage with logarithmic scaling to reduce variance."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate logarithmically-scaled damage reward."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+
+        opp_lp_damage = before.get("opp_lp", 0) - after.get("opp_lp", 0)
+        my_lp_damage = before.get("my_lp", 0) - after.get("my_lp", 0)
+
+        reward = 0.0
+        if opp_lp_damage > 0:
+            reward += math.log(1 + opp_lp_damage) * \
+                self.config.damage_scale_factor
+        if my_lp_damage > 0:
+            reward -= math.log(1 + my_lp_damage) * \
+                self.config.damage_scale_factor
+
+        return reward
+
+
+class StrengthPolicy(RewardPolicy):
+    """Rewards deploying or using strong cards."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Bonus for strong card stats."""
+        card = context.get("card")
+        if not card:
+            return 0.0
+
+        max_stats = context.get("max_stats", 9999)
+
+        attack_bonus = (getattr(card, "attack", 0) / max_stats) * \
+            self.config.strength_scale_factor
+        defend_bonus = (getattr(card, "defend", 0) / max_stats) * \
+            self.config.strength_scale_factor
+
+        return attack_bonus + defend_bonus
+
+
+class SummonPolicy(RewardPolicy):
+    """Reward for deploying monsters and traps."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate summon reward."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+        card = context.get("card")
+        max_stats = context.get("max_stats", 9999)
+
+        reward = 0.0
+
+        # Check if monster was summoned
+        if len(after.get("my_monsters", [])) > len(before.get("my_monsters", [])):
+            reward += self.config.deploy_monster
+
+            # Strength bonus
+            strength_bonus = (card.attack / max_stats) * \
+                self.config.strength_scale_factor
+            reward += strength_bonus
+
+            # High-level bonus
+            if hasattr(card, "star") and card.star >= 2:
+                reward += self.config.high_level_summon_bonus
+
+        # Trap deployment
+        elif len(after.get("my_traps", [])) > len(before.get("my_traps", [])):
+            reward += self.config.deploy_trap
+
+        return reward
+
+
+class AttackPolicy(RewardPolicy):
+    """Reward for attacking with damage and destruction bonuses."""
+
+    def __init__(self, config: "RewardConfig"):
+        super().__init__(config)
+        self.damage_policy = DamagePolicy(config)
+        self.strength_policy = StrengthPolicy(config)
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate attack reward with damage and destruction."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+        max_stats = context.get("max_stats", 9999)
+
+        reward = 0.0
+
+        # Damage component
+        damage_reward = self.damage_policy.calculate(context)
+        reward += damage_reward
+
+        # Monster destruction
+        opp_destroyed = [m for m in before.get("opp_monsters", [])
+                         if m not in after.get("opp_monsters", [])]
+        my_destroyed = [m for m in before.get("my_monsters", [])
+                        if m not in after.get("my_monsters", [])]
+
+        if opp_destroyed:
+            reward += self.config.attack_destroy * len(opp_destroyed)
+            for m in opp_destroyed:
+                strength = (m.attack / max_stats) * \
+                    self.config.strength_scale_factor
+                reward += strength
+
+        if my_destroyed:
+            reward += self.config.monster_destroyed * len(my_destroyed)
+
+        # Direct attack bonus
+        if (len(before.get("opp_monsters", [])) == 0 and
+                len(after.get("opp_monsters", [])) == 0):
+            reward += self.config.direct_attack_bonus
+        elif not opp_destroyed and before.get("opp_lp") == after.get("opp_lp"):
+            reward += self.config.survive_attack
+
+        return reward
+
+
+class SpellPolicy(RewardPolicy):
+    """Reward for casting spells with combo detection."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate spell reward with buffs and combos."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+        reward = 0.0
+
+        # Base spell reward
+        reward += self.config.use_spell
+
+        # Detect spell combos (buffed monsters)
+        try:
+            buffed_count = 0
+            for i, before_mon in enumerate(before.get("my_monsters", [])):
+                if i < len(after.get("my_monsters", [])):
+                    after_mon = after.get("my_monsters", [])[i]
+                    if (getattr(after_mon, "attack", 0) > getattr(before_mon, "attack", 0) or
+                            getattr(after_mon, "defend", 0) > getattr(before_mon, "defend", 0)):
+                        buffed_count += 1
+
+            if buffed_count >= 1:
+                reward += self.config.spell_combo_bonus * buffed_count
+        except (IndexError, AttributeError):
+            pass
+
+        # Trap destruction (only if not already triggered)
+        traps_rewarded = context.get("traps_rewarded", set())
+        before_traps = [c for c in before.get("opp_cards", [])
+                        if c.card_type == CardType.TRAP]
+        after_traps = [c for c in after.get("opp_cards", [])
+                       if c.card_type == CardType.TRAP]
+
+        destroyed_traps = [t for t in before_traps
+                           if t not in after_traps and id(t) not in traps_rewarded]
+
+        if destroyed_traps:
+            reward += self.config.bait_block_bonus * len(destroyed_traps)
+
+        return reward
+
+
+class TogglePolicy(RewardPolicy):
+    """Reward for optimal position toggling."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate toggle reward."""
+        after = context.get("after", {})
+        toggle_idx = context.get("toggle_idx")
+
+        if toggle_idx is None:
+            return 0.0
+
+        monsters = after.get("my_monsters", [])
+        if toggle_idx >= len(monsters):
+            return 0.0
+
+        monster = monsters[toggle_idx]
+        reward = 0.0
+
+        # Optimal positioning
+        if ((monster.mode == CardMode.ATTACK and monster.attack > monster.defend) or
+                (monster.mode == CardMode.DEFEND and monster.defend > monster.attack)):
+            reward += 0.2
+        elif monster.mode == CardMode.DEFEND and monster.attack > monster.defend:
+            reward -= 0.5
+
+        return reward
+
+
+class CombinePolicy(RewardPolicy):
+    """Reward for merging/combining monsters."""
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate merge reward."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+        max_stats = context.get("max_stats", 9999)
+
+        reward = 0.0
+
+        new_monsters = [m for m in after.get("my_monsters", [])
+                        if m not in before.get("my_monsters", [])]
+
+        if new_monsters:
+            new_monster = new_monsters[0]
+            level = getattr(new_monster, "star", 1)
+
+            # Logarithmic merge reward
+            merge_reward = self.config.merge_base * math.log(level + 1)
+            reward += merge_reward
+
+            # Strength bonus for merged monster
+            strength = (new_monster.attack / max_stats) * 0.1
+            reward += strength
+
+        return reward
+
+
+class EndTurnPolicy(RewardPolicy):
+    """Penalties and bonuses for turn management."""
+
+    def __init__(self, config: "RewardConfig"):
+        super().__init__(config)
+        self.turns_skipped = 0
+
+    def calculate(self, context: Dict[str, Any]) -> float:
+        """Calculate end turn penalties/bonuses."""
+        before = context.get("before", {})
+        after = context.get("after", {})
+        has_valid_moves = context.get("has_valid_moves", False)
+
+        reward = 0.0
+
+        # Check if turn was passive
+        is_passive = self._is_passive_turn(before, after)
+
+        if is_passive:
+            self.turns_skipped += 1
+            reward += self.config.skip_turn
+            reward -= 0.05 * self.turns_skipped  # Cumulative penalty
+        else:
+            self.turns_skipped = 0
+
+            # Penalize premature end if moves available
+            if has_valid_moves:
+                reward += self.config.premature_end_penalty
+
+        return reward
+
+    def _is_passive_turn(self, before: Dict, after: Dict) -> bool:
+        """Check if turn did nothing significant."""
+        return (len(before["my_monsters"]) == len(after["my_monsters"]) and
+                len(before["opp_monsters"]) == len(after["opp_monsters"]) and
+                before["opp_lp"] == after["opp_lp"] and
+                len(before.get("my_cards", [])) == len(after.get("my_cards", [])))
+
+    def reset(self):
+        """Reset for new episode."""
+        self.turns_skipped = 0
+
+
 @dataclass
 class RewardBreakdown:
     """Detailed breakdown of rewards for logging."""
@@ -110,22 +473,29 @@ class RewardBreakdown:
 
 
 class RewardCalculator:
-    """Centralized reward calculation with comprehensive logging."""
+    """Policy-based reward calculation with modular, composable components."""
 
     def __init__(self, config: Optional[RewardConfig] = None, max_stats: float = 9999.0):
         self.config = config or RewardConfig()
         self.max_stats = max_stats
 
-        # Track rewards per episode for analysis
+        # Initialize policies
+        self.trap_activation = TrapActivationPolicy(self.config)
+        self.field_advantage = FieldAdvantagePolicy(self.config)
+        self.board_control = BoardControlPolicy(self.config)
+        self.damage = DamagePolicy(self.config)
+
+        # Action policies
+        self.summon = SummonPolicy(self.config)
+        self.attack = AttackPolicy(self.config)
+        self.spell = SpellPolicy(self.config)
+        self.toggle = TogglePolicy(self.config)
+        self.combine = CombinePolicy(self.config)
+        self.end_turn = EndTurnPolicy(self.config)
+        self.activate_trap = TrapActivationPolicy(self.config)
+
+        # Episode tracking
         self.episode_rewards: Dict[str, List[float]] = {}
-
-        # Temporal tracking for advantage smoothing
-        self.prev_field_advantage: float = 0.0
-        self.turns_skipped: int = 0
-
-        # Trap trigger tracking
-        self.traps_triggered_this_step: int = 0
-        # Track to prevent double-counting
         self.traps_rewarded_this_step: set = set()
 
         self.reset_episode_tracking()
@@ -139,23 +509,9 @@ class RewardCalculator:
             "field_rewards": [],
             "terminal_rewards": [],
         }
-        self.prev_field_advantage = 0.0
-        self.turns_skipped = 0
-        self.traps_triggered_this_step = 0
-        self.traps_rewarded_this_step = set()
-
-    def set_trap_triggers(self, num_triggers: int, trap_ids: Optional[List[int]] = None):
-        """Set the number of traps triggered this step for reward calculation.
-
-        Args:
-            num_triggers: Number of traps triggered
-            trap_ids: Optional list of trap object IDs to prevent double-counting
-        """
-        self.traps_triggered_this_step = num_triggers
-
-        # Track trap IDs to prevent double-counting with spell destruction
-        if trap_ids:
-            self.traps_rewarded_this_step.update(trap_ids)
+        self.field_advantage.reset()
+        self.end_turn.reset()
+        self.traps_rewarded_this_step.clear()
 
     def calculate_action_reward(
         self,
@@ -167,73 +523,77 @@ class RewardCalculator:
         after_snapshot: Dict[str, Any],
         has_valid_moves: bool = False
     ) -> RewardBreakdown:
-        """Calculate reward for a specific action with detailed breakdown."""
+        """Calculate reward for a specific action using policy composition."""
         breakdown = RewardBreakdown(action_type=action_name)
 
         # Valid action exploration bonus
-        if success:
-            breakdown.add("valid_action", self.config.valid_action_bonus)
-        else:
+        if not success:
             breakdown.add("invalid_action", self.config.invalid_action)
             breakdown.clamp(self.config.min_step_reward,
                             self.config.max_step_reward)
             self._log_reward(player, breakdown)
             return breakdown
 
-        # Dispatch to specific action reward calculators
+        breakdown.add("valid_action", self.config.valid_action_bonus)
+
+        # Build common context
+        common_context = {
+            "before": before_snapshot,
+            "after": after_snapshot,
+            "snapshot": after_snapshot,
+            "max_stats": self.max_stats,
+            "traps_rewarded": self.traps_rewarded_this_step,
+            "player": player,
+        }
+
+        # Dispatch to action-specific policies
         if action_name == "summon":
-            self._calculate_summon_reward(
-                breakdown, player, params, before_snapshot, after_snapshot)
+            reward = self._apply_policy(self.summon, common_context, {
+                                        "card": self._get_new_monster(before_snapshot, after_snapshot)})
+            breakdown.add("summon", reward)
+
         elif action_name == "attack":
-            self._calculate_attack_reward(
-                breakdown, player, params, before_snapshot, after_snapshot)
+            reward = self._apply_policy(self.attack, common_context, {})
+            breakdown.add("attack", reward)
+
         elif action_name == "cast_spell":
-            self._calculate_spell_reward(
-                breakdown, player, params, before_snapshot, after_snapshot)
+            reward = self._apply_policy(self.spell, common_context, {})
+            breakdown.add("spell", reward)
+
         elif action_name == "set_trap":
-            self._calculate_trap_reward(breakdown, player, params)
+            breakdown.add("deploy_trap", self.config.deploy_trap)
+
         elif action_name == "toggle":
-            self._calculate_toggle_reward(
-                breakdown, player, params, before_snapshot, after_snapshot)
+            reward = self._apply_policy(self.toggle, common_context, {
+                                        "toggle_idx": params.get("toggle") if params else None})
+            breakdown.add("toggle", reward)
+
         elif action_name == "combine":
-            self._calculate_combine_reward(
-                breakdown, player, params, before_snapshot, after_snapshot)
+            reward = self._apply_policy(self.combine, common_context, {})
+            breakdown.add("combine", reward)
+
+        elif action_name == "activate_trap":
+            reward = self._apply_policy(self.activate_trap, common_context, {})
+            breakdown.add("activate_trap", reward)
+
         elif action_name == "end_turn":
-            # Clear trap tracking at end of turn
+            common_context["has_valid_moves"] = has_valid_moves
+            reward = self._apply_policy(self.end_turn, common_context, {})
+            breakdown.add("end_turn", reward)
             self.traps_rewarded_this_step.clear()
 
-            # Check if player did nothing this turn
-            if self._is_passive_turn(before_snapshot, after_snapshot):
-                self.turns_skipped += 1
-                breakdown.add("skip_turn_penalty", self.config.skip_turn)
-                breakdown.add("repeated_skip_penalty", -
-                              0.05 * self.turns_skipped)
-            else:
-                self.turns_skipped = 0
-
-            # Penalty for ending turn prematurely when valid moves exist
-            if has_valid_moves and not self._is_passive_turn(before_snapshot, after_snapshot):
-                breakdown.add("premature_end_penalty",
-                              self.config.premature_end_penalty)
-
-        # Add trap trigger rewards if any traps were triggered
-        if self.traps_triggered_this_step > 0:
-            trap_reward = self._calculate_trap_trigger_reward(
-                self.traps_triggered_this_step)
-            breakdown.add("trap_trigger", trap_reward)
-            self.traps_triggered_this_step = 0  # Reset for next step
-
-        # Add normalized field advantage reward with temporal smoothing
-        field_reward = self._calculate_field_advantage(player, after_snapshot)
+        # Apply board-level policies (always)
+        field_reward = self._apply_policy(
+            self.field_advantage, common_context, {})
         if field_reward != 0:
             breakdown.add("field_advantage", field_reward)
 
-        # Board control bonus
-        board_bonus = self._calculate_board_control(player, after_snapshot)
-        if board_bonus != 0:
-            breakdown.add("board_control", board_bonus)
+        board_reward = self._apply_policy(
+            self.board_control, common_context, {})
+        if board_reward != 0:
+            breakdown.add("board_control", board_reward)
 
-        # Clamp to prevent extreme rewards (BEFORE logging)
+        # Clamp to safe range
         breakdown.clamp(self.config.min_step_reward,
                         self.config.max_step_reward)
 
@@ -241,300 +601,17 @@ class RewardCalculator:
         self.episode_rewards["action_rewards"].append(breakdown.total)
         return breakdown
 
-    def _calculate_trap_trigger_reward(self, num_triggers: int) -> float:
-        """Calculate reward for trap triggers with adjustable logarithmic scaling.
+    def _apply_policy(self, policy: RewardPolicy, common_context: Dict[str, Any],
+                      extra_context: Dict[str, Any]) -> float:
+        """Apply a policy with merged context."""
+        context = {**common_context, **extra_context}
+        return policy.calculate(context)
 
-        Args:
-            num_triggers: Number of traps triggered this step
-
-        Returns:
-            Scaled reward, capped at max_trap_trigger_reward
-
-        Note:
-            trap_trigger_log_scale controls curve steepness:
-            - 1.0 = standard log scaling (default)
-            - 0.5 = gentler curve (reduces spike for 3-4 traps)
-            - 2.0 = steeper curve (rewards multiple traps more)
-        """
-        if num_triggers <= 0:
-            return 0.0
-
-        # Adjustable logarithmic scaling to reduce spikes
-        # log1p(x^scale) creates a tunable curve
-        scaled_triggers = num_triggers ** self.config.trap_trigger_log_scale
-        reward = self.config.trap_trigger_base * math.log1p(scaled_triggers)
-
-        # Cap the maximum trap trigger reward
-        reward = min(reward, self.config.max_trap_trigger_reward)
-
-        return reward
-
-    def _calculate_summon_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-        before: Dict[str, Any],
-        after: Dict[str, Any]
-    ):
-        """Calculate reward for summoning a monster or trap."""
-        # Check if a monster was actually summoned
-        if len(after["my_monsters"]) > len(before["my_monsters"]):
-            new_monster = [m for m in after["my_monsters"]
-                           if m not in before["my_monsters"]]
-            if new_monster:
-                monster = new_monster[0]
-                base_reward = self.config.deploy_monster
-                breakdown.add("deploy_monster", base_reward)
-
-                # Bonus for summoning stronger monsters (scaled)
-                strength_bonus = (monster.attack / self.max_stats) * \
-                    self.config.strength_scale_factor
-                breakdown.add("strength_bonus", strength_bonus)
-
-                # High-level monster bonus (2+ stars)
-                if hasattr(monster, 'star') and monster.star >= 2:
-                    breakdown.add("high_level_summon",
-                                  self.config.high_level_summon_bonus)
-
-    def _calculate_attack_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-        before: Dict[str, Any],
-        after: Dict[str, Any]
-    ):
-        """Calculate reward for attacking with logarithmic damage scaling."""
-        opp_lp_damage = before["opp_lp"] - after["opp_lp"]
-        my_lp_damage = before["my_lp"] - after["my_lp"]
-
-        # Logarithmic damage dealt reward
-        if opp_lp_damage > 0:
-            damage_reward = math.log(1 + opp_lp_damage) * \
-                self.config.damage_scale_factor
-            breakdown.add("damage_dealt", damage_reward)
-
-            # Direct attack bonus (no opponent monsters)
-            if len(before["opp_monsters"]) == 0 and len(after["opp_monsters"]) == 0:
-                breakdown.add("direct_attack_bonus",
-                              self.config.direct_attack_bonus)
-
-        # Logarithmic damage taken penalty
-        if my_lp_damage > 0:
-            damage_penalty = -math.log(1 + my_lp_damage) * \
-                self.config.damage_scale_factor
-            breakdown.add("damage_taken", damage_penalty)
-
-        # Monsters destroyed/lost
-        opp_monsters_destroyed = [
-            m for m in before["opp_monsters"] if m not in after["opp_monsters"]]
-        my_monsters_destroyed = [
-            m for m in before["my_monsters"] if m not in after["my_monsters"]]
-
-        if opp_monsters_destroyed:
-            destroy_reward = self.config.attack_destroy * \
-                len(opp_monsters_destroyed)
-            breakdown.add("attack_destroy", destroy_reward)
-
-            # Bonus based on destroyed monster strength
-            for m in opp_monsters_destroyed:
-                stat = m.attack if m.mode == CardMode.ATTACK else m.defend
-                strength_bonus = (stat / self.max_stats) * \
-                    self.config.strength_scale_factor
-                breakdown.add("destroy_strength_bonus", strength_bonus)
-
-        if my_monsters_destroyed:
-            loss_penalty = self.config.monster_destroyed * \
-                len(my_monsters_destroyed)
-            breakdown.add("monster_destroyed", loss_penalty)
-
-        # Attack survived without consequences
-        elif opp_lp_damage == 0 and my_lp_damage == 0 and not opp_monsters_destroyed:
-            breakdown.add("survive_attack", self.config.survive_attack)
-
-    def _calculate_spell_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-        before: Dict[str, Any],
-        after: Dict[str, Any]
-    ):
-        """Calculate reward for casting a spell.
-
-        Note: Prevents double-counting trap destruction with trap trigger rewards.
-        """
-        breakdown.add("use_spell", self.config.use_spell)
-
-        # Detect buffed monsters (spell combo)
-        try:
-            cards_changed = []
-            for i, before_mon in enumerate(before.get("my_monsters", [])):
-                if i < len(after.get("my_monsters", [])):
-                    after_mon = after.get("my_monsters", [])[i]
-                    if getattr(after_mon, "attack", 0) > getattr(before_mon, "attack", 0) or \
-                       getattr(after_mon, "defend", 0) > getattr(before_mon, "defend", 0):
-                        cards_changed.append(after_mon)
-
-            if len(cards_changed) >= 1:
-                breakdown.add("spell_combo",
-                              self.config.spell_combo_bonus * len(cards_changed))
-        except (IndexError, AttributeError):
-            pass  # Ignore if monster lists don't align
-
-        # Check for trap destruction (only reward if not already triggered)
-        before_traps = [c for c in before.get("opp_cards", [])
-                        if c.card_type == CardType.TRAP]
-        after_traps = [c for c in after.get("opp_cards", [])
-                       if c.card_type == CardType.TRAP]
-
-        # Find destroyed traps
-        destroyed_traps = [t for t in before_traps if t not in after_traps]
-
-        # Only reward if these traps weren't already rewarded via trigger
-        newly_destroyed = [t for t in destroyed_traps
-                           if id(t) not in self.traps_rewarded_this_step]
-
-        if newly_destroyed:
-            breakdown.add("trap_destroyed_bonus",
-                          self.config.bait_block_bonus * len(newly_destroyed))
-            # Mark these traps as rewarded
-            for trap in newly_destroyed:
-                self.traps_rewarded_this_step.add(id(trap))
-
-    def _calculate_trap_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-    ):
-        """Calculate reward for setting a trap (planning incentive)."""
-        breakdown.add("deploy_trap", self.config.deploy_trap)
-
-    def _calculate_toggle_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-        before: Dict[str, Any],
-        after: Dict[str, Any],
-    ):
-        """Calculate reward for toggling a monster's position."""
-        if params and "toggle" in params:
-            toggle_idx = params["toggle"]
-            if toggle_idx < len(after["my_monsters"]):
-                am = after["my_monsters"][toggle_idx]
-                # Reward optimal positioning
-                if (am.mode == CardMode.ATTACK and am.attack > am.defend) \
-                        or (am.mode == CardMode.DEFEND and am.attack < am.defend):
-                    breakdown.add("optimal_toggle", 0.2)
-                elif (am.mode == CardMode.DEFEND and am.attack > am.defend):
-                    breakdown.add("suboptimal_toggle", -0.5)
-
-    def _calculate_combine_reward(
-        self,
-        breakdown: RewardBreakdown,
-        player: Player,
-        params: Optional[Dict],
-        before: Dict[str, Any],
-        after: Dict[str, Any]
-    ):
-        """Calculate reward for combining monsters."""
-        before_monsters = before["my_monsters"]
-        after_monsters = after["my_monsters"]
-
-        new_monsters = [m for m in after_monsters if m not in before_monsters]
-        if new_monsters:
-            new_monster = new_monsters[0]
-            level = getattr(new_monster, "star", 1)
-
-            # Logarithmic reward based on level
-            merge_reward = self.config.merge_base * math.log(level + 1)
-            breakdown.add("merge_combine", merge_reward)
-
-            # Strength bonus for powerful merged monster
-            strength_bonus = (new_monster.attack / self.max_stats) * 0.1
-            breakdown.add("merge_strength_bonus", strength_bonus)
-
-    def _calculate_field_advantage(self, player: Player, snapshot: Dict[str, Any]) -> float:
-        """Calculate normalized field advantage with temporal smoothing and decay.
-
-        Returns:
-            Delta advantage (improvement from previous turn), with smoothed transitions
-
-        Note:
-            - Positive delta = improving position (rewarded)
-            - Negative delta = declining position (penalized, but smoothed)
-            - Decay factor prevents over-reaction to single-turn swings
-        """
-        my_total_stats = sum(
-            (m.attack if m.mode == CardMode.ATTACK else m.defend)
-            for m in snapshot["my_monsters"]
-        )
-
-        opp_total_stats = sum(
-            (m.attack if m.mode == CardMode.ATTACK else m.defend)
-            for m in snapshot["opp_monsters"]
-        )
-
-        # Trap advantage
-        my_traps = len([t for t in snapshot["my_cards"]
-                       if t.card_type == CardType.TRAP])
-        opp_traps = len([t for t in snapshot["opp_cards"]
-                        if t.card_type == CardType.TRAP])
-        trap_diff = (my_traps - opp_traps) * self.config.trap_advantage
-
-        # Normalize by total power to get relative advantage
-        total_power = my_total_stats + opp_total_stats + 1e-6  # Avoid division by zero
-        normalized_advantage = (my_total_stats - opp_total_stats) / total_power
-
-        # Apply multiplier
-        advantage = normalized_advantage * \
-            self.config.field_advantage_multiplier + trap_diff
-
-        # Cap the advantage to prevent runaway scaling
-        advantage = max(min(advantage, self.config.field_advantage_cap),
-                        -self.config.field_advantage_cap)
-
-        # Apply decay to previous advantage for smoothing
-        # This prevents sudden swings from being over-penalized
-        smoothed_prev = self.prev_field_advantage * self.config.field_advantage_decay
-
-        # Temporal smoothing - reward improvement from smoothed baseline
-        delta_advantage = advantage - smoothed_prev
-
-        # Update tracking (use actual advantage, not smoothed)
-        self.prev_field_advantage = advantage
-
-        return delta_advantage
-
-    def _calculate_board_control(self, player: Player, snapshot: Dict[str, Any]) -> float:
-        """Reward maintaining board presence."""
-        my_monster_count = len(snapshot["my_monsters"])
-        opp_monster_count = len(snapshot["opp_monsters"])
-
-        # Penalty for having no monsters
-        if my_monster_count == 0:
-            return self.config.no_monsters_penalty
-
-        # Bonus for maintaining board advantage
-        if my_monster_count > opp_monster_count:
-            return self.config.board_control_bonus
-
-        return 0.0
-
-    def _is_passive_turn(self, before: Dict[str, Any], after: Dict[str, Any]) -> bool:
-        """Check if the player did nothing significant this turn."""
-        my_monsters_changed = len(before["my_monsters"]) != len(
-            after["my_monsters"])
-        opp_monsters_changed = len(before["opp_monsters"]) != len(
-            after["opp_monsters"])
-        lp_changed = before["opp_lp"] != after["opp_lp"]
-        hand_changed = len(before.get("my_cards", [])) != len(
-            after.get("my_cards", []))
-
-        return not (my_monsters_changed or opp_monsters_changed or lp_changed or hand_changed)
+    def _get_new_monster(self, before: Dict, after: Dict):
+        """Extract newly summoned monster."""
+        new_monsters = [m for m in after.get("my_monsters", [])
+                        if m not in before.get("my_monsters", [])]
+        return new_monsters[0] if new_monsters else None
 
     def calculate_terminal_reward(self, player: Player, won: bool,
                                   final_snapshot: Optional[Dict[str, Any]] = None) -> RewardBreakdown:
@@ -543,20 +620,16 @@ class RewardCalculator:
 
         if won:
             breakdown.add("victory", self.config.win)
-
-            # Optional: LP ratio bonus
             if final_snapshot and final_snapshot.get("my_lp") and final_snapshot.get("opp_lp"):
                 lp_ratio = final_snapshot["my_lp"] / \
                     max(final_snapshot["opp_lp"], 1)
-                lp_bonus = min(lp_ratio * 0.2, 0.5)  # Cap at 0.5
+                lp_bonus = min(lp_ratio * 0.2, 0.5)
                 breakdown.add("lp_ratio_bonus", lp_bonus)
         else:
             breakdown.add("defeat", self.config.lose)
 
-        # Clamp terminal reward BEFORE logging
         breakdown.clamp(self.config.min_step_reward,
                         self.config.max_step_reward)
-
         self._log_reward(player, breakdown, terminal=True)
         self.episode_rewards["terminal_rewards"].append(breakdown.total)
         return breakdown
@@ -564,11 +637,11 @@ class RewardCalculator:
     def _log_reward(self, player: Player, breakdown: RewardBreakdown, terminal: bool = False):
         """Log reward details."""
         if terminal:
-            logger.info(f"ERMINAL REWARD for {player.name}")
-            logger.info(f"{breakdown.get_summary()}")
+            logger.debug(f"TERMINAL REWARD for {player.name}: {
+                         breakdown.get_summary()}")
         elif breakdown.total != 0:
-            logger.info(f"REWARD ({breakdown.action_type}): {
-                breakdown.get_summary()}")
+            logger.debug(f"REWARD ({breakdown.action_type}): {
+                         breakdown.get_summary()}")
 
     def get_episode_summary(self) -> Dict[str, Any]:
         """Get summary statistics for the episode."""
@@ -587,13 +660,13 @@ class RewardCalculator:
     def log_episode_summary(self):
         """Log episode reward summary."""
         summary = self.get_episode_summary()
-        logger.info("EPISODE REWARD SUMMARY")
+        logger.debug("EPISODE REWARD SUMMARY")
         for category, stats in summary.items():
-            logger.info(f"\n{category.upper()}:")
-            logger.info(f"Total: {stats['total']:+.4f}")
-            logger.info(f"Mean:  {stats['mean']:+.4f}")
-            logger.info(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
-            logger.info(f"Count: {stats['count']}")
+            logger.debug(f"\n{category.upper()}:")
+            logger.debug(f"Total: {stats['total']:+.4f}")
+            logger.debug(f"Mean:  {stats['mean']:+.4f}")
+            logger.debug(f"Range: [{stats['min']:+.4f}, {stats['max']:+.4f}]")
+            logger.debug(f"Count: {stats['count']}")
 
 
 def create_enhanced_snapshot(engine, player: Player) -> Dict[str, Any]:
