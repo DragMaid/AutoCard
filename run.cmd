@@ -85,7 +85,7 @@ goto actor_loop
 set PYTHONPATH=.
 
 for /L %%i in (1,1,%COUNT%) do (
-    start "" cmd /c "uv run ml/distributed/actor.py !EXTRA_ARGS! --debug"
+    start "" cmd /c "uv run ml/distributed/actor.py !EXTRA_ARGS! --debug --render"
 )
 
 exit /b 0

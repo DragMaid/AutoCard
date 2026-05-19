@@ -23,8 +23,8 @@ class Config:
     MAX_FRAMES: int = 1_000_000
     # NOTE: the higher this is, the more it stutters
     # when training via cpu
-    BATCH_SIZE: int = 64
-    BUFFER_SIZE: int = 2_000_000
+    BATCH_SIZE: int = 512
+    BUFFER_SIZE: int = 500_000
 
     # RL Hyperparameters
     BETA: int = 0.4
@@ -37,7 +37,7 @@ class Config:
     # Exploration
     EPS_START: float = 1.0
     EPS_FINAL: float = 0.05
-    EPS_DECAY: int = 75_000
+    EPS_DECAY: int = 750_000
 
     # Update frequency
     TRAIN_INTERVAL: int = 4
@@ -60,14 +60,14 @@ class Config:
     EMIT_DATA_INTERVAL: int = 50
     PUSH_PARAM_INTERVAL: int = 400
     EMIT_METRICS_INTERVAL: int = 50
-    SAMPLE_THRESHOLD: int = 10_000
+    SAMPLE_THRESHOLD: int = 30_000
     LOG_FOLDER: Path = Path(BASE_PATH, "logs")
 
     # Proxy server location
     ACTOR_TTL: int = 10
     SERVER_PORT: int = 5000
-    SERVER_QUEUE_SIZE: int = 100
-    SERVER_URL: str = os.getenv("SERVER_URL", "http://localhost:5000")
+    SERVER_QUEUE_SIZE: int = 10_000
+    SERVER_URL: str = os.getenv("SERVER_URL", "https://autocard-proxy.onrender.com")
     AUTH_CODE: str = os.getenv("AUTH_CODE", "1234")
 
     # Database for MLFlow (Optional)
