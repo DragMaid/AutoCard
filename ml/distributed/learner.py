@@ -178,13 +178,12 @@ class LearnerLoop:
             "update_target_freq": ml_config.UPDATE_TARGET_INTERVAL
         })
         step = 1
-        frame_idx = 1
+        frame = 1
+        last_logged_step = 1
         waiting_shown = False
 
         try:
             while not self._stop_event.is_set():
-                frame_idx += 1
-
                 if self.active_actor_count == 0:
                     if not waiting_shown:
                         logger.info("Waiting for active actors...")
@@ -192,6 +191,7 @@ class LearnerLoop:
                     time.sleep(1)
                     continue
 
+                frame += 1
                 waiting_shown = False
                 self.insert_transition()
 
@@ -200,14 +200,13 @@ class LearnerLoop:
                     step += 1
                     sample = self.agent.replay_buffer.sample(
                         ml_config.BATCH_SIZE, ml_config.BETA)
-                    loss, (idxes, new_prios), grad_norm = self.agent.update_rl_network(
-                        sample)
+                    loss, (idxes, new_prios), grad_norm = \
+                        self.agent.update_rl_network(sample)
                     self.current_loss = loss.item()
                     self.current_grad_norm = grad_norm
 
                     # Update local priorities
-                    self.agent.replay_buffer.update_priorities(
-                        idxes, new_prios)
+                    self.agent.replay_buffer.update_priorities(idxes, new_prios)
 
                 if len(self.agent.reservoir) >= ml_config.SAMPLE_THRESHOLD * ml_config.ETA:
                     sl_loss, sl_grad_norm = self.agent.update_sl_network()
@@ -230,9 +229,9 @@ class LearnerLoop:
                     }
                     self._push_weights(state_dict)
 
-                if frame_idx % ml_config.EMIT_METRICS_INTERVAL == 0:
+                if frame % ml_config.EMIT_METRICS_INTERVAL == 0:
                     metrics = {
-                        "frame": frame_idx,
+                        "step": step,
                         "loss": self.current_loss,
                         "grad_norm": self.current_grad_norm,
                         "sl_loss": self.current_sl_loss,
@@ -242,7 +241,11 @@ class LearnerLoop:
                     }
                     logger.info(metrics)
                     self._push_metrics(metrics)
-                    self.mlflow.log_metrics(metrics, step=frame_idx)
+
+                    # Only log to mlflow if its actually stepping
+                    if step > last_logged_step:
+                        self.mlflow.log_metrics(metrics, step=step)
+                        last_logged_step = step
 
                 # Small sleep to prevent 100% CPU usage if queues are empty
                 if self.rl_batch_queue.empty() \
@@ -273,10 +276,10 @@ class LearnerLoop:
         except Empty:
             pass
 
-    def save_checkpoint(self, frame_idx: int) -> str:
+    def save_checkpoint(self, step: int) -> str:
         """Evaluates current performance and saves models."""
         save_folder = ml_config.CHECKPOINT_PATH.parent
-        save_path = save_folder / f"cp_{frame_idx}.pth"
+        save_path = save_folder / f"cp_{step}.pth"
         save_model(self.agent, save_path)
         logger.info(f"Checkpoint saved: {save_path}")
         return save_path

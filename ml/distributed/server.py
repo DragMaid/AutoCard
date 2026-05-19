@@ -60,7 +60,7 @@ class RLServerState:
             # actor_id -> last_seen_time
             self.active_actors: Dict[int, float] = {}
             self.metrics = {
-                "frame": 0,
+                "step": 0,
                 "loss": 0.0,
                 "grad_norm": 0.0,
                 "sl_loss": 0.0,
@@ -302,7 +302,7 @@ async def dashboard():
                 </div>
                 <div class="card">
                     <h2>Training Metrics</h2>
-                    <h3>Iteration: {m['frame']}</h3>
+                    <h3>Iteration: {m['step']}</h3>
                     <h3>RL Loss: {m['loss']:.6f} (norm: {m['grad_norm']:.4f})</h3>
                     <h3>SL Loss: {m['sl_loss']:.6f} (norm: {m['sl_grad_norm']:.4f})</h3>
                     <h3>Replay Buffer: {m['replay_buffer_size']}</h3>

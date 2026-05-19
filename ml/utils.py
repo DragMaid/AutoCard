@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def epsilon_scheduler(eps_start: float = 1.0, eps_final: float = 0.01, eps_decay: int = 50000) -> Callable[[int], float]:
+def epsilon_scheduler(eps_start: float, eps_final: float, eps_decay: int) -> Callable[[int], float]:
     """
     Return a function to get epsilon at a given frame index.
 

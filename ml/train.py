@@ -22,7 +22,7 @@ def run(args):
     env = GameEnv(engine=engine, render=args.render)
     trainer = Trainer(env, args.device, args.mlflow)
     if args.checkpoint:
-        trainer.load_checkpoint(args.device, args.checkpoint)
+        trainer.load_checkpoint(args.checkpoint)
     elif args.resume:
-        trainer.load_checkpoint(args.device, Config.CHECKPOINT_PATH)
+        trainer.load_checkpoint(Config.CHECKPOINT_PATH)
     trainer.train()

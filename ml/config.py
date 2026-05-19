@@ -13,7 +13,7 @@ class Config:
     Configuration for the reinforcement learning environment.
     """
 
-    DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE: str = "cpu"
 
     # Action Space
     NUM_ACTIONS: int = 461

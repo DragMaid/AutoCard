@@ -38,12 +38,13 @@ class Trainer:
             mlflow_enabled (bool): whether to use mlflow or not
         """
         self.env = env
+        self.device = device
         self.agent = Agent(num_actions=self.env.num_actions, device=device)
 
         self.episode_manager = EpisodeManager(2)
         self.mlflow = MLFlowManager(enabled=mlflow_enabled)
 
-        logging.info(f"Currently running on device: {ml_config.DEVICE}")
+        logging.info(f"Currently running on device: {device}")
 
     def train(self) -> None:
         """Executes the main training loop."""
@@ -60,6 +61,6 @@ class Trainer:
         training_loop.run()
         save_model(self.agent)
 
-    def load_checkpoint(self, device: str, path: str):
+    def load_checkpoint(self, str, path: str):
         """Load the agent checkpoint."""
-        load_model(self.agent, device, path)
+        load_model(self.agent, self.device, path)

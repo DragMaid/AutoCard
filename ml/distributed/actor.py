@@ -335,7 +335,7 @@ class ActorLoop(TrainingLoop):
                 server_v = int(response.headers.get("X-Weights-Version", 0))
                 if server_v > self.current_weights_version:
                     logger.info(f"Actor {self.actor_id}: Noticed new weights v{
-                                 server_v} via emit.")
+                        server_v} via emit.")
             else:
                 logger.warning(f"Actor {self.actor_id}: Emission failed ({
                                response.status_code}). Waiting...")

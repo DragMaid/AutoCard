@@ -75,6 +75,15 @@ class MLFlowManager:
         mlflow.log_params(params)
 
     @if_enabled
+    def log_artifact(self, path: str) -> None:
+        """Logs parameters to MLFlow.
+
+        Args:
+            path: Path to artifact file.
+        """
+        mlflow.log_artifact(path)
+
+    @if_enabled
     def end_run(self) -> None:
         """Ends current MLFlow run."""
         mlflow.end_run()

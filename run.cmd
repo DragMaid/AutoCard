@@ -5,14 +5,31 @@ where uv >nul 2>nul
 if errorlevel 1 (
     echo uv not found. Installing...
 
-    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    powershell -ExecutionPolicy Bypass -Command ^
+        "irm https://astral.sh/uv/install.ps1 | iex"
 
+    REM Default uv install location
+    set "UV_DIR=%USERPROFILE%\.local\bin"
+
+    REM Add to current session PATH
+    set "PATH=%PATH%;%UV_DIR%"
+
+    REM Persist for future shells if missing
+    echo %PATH% | find /I "%UV_DIR%" >nul
+    if errorlevel 1 (
+        setx PATH "%PATH%;%UV_DIR%" >nul
+    )
+
+    REM Verify install
     where uv >nul 2>nul
     if errorlevel 1 (
-        echo Failed to install uv or it is not in PATH
+        echo Failed to install uv.
         exit /b 1
     )
 )
+
+echo uv is ready to use!
+uv --version
 
 set MODE=%1
 shift
