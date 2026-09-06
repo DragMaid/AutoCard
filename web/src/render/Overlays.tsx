@@ -1,5 +1,5 @@
 /**
- * Arrows, impact effects and the card preview panel.
+ * Arrows, impact effects and the card inspector.
  *
  * The arrow is a port of `gui/screen/arrow.py`: a dashed quadratic Bezier bowed
  * perpendicular to the line, with a solid arrowhead at the tip.
@@ -10,8 +10,9 @@ import type { VisualEffect } from "../game/animations";
 import type { DragArrow } from "../game/inputManager";
 import { LAYOUT } from "../game/layout";
 import type { AttackArrow } from "../game/renderEngine";
+import { COLORS, PIXEL_FONT, pixelPanel } from "../game/theme";
 import type { Card } from "../types/game";
-import { CardFace } from "./CardFace";
+import { CardDetail } from "./CardFace";
 import { rectStyle } from "./Board";
 
 /** Height of the Bezier bow, matching `draw_stripe_curve`'s default. */
@@ -56,8 +57,8 @@ function curveSegments(
 function arrowHead(
   tip: { x: number; y: number },
   tail: { x: number; y: number },
-  length = 15,
-  width = 7,
+  length = 18,
+  width = 9,
 ): string {
   const angle = Math.atan2(tip.y - tail.y, tip.x - tail.x);
   const lx = tip.x - length * Math.cos(angle) + width * Math.sin(angle);
@@ -94,7 +95,7 @@ export function ArrowLayer({
       arrow: {
         from: dragArrow.from,
         to: dragArrow.to,
-        color: "rgb(0, 255, 0)",
+        color: COLORS.positive,
       },
     });
   }
@@ -102,9 +103,13 @@ export function ArrowLayer({
   return (
     <svg
       className="pointer-events-none absolute inset-0"
-      width={LAYOUT.grid.width + LAYOUT.grid.originX * 2}
-      height="100%"
-      style={{ width: "100%", height: "100%", overflow: "visible" }}
+      style={{
+        width: "100%",
+        height: "100%",
+        overflow: "visible",
+        // Above every card sprite, including one being dragged.
+        zIndex: 1500,
+      }}
     >
       {arrows.map(({ arrow, key }) => (
         <g key={key}>
@@ -112,15 +117,27 @@ export function ArrowLayer({
             <path
               key={index}
               d={d}
+              stroke="rgba(0, 0, 0, 0.6)"
+              strokeWidth={8}
+              strokeLinecap="butt"
+              fill="none"
+            />
+          ))}
+          {curveSegments(arrow.from, arrow.to).map((d, index) => (
+            <path
+              key={`fg-${index}`}
+              d={d}
               stroke={arrow.color}
               strokeWidth={5}
-              strokeLinecap="round"
+              strokeLinecap="butt"
               fill="none"
             />
           ))}
           <polygon
             points={arrowHead(arrow.to, arrow.from)}
             fill={arrow.color}
+            stroke="rgba(0, 0, 0, 0.6)"
+            strokeWidth={2}
           />
         </g>
       ))}
@@ -166,35 +183,92 @@ export interface CardPreviewProps {
 }
 
 /**
- * The large card preview, ported from `gui/background/preview_card_table.py`.
+ * The card inspector.
  *
- * Shows the empty plate until a card is selected, then renders that card at
- * panel size — which is where a card's description is actually legible.
+ * This is the one place a card is big enough for its description to be a
+ * sentence rather than a smear, so the board cards no longer try to carry it.
  *
  * @param props - The card to display, or null.
- * @returns The preview panel.
+ * @returns The inspector panel.
  */
 export function CardPreview({ card }: CardPreviewProps) {
   const rect = LAYOUT.areas.previewTable;
+  const padding = 12;
 
   return (
-    <div className="pointer-events-none absolute" style={rectStyle(rect)}>
-      {card ? (
-        <CardFace
-          card={card}
-          width={rect.width}
-          height={rect.height}
-          faceDown={false}
-        />
-      ) : (
-        <img
-          src={cardPreviewUrl()}
-          alt=""
-          draggable={false}
-          className="h-full w-full"
-          style={{ objectFit: "fill" }}
-        />
-      )}
+    <div
+      className="pointer-events-none absolute"
+      style={{ ...rectStyle(rect), ...pixelPanel() }}
+    >
+      <div
+        className="absolute left-0 right-0 flex justify-center"
+        style={{ top: 6 }}
+      >
+        <span
+          className="leading-none"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 8,
+            letterSpacing: "0.2em",
+            color: COLORS.textFaint,
+          }}
+        >
+          {card ? "CARD" : "NO CARD SELECTED"}
+        </span>
+      </div>
+
+      <div
+        className="absolute"
+        style={{
+          left: padding,
+          top: 22,
+          width: rect.width - 2 * padding,
+          height: rect.height - 22 - padding,
+        }}
+      >
+        {card ? (
+          <CardDetail
+            card={card}
+            width={rect.width - 2 * padding}
+            height={rect.height - 22 - padding}
+          />
+        ) : (
+          <EmptyPlate height={rect.height - 22 - padding} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Native aspect of `card-preview.png`, which is narrower than a card. */
+const PLATE_ASPECT = 16 / 25;
+
+/** The empty inspector: the plate art plus a hint at what fills it. */
+function EmptyPlate({ height }: { height: number }) {
+  const plateHeight = Math.round(height * 0.62);
+
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4">
+      <img
+        src={cardPreviewUrl()}
+        alt=""
+        draggable={false}
+        className="pixel-art block opacity-60"
+        style={{
+          height: plateHeight,
+          width: Math.round(plateHeight * PLATE_ASPECT),
+        }}
+      />
+      <span
+        className="max-w-[200px] text-center leading-relaxed"
+        style={{
+          fontFamily: PIXEL_FONT,
+          fontSize: 9,
+          color: COLORS.textFaint,
+        }}
+      >
+        Click a card to inspect it
+      </span>
     </div>
   );
 }
