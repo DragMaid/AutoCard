@@ -1,0 +1,391 @@
+{
+  "game_state": {
+    "players": [
+      {
+        "id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "player_index": 0,
+        "name": "You",
+        "life_points": 7100,
+        "original_life_points": 8000,
+        "max_life_points": 8000,
+        "is_opponent": false
+      },
+      {
+        "id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "player_index": 1,
+        "name": "Opponent",
+        "life_points": 6400,
+        "original_life_points": 8000,
+        "max_life_points": 8000,
+        "is_opponent": true
+      }
+    ],
+    "game_over": false,
+    "player_info": {
+      "3158baba-ccaa-428a-b622-71d3625e5f6c": {
+        "has_summoned_trap": false,
+        "has_summoned_monster": true,
+        "has_toggled": false,
+        "held_cards": {
+          "card_ids": [
+            "013d364a-6247-43b0-b796-cb7787a61b59",
+            "22cf3031-d2b3-4575-8561-c524e1d12adc",
+            "44c46b2b-b647-4a53-9a39-92a6c695754a",
+            "3233a491-b821-44f5-8690-3a64c0624f2c"
+          ],
+          "player_id": "3158baba-ccaa-428a-b622-71d3625e5f6c"
+        },
+        "graveyard_cards": {
+          "card_ids": [],
+          "player_id": "3158baba-ccaa-428a-b622-71d3625e5f6c"
+        },
+        "deck_cards": {
+          "card_ids": [],
+          "player_id": "3158baba-ccaa-428a-b622-71d3625e5f6c"
+        },
+        "active_traps": []
+      },
+      "33e7ea81-b4ee-483e-93a6-f1999484edf4": {
+        "has_summoned_trap": true,
+        "has_summoned_monster": true,
+        "has_toggled": false,
+        "held_cards": {
+          "card_ids": [
+            "1f16b26b-b8fc-4f9b-bf6e-d6b3008a0370",
+            "9cab40e6-b2c2-4fc3-93b5-fa65be96b83c",
+            "9495bfa7-0456-42fa-ba35-5cbeeb8192cc"
+          ],
+          "player_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4"
+        },
+        "graveyard_cards": {
+          "card_ids": [],
+          "player_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4"
+        },
+        "deck_cards": {
+          "card_ids": [],
+          "player_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4"
+        },
+        "active_traps": []
+      }
+    },
+    "entity_lookup": {
+      "a1f9c7c4-ae47-4fac-849b-96697165568d": {
+        "id": "a1f9c7c4-ae47-4fac-849b-96697165568d",
+        "name": "Flower",
+        "description": "A gentle plant creature, using nature to shield and heal allies.",
+        "card_type": "MONSTER",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/forest_guard/flower.png",
+        "is_placed": true,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": [
+          3,
+          1
+        ],
+        "monster_type": "FOREST_GUARD",
+        "attack": 400,
+        "defend": 600,
+        "star": 1,
+        "mode": "DEFEND",
+        "has_attacked": false
+      },
+      "013d364a-6247-43b0-b796-cb7787a61b59": {
+        "id": "013d364a-6247-43b0-b796-cb7787a61b59",
+        "name": "Weaken Summon",
+        "description": "When an opponent summons a monster, it loses 500 ATK and DEF.",
+        "card_type": "TRAP",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/trap/debuff_summon.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": null,
+        "abilities": [
+          "DEBUFF_ATTACK",
+          "DEBUFF_DEFEND"
+        ],
+        "activation": "SUMMON",
+        "effectiveness": [
+          500,
+          500
+        ],
+        "duration": [
+          5,
+          5
+        ],
+        "is_triggered": false,
+        "triggerable": false
+      },
+      "7f34eac8-e825-48fb-849f-f0bd6b8eb93c": {
+        "id": "7f34eac8-e825-48fb-849f-f0bd6b8eb93c",
+        "name": "Warrior",
+        "description": "A dedicated student learning the ways of battle and honor.",
+        "card_type": "MONSTER",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/conqueror/warrior.png",
+        "is_placed": true,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": [
+          3,
+          3
+        ],
+        "monster_type": "CONQUEROR",
+        "attack": 400,
+        "defend": 600,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "22cf3031-d2b3-4575-8561-c524e1d12adc": {
+        "id": "22cf3031-d2b3-4575-8561-c524e1d12adc",
+        "name": "Mushroom Mage",
+        "description": "A curious scholar who harnesses the power of fungi for magic.",
+        "card_type": "MONSTER",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/scholar/mushroom-mage.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": null,
+        "monster_type": "SCHOLAR",
+        "attack": 400,
+        "defend": 600,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "44c46b2b-b647-4a53-9a39-92a6c695754a": {
+        "id": "44c46b2b-b647-4a53-9a39-92a6c695754a",
+        "name": "Goblin",
+        "description": "A mischievous creature, quick but fragile in combat.",
+        "card_type": "MONSTER",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/monster/goblin.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": null,
+        "monster_type": "FOREST_MONSTER",
+        "attack": 550,
+        "defend": 500,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "1f16b26b-b8fc-4f9b-bf6e-d6b3008a0370": {
+        "id": "1f16b26b-b8fc-4f9b-bf6e-d6b3008a0370",
+        "name": "Mystical Space Typhoon",
+        "description": "Destroy 1  trap card your opponent controls.",
+        "card_type": "SPELL",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/spell/typhoon.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": true,
+        "pos_in_matrix": null,
+        "abilities": [
+          "DESTROY_TRAP"
+        ],
+        "effectiveness": null,
+        "duration": null
+      },
+      "987e4608-2409-4b51-bf69-4eb0954fa2f6": {
+        "id": "987e4608-2409-4b51-bf69-4eb0954fa2f6",
+        "name": "Skeleton",
+        "description": "A restless skeleton, weak but relentless in numbers.",
+        "card_type": "MONSTER",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/demon/skeleton.png",
+        "is_placed": true,
+        "is_face_down": false,
+        "is_opponent": true,
+        "pos_in_matrix": [
+          0,
+          1
+        ],
+        "monster_type": "DEMON",
+        "attack": 550,
+        "defend": 500,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "720c45aa-f291-4e5c-9936-65cac449097d": {
+        "id": "720c45aa-f291-4e5c-9936-65cac449097d",
+        "name": "Skeleton",
+        "description": "A restless skeleton, weak but relentless in numbers.",
+        "card_type": "MONSTER",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/demon/skeleton.png",
+        "is_placed": true,
+        "is_face_down": false,
+        "is_opponent": true,
+        "pos_in_matrix": [
+          0,
+          3
+        ],
+        "monster_type": "DEMON",
+        "attack": 550,
+        "defend": 500,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "9cab40e6-b2c2-4fc3-93b5-fa65be96b83c": {
+        "id": "9cab40e6-b2c2-4fc3-93b5-fa65be96b83c",
+        "name": "Warrior",
+        "description": "A dedicated student learning the ways of battle and honor.",
+        "card_type": "MONSTER",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/conqueror/warrior.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": true,
+        "pos_in_matrix": null,
+        "monster_type": "CONQUEROR",
+        "attack": 400,
+        "defend": 600,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "9495bfa7-0456-42fa-ba35-5cbeeb8192cc": {
+        "id": "9495bfa7-0456-42fa-ba35-5cbeeb8192cc",
+        "name": "Boar",
+        "description": "A wild forest boar, charging at enemies with raw strength.",
+        "card_type": "MONSTER",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/forest_guard/boar.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": true,
+        "pos_in_matrix": null,
+        "monster_type": "FOREST_GUARD",
+        "attack": 550,
+        "defend": 500,
+        "star": 1,
+        "mode": "ATTACK",
+        "has_attacked": false
+      },
+      "8131d52a-ce9f-49f1-a87d-05330085171c": {
+        "id": "8131d52a-ce9f-49f1-a87d-05330085171c",
+        "name": "Mirror Strike",
+        "description": "Reflect an enemy's attacking monster: the attacker is destroyed instead.",
+        "card_type": "TRAP",
+        "owner_id": "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/trap/reflect_atk.png",
+        "is_placed": true,
+        "is_face_down": true,
+        "is_opponent": false,
+        "pos_in_matrix": [
+          1,
+          2
+        ],
+        "abilities": [
+          "REFLECT_ATTACK"
+        ],
+        "activation": "ATTACK",
+        "effectiveness": null,
+        "duration": null,
+        "is_triggered": false,
+        "triggerable": false
+      },
+      "3233a491-b821-44f5-8690-3a64c0624f2c": {
+        "id": "3233a491-b821-44f5-8690-3a64c0624f2c",
+        "name": "Crippling Curse",
+        "description": "When an opponent's monster attacks, reduce its ATK by 500 points.",
+        "card_type": "TRAP",
+        "owner_id": "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "image_path": "/home/jakekato/Code/AutoCard/assets/images/trap/debuff_atk.png",
+        "is_placed": false,
+        "is_face_down": false,
+        "is_opponent": false,
+        "pos_in_matrix": null,
+        "abilities": [
+          "DEBUFF_ATTACK"
+        ],
+        "activation": "ATTACK",
+        "effectiveness": [
+          500
+        ],
+        "duration": [
+          5
+        ],
+        "is_triggered": false,
+        "triggerable": false
+      }
+    },
+    "field_matrix": [
+      [
+        null,
+        "987e4608-2409-4b51-bf69-4eb0954fa2f6",
+        null,
+        "720c45aa-f291-4e5c-9936-65cac449097d",
+        null
+      ],
+      [
+        null,
+        null,
+        "8131d52a-ce9f-49f1-a87d-05330085171c",
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        "a1f9c7c4-ae47-4fac-849b-96697165568d",
+        null,
+        "7f34eac8-e825-48fb-849f-f0bd6b8eb93c",
+        null
+      ]
+    ],
+    "field_matrix_ownership": [
+      [
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4"
+      ],
+      [
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4",
+        "33e7ea81-b4ee-483e-93a6-f1999484edf4"
+      ],
+      [
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c"
+      ],
+      [
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c",
+        "3158baba-ccaa-428a-b622-71d3625e5f6c"
+      ]
+    ],
+    "triggerable_traps": {},
+    "activated_traps": [],
+    "attack_queue": []
+  },
+  "effect_tracker": [],
+  "event_logger": [],
+  "turn_manager": {
+    "current_player_index": 0,
+    "is_trap_stage": false,
+    "turn_count": 4
+  }
+}
