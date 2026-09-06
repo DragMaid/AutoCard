@@ -5,11 +5,13 @@
  * shrinks the description font until the wrapped lines fit the text box. Both
  * loops are ported here on top of a cached canvas context so a card face can be
  * laid out without touching the DOM.
+ *
+ * Every entry point takes the font family it will actually be rendered in:
+ * chrome is set in the pixel face and card text in the reading face, and
+ * measuring one with the metrics of the other overflows by a wide margin.
  */
 
-/** Font stack standing in for pygame's `SysFont(None, size)`. */
-export const CARD_FONT_FAMILY =
-  'system-ui, -apple-system, "Segoe UI", "DejaVu Sans", "Liberation Sans", sans-serif';
+import { BODY_FONT, PIXEL_FONT } from "./theme";
 
 let context: CanvasRenderingContext2D | null = null;
 
@@ -30,21 +32,23 @@ const widthCache = new Map<string, number>();
  * @param text - The string to measure.
  * @param fontSize - Font size in stage pixels.
  * @param weight - CSS font weight.
+ * @param family - CSS font family the text will be rendered in.
  * @returns Width in stage pixels; a rough estimate when canvas is unavailable.
  */
 export function measureText(
   text: string,
   fontSize: number,
   weight = "400",
+  family: string = BODY_FONT,
 ): number {
-  const key = `${weight}|${fontSize}|${text}`;
+  const key = `${family}|${weight}|${fontSize}|${text}`;
   const cached = widthCache.get(key);
   if (cached !== undefined) return cached;
 
   const ctx = measureContext();
   let width: number;
   if (ctx) {
-    ctx.font = `${weight} ${fontSize}px ${CARD_FONT_FAMILY}`;
+    ctx.font = `${weight} ${fontSize}px ${family}`;
     width = ctx.measureText(text).width;
   } else {
     width = text.length * fontSize * 0.5;
@@ -63,12 +67,14 @@ export function measureText(
  * @param text - Text to wrap, may contain newlines.
  * @param maxWidth - Available width in stage pixels.
  * @param fontSize - Font size in stage pixels.
+ * @param family - CSS font family the text will be rendered in.
  * @returns The wrapped lines.
  */
 export function wrapText(
   text: string,
   maxWidth: number,
   fontSize: number,
+  family: string = BODY_FONT,
 ): string[] {
   const lines: string[] = [];
 
@@ -78,7 +84,7 @@ export function wrapText(
 
     for (const word of words) {
       const candidate = [...current, word];
-      if (measureText(candidate.join(" "), fontSize) > maxWidth) {
+      if (measureText(candidate.join(" "), fontSize, "400", family) > maxWidth) {
         if (current.length) {
           lines.push(current.join(" "));
           current = [word];
@@ -115,6 +121,7 @@ export interface FittedText {
  * @param boxHeight - Available height in stage pixels.
  * @param startSize - Starting font size.
  * @param minSize - Smallest font size to try.
+ * @param family - CSS font family the text will be rendered in.
  * @returns The chosen font size and the lines that fit.
  */
 export function fitParagraph(
@@ -123,12 +130,13 @@ export function fitParagraph(
   boxHeight: number,
   startSize: number,
   minSize = 6,
+  family: string = BODY_FONT,
 ): FittedText {
   let fontSize = Math.max(minSize, startSize);
 
   for (;;) {
-    const lineHeight = fontSize * 1.15;
-    const lines = wrapText(text, boxWidth, fontSize);
+    const lineHeight = fontSize * 1.35;
+    const lines = wrapText(text, boxWidth, fontSize, family);
     const maxLines = Math.max(1, Math.floor(boxHeight / lineHeight));
 
     if (lines.length <= maxLines || fontSize <= minSize) {
@@ -147,6 +155,7 @@ export function fitParagraph(
  * @param maxWidth - Available width in stage pixels.
  * @param startSize - Starting font size.
  * @param minSize - Smallest font size to try.
+ * @param family - CSS font family the line will be rendered in.
  * @returns The largest font size at which the line fits.
  */
 export function fitLine(
@@ -154,35 +163,14 @@ export function fitLine(
   maxWidth: number,
   startSize: number,
   minSize = 6,
+  family: string = PIXEL_FONT,
 ): number {
   let fontSize = Math.max(minSize, startSize);
-  while (measureText(text, fontSize, "700") > maxWidth && fontSize > minSize) {
+  while (
+    measureText(text, fontSize, "700", family) > maxWidth &&
+    fontSize > minSize
+  ) {
     fontSize -= 1;
   }
   return fontSize;
-}
-
-/**
- * Builds the description block shown on a card face.
- *
- * Monsters get the type/level preamble that `CardGUI` adds; everything else
- * gets the plain description line.
- *
- * @param card - The card being rendered.
- * @returns The multi-line description string.
- */
-export function describeCard(card: {
-  description?: string;
-  star?: number;
-  monster_type?: string;
-}): string {
-  const description = card.description ?? "";
-  if (card.star && card.monster_type) {
-    return [
-      `Type: ${card.monster_type}`,
-      `Level: ${card.star}*`,
-      `Description: ${description}`,
-    ].join("\n");
-  }
-  return `Description: ${description}`;
 }

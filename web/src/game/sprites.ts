@@ -5,6 +5,10 @@
  * layer mutates each frame (position, rotation, squash, alpha). Positions are
  * kept as centers, matching pygame's `rect.center`, so the ported animation math
  * carries over unchanged.
+ *
+ * Unlike the pygame build, opponent cards are not drawn upside down: their
+ * names and stats have to stay readable, and the owner is already obvious from
+ * the tile colour and the card's outline.
  */
 
 import type { Card } from "../types/game";
@@ -44,8 +48,6 @@ export interface Sprite {
   dragging: boolean;
   /** Cleared once a card has been committed to the field. */
   draggable: boolean;
-  /** Rendered upside down for the opponent, matching `CardGUI.flip`. */
-  flip: boolean;
   /** Overrides the logic card's face-down flag during a reveal animation. */
   faceDownOverride: boolean | null;
 
@@ -70,7 +72,6 @@ export interface Sprite {
  * @param y - Center y in stage space.
  * @param width - Rendered width.
  * @param height - Rendered height.
- * @param flip - Whether to render the card upside down.
  * @returns The new sprite.
  */
 export function createSprite(
@@ -80,7 +81,6 @@ export function createSprite(
   y: number,
   width: number,
   height: number,
-  flip: boolean,
 ): Sprite {
   return {
     id: card.id,
@@ -101,7 +101,6 @@ export function createSprite(
     highlightColor: "rgb(255, 255, 0)",
     dragging: false,
     draggable: true,
-    flip,
     faceDownOverride: null,
     el: null,
     faceEl: null,
