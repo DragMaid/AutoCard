@@ -15,7 +15,7 @@ def test_monster_factory_build_and_load() -> None:
     assert len(cards) > 0
 
     # Create a dummy player
-    player = Player(0, "Tester")
+    player = Player(player_index=0, name="Tester")
 
     # Load a specific monster
     sample_name = list(cards.keys())[0]
