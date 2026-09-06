@@ -12,7 +12,7 @@ def test_spell_factory() -> None:
     assert cards is not None
     assert len(cards) > 0
 
-    player = Player(0, "Tester")
+    player = Player(player_index=0, name="Tester")
 
     # Load a specific spell
     sample_name = list(cards.keys())[0]

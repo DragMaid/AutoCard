@@ -60,7 +60,27 @@ class GameState(BaseModel):
     attack_queue: List[AttackEntry] = Field(default_factory=list)
 
     def serialize(self) -> dict:
-        return self.model_dump()
+        """Serializes to a JSON-safe dictionary (enums as strings, tuples as lists)."""
+        return self.model_dump(mode="json")
+
+    def deserialize_absolute(self, serialized) -> None:
+        """Loads state without changing perspective.
+
+        Used by a viewer that already shares the authoritative server's frame of
+        reference, so the board is not rotated and ownership flags are kept as
+        sent. Per-viewer flags are recomputed by the caller.
+
+        Args:
+            serialized (dict): The dictionary representation to restore.
+        """
+        validated = GameState.model_validate(serialized)
+        for i, row in enumerate(validated.field_matrix):
+            for j, card_id in enumerate(row):
+                if card_id and card_id in validated.entity_lookup:
+                    validated.entity_lookup[card_id].pos_in_matrix = (i, j)
+
+        for field in self.model_fields:
+            setattr(self, field, getattr(validated, field))
 
     def deserialize(self, serialized) -> None:
         validated = GameState.model_validate(serialized)

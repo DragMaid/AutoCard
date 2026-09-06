@@ -6,6 +6,8 @@ import socketio
 from werkzeug.serving import run_simple
 from threading import Thread
 
+from core.network.transport import EVENT_INTENT
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,8 +24,8 @@ def run_socketio_server(
         host: The host address to bind to.
         port: The port number to listen on.
         password: An optional password for client connection validation.
-        sub_queue: A queue to put events received from clients.
-        out_queue: A queue to get events to be sent to clients.
+        sub_queue: A queue to put intents received from clients.
+        out_queue: A queue of ``(event_name, payload)`` tuples to broadcast.
     """
     sio = socketio.Server(cors_allowed_origins="*", async_mode="threading")
     app = socketio.WSGIApp(sio)
@@ -42,9 +44,15 @@ def run_socketio_server(
 
     Thread(target=_bridge, daemon=True).start()
 
-    @sio.on("synchronize")
-    def on_synchronize(sid: str, data: Any) -> None:
-        sub_queue.put({"synchronize": data})
+    @sio.on(EVENT_INTENT)
+    def on_action(sid: str, data: Any) -> None:
+        """Forwards a client intent to the authoritative engine.
+
+        Args:
+            sid: The Socket.IO session id of the sender.
+            data: A serialized :class:`~core.network.actions.Intent`.
+        """
+        sub_queue.put({"intent": data})
 
     @sio.event
     def connect(sid: str, environ: Dict[str, Any]) -> bool:
