@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/*
+ * The board is a fixed-size stage that is scaled to fit, so the document itself
+ * never scrolls and never reflows. Touch gestures are disabled over the stage so
+ * dragging a card does not pan the page on mobile.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Card art is pixel art; keep it crisp when the stage scales up. */
+img {
+  image-rendering: -webkit-optimize-contrast;
+  user-select: none;
+  -webkit-user-drag: none;
+}
