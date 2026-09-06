@@ -1,12 +1,16 @@
 /**
- * Static board furniture, ported from `Matrix.draw`.
+ * Static board furniture.
  *
- * Draws the background, the row-tiled grid, the deck plates, the life-point
- * panels and the hand backdrops. Nothing here reacts to pointer input; the
- * sprite and arrow layers sit above it.
+ * Draws the board panel, the field tiles and the two hand trays. Nothing here
+ * reacts to pointer input; the sprite and arrow layers sit above it.
+ *
+ * The tile art is 80x40 — a wide, flat plinth — so each tile is drawn at its
+ * native 2:1 ratio inside its slot rather than stretched to fill it. That is
+ * what opens the gutters between rows, which is where the cards' drop shadows
+ * and the arrow layer now have room to read.
  */
 
-import { backgroundUrl, deckUrl, tileUrl } from "../game/assets";
+import { tileUrl } from "../game/assets";
 import {
   COLS,
   LAYOUT,
@@ -16,7 +20,7 @@ import {
   getSlotRect,
   type Rect,
 } from "../game/layout";
-import { CARD_FONT_FAMILY } from "../game/text";
+import { COLORS, PIXEL_FONT, pixelWell } from "../game/theme";
 
 /** Turns a layout rect into absolute-positioning styles. */
 export function rectStyle(rect: Rect): React.CSSProperties {
@@ -28,39 +32,30 @@ export function rectStyle(rect: Rect): React.CSSProperties {
   };
 }
 
-export interface BoardProps {
-  localName: string;
-  localLife: number;
-  opponentName: string;
-  opponentLife: number;
-  localDeckCount: number;
-  opponentDeckCount: number;
-}
+/** Native aspect of `tile1.png` / `tile2.png`. */
+const TILE_ASPECT = 80 / 40;
 
 /**
  * Renders the board beneath the cards.
  *
- * @param props - Player names, life totals and deck sizes.
  * @returns The static board layers.
  */
-export function Board({
-  localName,
-  localLife,
-  opponentName,
-  opponentLife,
-  localDeckCount,
-  opponentDeckCount,
-}: BoardProps) {
-  const { areas } = LAYOUT;
+export function Board() {
+  const { areas, grid } = LAYOUT;
+
+  const tileHeight = Math.min(grid.slotHeight, grid.slotWidth / TILE_ASPECT);
+  const tileOffset = (grid.slotHeight - tileHeight) / 2;
 
   return (
     <div className="pointer-events-none absolute inset-0">
-      <img
-        src={backgroundUrl()}
-        alt=""
-        draggable={false}
-        className="absolute inset-0 h-full w-full"
-        style={{ objectFit: "fill" }}
+      <div
+        className="absolute"
+        style={{
+          ...rectStyle(areas.boardColumn),
+          backgroundColor: "rgba(8, 8, 22, 0.55)",
+          border: `2px solid ${COLORS.edge}`,
+          boxShadow: "inset 0 0 0 2px rgba(0, 0, 0, 0.5)",
+        }}
       />
 
       {/* Field tiles: the top half belongs to the opponent. */}
@@ -74,115 +69,69 @@ export function Board({
               src={tileUrl(row)}
               alt=""
               draggable={false}
-              className="absolute"
-              style={{ ...rectStyle(rect), objectFit: "fill" }}
+              className="pixel-art absolute"
+              style={{
+                left: rect.x + 3,
+                top: rect.y + tileOffset,
+                width: rect.width - 6,
+                height: tileHeight,
+              }}
             />
           );
         }),
       )}
 
-      <DeckPlate rect={areas.opponentDeck} count={opponentDeckCount} />
-      <DeckPlate rect={areas.myDeck} count={localDeckCount} />
+      {/* The seam between the two halves of the field. */}
+      <div
+        className="absolute"
+        style={{
+          left: grid.originX,
+          top: grid.originY + grid.height / 2 - 1,
+          width: grid.width,
+          height: 2,
+          backgroundColor: "rgba(255, 255, 255, 0.14)",
+        }}
+      />
 
-      <LifePanel
-        rect={areas.opponentLp}
-        name={opponentName}
-        life={opponentLife}
+      <HandTray
+        rect={areas.opponentHand}
         color={OPPONENT_COLOR}
+        label="Opponent Hand"
       />
-      <LifePanel
-        rect={areas.myLp}
-        name={localName}
-        life={localLife}
-        color={PLAYER_COLOR}
-      />
-
-      <HandPlate rect={areas.opponentHand} color={OPPONENT_COLOR} />
-      <HandPlate rect={areas.myHand} color={PLAYER_COLOR} />
+      <HandTray rect={areas.myHand} color={PLAYER_COLOR} label="Your Hand" />
     </div>
   );
 }
 
-/** The deck image, rotated to lie flat as `DeckArea` does. */
-function DeckPlate({ rect, count }: { rect: Rect; count: number }) {
-  return (
-    <div className="absolute" style={rectStyle(rect)}>
-      <img
-        src={deckUrl()}
-        alt=""
-        draggable={false}
-        className="h-full w-full"
-        style={{ objectFit: "fill" }}
-      />
-      {count > 0 && (
-        <span
-          className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white"
-          style={{ fontFamily: CARD_FONT_FAMILY }}
-        >
-          {count}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * Life-point readout, ported from `TextArea.draw`.
- *
- * The original centres a large white number inside a bordered box; the player
- * name is added here because the web build has room for it.
- */
-function LifePanel({
+/** A sunken tray a hand of cards rests in. */
+function HandTray({
   rect,
-  name,
-  life,
   color,
+  label,
 }: {
   rect: Rect;
-  name: string;
-  life: number;
   color: string;
+  label: string;
 }) {
   return (
-    <div
-      className="absolute flex flex-col items-center justify-center"
-      style={{ ...rectStyle(rect), border: `2px solid ${color}` }}
-    >
-      <span
-        className="text-[11px] uppercase tracking-wider text-white/70"
-        style={{ fontFamily: CARD_FONT_FAMILY }}
-      >
-        {name}
-      </span>
-      <span
-        className="font-bold leading-none text-white"
-        style={{
-          fontFamily: CARD_FONT_FAMILY,
-          fontSize: 56,
-          textShadow: "0 2px 6px rgba(0,0,0,0.8)",
-        }}
-      >
-        {life}
-      </span>
-    </div>
-  );
-}
-
-/** Hand backdrop, ported from `HandUI.draw`. */
-function HandPlate({ rect, color }: { rect: Rect; color: string }) {
-  return (
     <div className="absolute" style={rectStyle(rect)}>
-      <img
-        src={deckUrl()}
-        alt=""
-        draggable={false}
-        className="h-full w-full opacity-90"
-        style={{ objectFit: "fill" }}
-      />
       <div
         className="absolute inset-0"
-        style={{ border: `2px solid ${color}` }}
+        style={pixelWell(`${color}66`)}
+        aria-hidden
       />
+      <span
+        className="absolute left-2 top-1 leading-none"
+        style={{
+          fontFamily: PIXEL_FONT,
+          fontSize: 8,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: `${color}99`,
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }

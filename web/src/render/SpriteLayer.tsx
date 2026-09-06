@@ -9,9 +9,10 @@
 import { useCallback, useRef } from "react";
 
 import type { GameClient } from "../game/gameClient";
+import { OPPONENT_COLOR, PLAYER_COLOR } from "../game/layout";
 import { isSpriteFaceDown, type Sprite } from "../game/sprites";
-import { CARD_FONT_FAMILY } from "../game/text";
-import { CardFace, StatOverlay } from "./CardFace";
+import { PIXEL_FONT } from "../game/theme";
+import { CardFace } from "./CardFace";
 
 export interface SpriteLayerProps {
   client: GameClient;
@@ -57,7 +58,6 @@ export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
       {sprites.map((sprite) => {
         const card = sprite.card;
         const faceDown = isSpriteFaceDown(sprite);
-        const showStats = card.card_type === "MONSTER" && !faceDown;
         const trapButton =
           card.card_type === "TRAP" &&
           card.triggerable &&
@@ -67,6 +67,10 @@ export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
         const activated = client.state.gameState.activated_traps.includes(
           sprite.id,
         );
+
+        // A hairline in the owner's colour is what tells the two sides apart
+        // now that opponent cards are no longer drawn upside down.
+        const ownerColor = card.is_opponent ? OPPONENT_COLOR : PLAYER_COLOR;
 
         return (
           <div
@@ -79,45 +83,47 @@ export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
             <div
               ref={bindFace(sprite)}
               className="absolute inset-0"
-              style={{ transformOrigin: "center center" }}
+              style={{
+                transformOrigin: "center center",
+                boxShadow: `0 0 0 2px ${ownerColor}, 3px 3px 0 rgba(0, 0, 0, 0.55)`,
+              }}
             >
               <CardFace
                 card={card}
                 width={sprite.width}
                 height={sprite.height}
                 faceDown={faceDown}
-                flipped={sprite.flip}
               />
             </div>
 
             {/* Screen-space decorations, never rotated with the card. */}
             {sprite.highlight && (
               <div
-                className="pointer-events-none absolute inset-0"
-                style={{ border: `5px solid ${sprite.highlightColor}` }}
-              />
-            )}
-
-            {showStats && (
-              <StatOverlay
-                card={card}
-                position={card.is_opponent ? "below" : "above"}
+                className="pointer-events-none absolute"
+                style={{
+                  inset: -4,
+                  border: `3px solid ${sprite.highlightColor}`,
+                  boxShadow: `0 0 0 1px rgba(0, 0, 0, 0.7)`,
+                }}
               />
             )}
 
             {trapButton && (
               <div
-                className="absolute left-0 right-0 flex items-center justify-center rounded-lg text-[11px] font-bold tracking-wide text-white"
+                className="absolute left-0 right-0 flex items-center justify-center leading-none"
                 style={{
-                  bottom: 10,
-                  height: 30,
-                  fontFamily: CARD_FONT_FAMILY,
-                  backgroundColor: activated
-                    ? "rgb(40, 167, 69)"
-                    : "rgb(220, 53, 69)",
+                  bottom: -9,
+                  height: 18,
+                  fontFamily: PIXEL_FONT,
+                  fontSize: 8,
+                  letterSpacing: "0.1em",
+                  color: "#fff",
+                  backgroundColor: activated ? "#2f8b45" : "#a8283a",
+                  border: `2px solid ${activated ? "#7fe39b" : "#e0768a"}`,
+                  boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.6)",
                 }}
               >
-                {activated ? "ACTIVATED" : "ACTIVATE"}
+                {activated ? "ARMED" : "ARM"}
               </div>
             )}
           </div>

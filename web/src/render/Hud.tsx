@@ -1,104 +1,28 @@
 /**
- * HUD and modal overlays, ported from `gui/screen/hud.py`.
+ * Full-stage modal overlays: the trap stage, surrender confirmation and the
+ * game-over screen.
  *
- * Keeps the original geometry: a turn panel pinned to the lower-left with the
- * End Turn and Surrender buttons beneath it, and full-screen overlays for the
- * trap stage, surrender confirmation and game over.
+ * The turn readout and the End Turn / Surrender buttons used to live here too;
+ * they now sit in the side rail (`Panels.tsx`) where they have a rectangle of
+ * their own instead of being drawn over the card preview.
  */
 
-import { DESIGN_HEIGHT } from "../game/layout";
-import { CARD_FONT_FAMILY } from "../game/text";
-import type { HudSnapshot } from "../game/gameClient";
-
-export interface HudProps {
-  hud: HudSnapshot;
-  onEndTurn: () => void;
-  onSurrender: () => void;
-}
+import {
+  COLORS,
+  PIXEL_FONT,
+  TEXT_OUTLINE,
+  pixelButton,
+  pixelPanel,
+} from "../game/theme";
 
 /**
- * The turn panel and action buttons.
+ * Stacking order for modals.
  *
- * @param props - HUD values plus button callbacks.
- * @returns The HUD layer.
+ * Card sprites carry their own z-index (up to 1000 while dragging) so they can
+ * be layered against each other, which means an unpositioned overlay would be
+ * painted *underneath* the board it is supposed to be covering.
  */
-export function Hud({ hud, onEndTurn, onSurrender }: HudProps) {
-  const label = hud.isTrapStage
-    ? hud.isLocalTurn
-      ? "Your Trap"
-      : "Enemy Trap"
-    : hud.isLocalTurn
-      ? "Your Turn"
-      : "Opponent Turn";
-
-  const labelColor = hud.isTrapStage
-    ? "rgb(255, 200, 0)"
-    : hud.isLocalTurn
-      ? "rgb(100, 255, 100)"
-      : "rgb(255, 100, 100)";
-
-  return (
-    <div
-      className="absolute"
-      style={{
-        left: 10,
-        top: DESIGN_HEIGHT - 235,
-        width: 160,
-        fontFamily: CARD_FONT_FAMILY,
-      }}
-    >
-      <div
-        className="flex flex-col items-center gap-2 rounded-[10px] px-3 py-4"
-        style={{
-          backgroundColor: "rgba(20, 20, 30, 0.78)",
-          border: "2px solid rgb(100, 100, 150)",
-          height: 125,
-        }}
-      >
-        <span className="text-[19px] text-[rgb(220,220,255)]">
-          Turn: {hud.turnCount}
-        </span>
-        <span className="text-[19px] font-semibold" style={{ color: labelColor }}>
-          {label}
-        </span>
-        <span className="text-[13px] text-slate-400">
-          Hand {hud.localHandCount} · Grave {hud.localGraveyard}
-        </span>
-      </div>
-
-      <button
-        type="button"
-        onClick={onSurrender}
-        className="mt-2 h-10 w-[150px] rounded border-2 border-slate-300/70 text-[16px] font-semibold text-white transition-colors"
-        style={{ backgroundColor: "rgb(80, 30, 30)" }}
-      >
-        Surrender
-      </button>
-
-      <button
-        type="button"
-        onClick={onEndTurn}
-        disabled={!hud.isLocalTurn}
-        className="mt-2 h-[50px] w-[150px] rounded border-2 text-[22px] font-semibold transition-colors disabled:cursor-not-allowed"
-        style={
-          hud.isLocalTurn
-            ? {
-                backgroundColor: "rgb(50, 100, 50)",
-                borderColor: "rgb(200, 200, 200)",
-                color: "white",
-              }
-            : {
-                backgroundColor: "rgb(30, 30, 30)",
-                borderColor: "rgb(60, 60, 60)",
-                color: "rgb(100, 100, 100)",
-              }
-        }
-      >
-        End Turn
-      </button>
-    </div>
-  );
-}
+const MODAL_Z = 2000;
 
 /** Dimmed overlay shown while the opponent resolves traps. */
 export function TrapStageOverlay({ visible }: { visible: boolean }) {
@@ -106,14 +30,25 @@ export function TrapStageOverlay({ visible }: { visible: boolean }) {
   return (
     <div
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.47)" }}
+      style={{ backgroundColor: "rgba(4, 4, 12, 0.62)", zIndex: MODAL_Z }}
     >
-      <span
-        className="text-[48px] font-semibold text-white"
-        style={{ fontFamily: CARD_FONT_FAMILY }}
+      <div
+        className="px-8 py-5"
+        style={{ ...pixelPanel(COLORS.gold, 6), backgroundColor: COLORS.panelSolid }}
       >
-        Opponent Resolving Traps...
-      </span>
+        <span
+          className="leading-none"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 24,
+            letterSpacing: "0.08em",
+            color: COLORS.gold,
+            textShadow: TEXT_OUTLINE,
+          }}
+        >
+          OPPONENT RESOLVING TRAPS
+        </span>
+      </div>
     </div>
   );
 }
@@ -133,30 +68,62 @@ export function SurrenderOverlay({
   if (!visible) return null;
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-8"
-      style={{
-        backgroundColor: "rgba(0,0,0,0.78)",
-        fontFamily: CARD_FONT_FAMILY,
-      }}
+      className="absolute inset-0 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(4, 4, 12, 0.82)", zIndex: MODAL_Z }}
     >
-      <span className="text-[36px] font-semibold text-white">Surrender?</span>
-      <div className="flex gap-5">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="h-10 w-[100px] rounded border-2 border-slate-300/70 text-white"
-          style={{ backgroundColor: "rgb(120, 30, 30)" }}
+      <div
+        className="flex w-[420px] flex-col items-center gap-6 px-8 py-7"
+        style={{ ...pixelPanel(COLORS.danger, 6), backgroundColor: COLORS.panelSolid }}
+      >
+        <span
+          className="leading-none"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 22,
+            letterSpacing: "0.08em",
+            color: COLORS.text,
+          }}
         >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-10 w-[100px] rounded border-2 border-slate-300/70 text-white"
-          style={{ backgroundColor: "rgb(30, 100, 30)" }}
+          SURRENDER?
+        </span>
+        <p
+          className="text-center leading-relaxed"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 9,
+            color: COLORS.textDim,
+          }}
         >
-          No
-        </button>
+          This ends the match immediately.
+        </p>
+        <div className="flex gap-4">
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-[40px] w-[130px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+            style={{
+              ...pixelButton("#7a2434", "#e0768a"),
+              fontFamily: PIXEL_FONT,
+              fontSize: 12,
+              letterSpacing: "0.12em",
+            }}
+          >
+            SURRENDER
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-[40px] w-[130px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+            style={{
+              ...pixelButton("#2f6d43", "#7fe39b"),
+              fontFamily: PIXEL_FONT,
+              fontSize: 12,
+              letterSpacing: "0.12em",
+            }}
+          >
+            KEEP PLAYING
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -175,28 +142,44 @@ export function GameOverOverlay({
   onContinue,
 }: GameOverOverlayProps) {
   if (!visible) return null;
+
+  const color = victory ? COLORS.positive : COLORS.danger;
+
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-10"
-      style={{
-        backgroundColor: "rgba(0,0,0,0.7)",
-        fontFamily: CARD_FONT_FAMILY,
-      }}
+      className="absolute inset-0 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(4, 4, 12, 0.86)", zIndex: MODAL_Z }}
     >
-      <span
-        className="text-[72px] font-bold"
-        style={{ color: victory ? "rgb(50,250,50)" : "rgb(250,50,50)" }}
+      <div
+        className="flex w-[480px] flex-col items-center gap-7 px-10 py-9"
+        style={{ ...pixelPanel(color, 8), backgroundColor: COLORS.panelSolid }}
       >
-        {victory ? "VICTORY" : "DEFEAT"}
-      </span>
-      <button
-        type="button"
-        onClick={onContinue}
-        className="h-[50px] w-[200px] rounded border-2 border-slate-300/70 text-[22px] text-white"
-        style={{ backgroundColor: "rgb(50, 50, 50)" }}
-      >
-        Continue
-      </button>
+        <span
+          className="leading-none"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 46,
+            letterSpacing: "0.1em",
+            color,
+            textShadow: TEXT_OUTLINE,
+          }}
+        >
+          {victory ? "VICTORY" : "DEFEAT"}
+        </span>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="h-[46px] w-[220px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+          style={{
+            ...pixelButton("#2b2a4d", COLORS.edgeLit),
+            fontFamily: PIXEL_FONT,
+            fontSize: 14,
+            letterSpacing: "0.12em",
+          }}
+        >
+          CONTINUE
+        </button>
+      </div>
     </div>
   );
 }

@@ -10,18 +10,39 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #000;
+  background: #06060f;
   overscroll-behavior: none;
 }
 
 body {
   font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
-/* Card art is pixel art; keep it crisp when the stage scales up. */
 img {
-  image-rendering: -webkit-optimize-contrast;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/*
+ * Every game asset is pixel art drawn at 64x81 or 80x40 and scaled up, so it
+ * has to be resampled with nearest neighbour or the upscale turns to mush.
+ * The one exception is the 1920x1080 background, which is scaled *down* — that
+ * is applied as a CSS background and deliberately left to the browser's own
+ * smooth filtering, since nearest neighbour would make the starfield crawl.
+ */
+.pixel-art {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Pixel type is already hard-edged; smoothing it just makes it muddy. */
+input,
+button {
+  -webkit-font-smoothing: none;
+}
+
+::placeholder {
+  color: #55507e;
 }

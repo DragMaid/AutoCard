@@ -164,15 +164,16 @@ export class InputManager {
   }
 
   /**
-   * The ACTIVATE button rectangle for a triggerable trap.
+   * The ARM button rectangle for a triggerable trap.
    *
-   * Mirrors `TrapCardGUI.update_activate_button`.
+   * Must stay in step with the tab `SpriteLayer` draws straddling the card's
+   * bottom edge, since that is the only thing the player can aim at.
    */
   activateButtonRect(sprite: Sprite) {
-    const height = 30;
+    const height = 18;
     return {
       x: sprite.x - sprite.width / 2,
-      y: sprite.y + sprite.height / 2 - height - 10,
+      y: sprite.y + sprite.height / 2 - height / 2,
       width: sprite.width,
       height,
     };
@@ -316,7 +317,14 @@ export class InputManager {
   private resolveArrowOnPlayer(x: number, y: number): void {
     const arrow = this.dragArrow;
     if (!arrow) return;
-    if (!containsPoint(LAYOUT.areas.opponentHand, x, y)) return;
+
+    // Either the opponent's hand tray or their rail panel counts as a direct
+    // attack: the panel is where their life total is, so it is the target most
+    // players aim at first.
+    const onOpponent =
+      containsPoint(LAYOUT.areas.opponentHand, x, y) ||
+      containsPoint(LAYOUT.areas.opponentPanel, x, y);
+    if (!onOpponent) return;
 
     const { gameState, turn } = this.getState();
     const defender = nextPlayer(gameState, turn);

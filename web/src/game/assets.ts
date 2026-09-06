@@ -47,11 +47,6 @@ export function cardPreviewUrl(): string {
   return `${ASSET_BASE}/card-preview.png`;
 }
 
-/** URL of the deck/hand backdrop. */
-export function deckUrl(): string {
-  return `${ASSET_BASE}/deck.png`;
-}
-
 /** URL of the board background. */
 export function backgroundUrl(): string {
   return `${ASSET_BASE}/background.png`;

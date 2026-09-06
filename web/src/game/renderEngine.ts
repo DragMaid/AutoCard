@@ -17,7 +17,7 @@ import {
   LAYOUT,
   type Rect,
 } from "./layout";
-import { getMergeableGroups, playersById } from "./state";
+import { getMergeableGroups } from "./state";
 import { createSprite, SpriteManager, type Sprite, type Zone } from "./sprites";
 import type { ClientState } from "../net/patch";
 import type { Card, GameState } from "../types/game";
@@ -154,8 +154,8 @@ export class RenderEngine {
         if (target) {
           to = center(
             target.is_opponent
-              ? LAYOUT.areas.opponentHand
-              : LAYOUT.areas.myHand,
+              ? LAYOUT.areas.opponentPanel
+              : LAYOUT.areas.localPanel,
           );
         }
       } else {
@@ -191,7 +191,6 @@ export class RenderEngine {
   private registerHand(state: GameState): void {
     const desired: Card[] = [];
     const positions = new Map<string, { x: number; y: number }>();
-    const byId = playersById(state);
 
     for (const player of state.players) {
       const rect = this.handRect(player.is_opponent);
@@ -202,7 +201,7 @@ export class RenderEngine {
         if (!card) return;
         desired.push(card);
 
-        const topLeft = handSlotPosition(rect, index);
+        const topLeft = handSlotPosition(rect, index, heldIds.length);
         positions.set(cardId, {
           x: topLeft.x + LAYOUT.cardWidth / 2,
           y: topLeft.y + LAYOUT.cardHeight / 2,
@@ -214,8 +213,6 @@ export class RenderEngine {
       desired,
       zone: "hand",
       create: (card) => {
-        const owner = byId.get(card.owner_id);
-        const isOpponent = Boolean(owner?.is_opponent);
         const at = positions.get(card.id) ?? { x: 0, y: 0 };
         return createSprite(
           card,
@@ -224,7 +221,6 @@ export class RenderEngine {
           at.y,
           LAYOUT.cardWidth,
           LAYOUT.cardHeight,
-          isOpponent,
         );
       },
       onAdd: (sprite) => {
@@ -252,7 +248,6 @@ export class RenderEngine {
    */
   private registerMatrix(state: GameState): void {
     const desired: Card[] = [];
-    const byId = playersById(state);
 
     for (const row of state.field_matrix) {
       for (const cardId of row) {
@@ -273,7 +268,6 @@ export class RenderEngine {
       desired,
       zone: "matrix",
       create: (card) => {
-        const owner = byId.get(card.owner_id);
         const at = slotCenter(card) ?? { x: 0, y: 0 };
         const sprite = createSprite(
           card,
@@ -282,7 +276,6 @@ export class RenderEngine {
           at.y,
           LAYOUT.cardWidth,
           LAYOUT.cardHeight,
-          Boolean(owner?.is_opponent),
         );
         sprite.draggable = false;
         if ("mode" in card && card.mode === "DEFEND") sprite.angle = 90;
