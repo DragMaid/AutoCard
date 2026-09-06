@@ -9,8 +9,18 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { backgroundUrl } from "./game/assets";
 import { GameClient } from "./game/gameClient";
+import { LAYOUT } from "./game/layout";
 import { getCard } from "./game/state";
+import {
+  COLORS,
+  PIXEL_FONT,
+  TEXT_OUTLINE,
+  pixelButton,
+  pixelPanel,
+  pixelWell,
+} from "./game/theme";
 import {
   DemoConnection,
   SocketConnection,
@@ -18,8 +28,9 @@ import {
   type GameConnection,
 } from "./net/client";
 import { Board } from "./render/Board";
-import { Hud, GameOverOverlay, SurrenderOverlay, TrapStageOverlay } from "./render/Hud";
+import { GameOverOverlay, SurrenderOverlay, TrapStageOverlay } from "./render/Hud";
 import { ArrowLayer, CardPreview } from "./render/Overlays";
+import { ActionPanel, PlayerPanel } from "./render/Panels";
 import { SpriteLayer } from "./render/SpriteLayer";
 import { Stage, type StagePointer } from "./render/Stage";
 import { useGameLoop } from "./render/useGameLoop";
@@ -111,16 +122,18 @@ export default function App() {
 
   if (screen === "lobby") {
     return (
-      <Lobby
-        serverUrl={serverUrl}
-        roomId={roomId}
-        playerName={playerName}
-        onServerUrl={setServerUrl}
-        onRoomId={setRoomId}
-        onPlayerName={setPlayerName}
-        onConnect={connect}
-        onDemo={openDemo}
-      />
+      <Starfield>
+        <Lobby
+          serverUrl={serverUrl}
+          roomId={roomId}
+          playerName={playerName}
+          onServerUrl={setServerUrl}
+          onRoomId={setRoomId}
+          onPlayerName={setPlayerName}
+          onConnect={connect}
+          onDemo={openDemo}
+        />
+      </Starfield>
     );
   }
 
@@ -129,73 +142,133 @@ export default function App() {
   const opponent = state.players.find((p) => p.is_opponent);
   const previewCard = getCard(state, hud.previewCardId);
 
+  /** Cards left in a player's deck, or zero before the first sync. */
+  const deckCount = (playerId: string | undefined) =>
+    playerId
+      ? (state.player_info[playerId]?.deck_cards.card_ids.length ?? 0)
+      : 0;
+
+  /** Cards in a player's graveyard. */
+  const graveCount = (playerId: string | undefined) =>
+    playerId
+      ? (state.player_info[playerId]?.graveyard_cards.card_ids.length ?? 0)
+      : 0;
+
   return (
-    <div className="relative h-dvh w-screen bg-black">
-      <Stage
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={() => client.input.cancel()}
-      >
-        <Board
-          localName={hud.localName}
-          localLife={hud.localLife}
-          opponentName={hud.opponentName}
-          opponentLife={hud.opponentLife}
-          localDeckCount={
-            localPlayer
-              ? (state.player_info[localPlayer.id]?.deck_cards.card_ids.length ?? 0)
-              : 0
-          }
-          opponentDeckCount={
-            opponent
-              ? (state.player_info[opponent.id]?.deck_cards.card_ids.length ?? 0)
-              : 0
-          }
-        />
+    <Starfield>
+      <div className="flex h-dvh w-screen flex-col">
+        <TopBar status={status} error={error} onLeave={leave} />
 
-        <CardPreview card={previewCard} />
-        <SpriteLayer client={client} sprites={sprites} />
-        <ArrowLayer
-          dragArrow={client.input.dragArrow}
-          attackIndicators={client.render.attackIndicators}
-          effects={client.render.animations.effects}
-        />
+        <main className="min-h-0 flex-1 px-5 pb-5">
+          <Stage
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={() => client.input.cancel()}
+          >
+            <Board />
 
-        <Hud
-          hud={hud}
-          onEndTurn={() => client.connection?.endTurn()}
-          onSurrender={() => setSurrendering(true)}
-        />
+            <PlayerPanel
+              rect={LAYOUT.areas.opponentPanel}
+              deckRect={LAYOUT.areas.opponentDeck}
+              name={hud.opponentName}
+              life={hud.opponentLife}
+              maxLife={opponent?.max_life_points ?? hud.opponentLife}
+              handCount={hud.opponentHandCount}
+              graveyardCount={graveCount(opponent?.id)}
+              deckCount={deckCount(opponent?.id)}
+              isOpponent
+              active={!hud.isLocalTurn}
+            />
 
-        <TrapStageOverlay visible={hud.isTrapStage && !hud.isLocalTurn} />
+            <CardPreview card={previewCard} />
 
-        <SurrenderOverlay
-          visible={surrendering}
-          onConfirm={() => {
-            client.connection?.surrender();
-            setSurrendering(false);
-          }}
-          onCancel={() => setSurrendering(false)}
-        />
+            <PlayerPanel
+              rect={LAYOUT.areas.localPanel}
+              deckRect={LAYOUT.areas.myDeck}
+              name={hud.localName}
+              life={hud.localLife}
+              maxLife={localPlayer?.max_life_points ?? hud.localLife}
+              handCount={hud.localHandCount}
+              graveyardCount={hud.localGraveyard}
+              deckCount={deckCount(localPlayer?.id)}
+              isOpponent={false}
+              active={hud.isLocalTurn}
+            />
 
-        <GameOverOverlay
-          visible={hud.gameOver && !dismissedGameOver}
-          victory={hud.localLife > 0}
-          onContinue={() => {
-            setDismissedGameOver(true);
-            leave();
-          }}
-        />
-      </Stage>
+            <ActionPanel
+              turnCount={hud.turnCount}
+              isLocalTurn={hud.isLocalTurn}
+              isTrapStage={hud.isTrapStage}
+              onEndTurn={() => client.connection?.endTurn()}
+              onSurrender={() => setSurrendering(true)}
+            />
 
-      <StatusBar status={status} error={error} onLeave={leave} />
+            <SpriteLayer client={client} sprites={sprites} />
+            <ArrowLayer
+              dragArrow={client.input.dragArrow}
+              attackIndicators={client.render.attackIndicators}
+              effects={client.render.animations.effects}
+            />
+
+            <TrapStageOverlay visible={hud.isTrapStage && !hud.isLocalTurn} />
+
+            <SurrenderOverlay
+              visible={surrendering}
+              onConfirm={() => {
+                client.connection?.surrender();
+                setSurrendering(false);
+              }}
+              onCancel={() => setSurrendering(false)}
+            />
+
+            <GameOverOverlay
+              visible={hud.gameOver && !dismissedGameOver}
+              victory={hud.localLife > 0}
+              onContinue={() => {
+                setDismissedGameOver(true);
+                leave();
+              }}
+            />
+          </Stage>
+        </main>
+      </div>
+    </Starfield>
+  );
+}
+
+/**
+ * The page background: the board's own space art, dimmed behind a vignette.
+ *
+ * It sits outside the scaled stage so the artwork keeps its native aspect and
+ * fills the window no matter what shape the board ends up.
+ */
+function Starfield({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative min-h-dvh w-full" style={{ backgroundColor: COLORS.void }}>
+      <div
+        className="pointer-events-none fixed inset-0"
+        style={{
+          backgroundImage: `url(${backgroundUrl()})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          opacity: 0.55,
+        }}
+      />
+      <div
+        className="pointer-events-none fixed inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(6,6,15,0.15) 0%, rgba(6,6,15,0.85) 100%)",
+        }}
+      />
+      <div className="relative">{children}</div>
     </div>
   );
 }
 
-/** Connection status strip pinned outside the scaled stage. */
-function StatusBar({
+/** Connection status strip above the stage. */
+function TopBar({
   status,
   error,
   onLeave,
@@ -205,13 +278,43 @@ function StatusBar({
   onLeave: () => void;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
-      <span className="pointer-events-auto rounded bg-black/70 px-2.5 py-1 text-xs text-slate-300">
+    <header className="flex shrink-0 items-center gap-3 px-5 py-3">
+      <span
+        className="leading-none"
+        style={{
+          fontFamily: PIXEL_FONT,
+          fontSize: 13,
+          letterSpacing: "0.18em",
+          color: COLORS.gold,
+          textShadow: TEXT_OUTLINE,
+        }}
+      >
+        AUTOCARD
+      </span>
+
+      <span
+        className="px-2 py-1.5 leading-none"
+        style={{
+          ...pixelWell(`${COLORS.edge}88`),
+          fontFamily: PIXEL_FONT,
+          fontSize: 9,
+          letterSpacing: "0.1em",
+          color: COLORS.textDim,
+        }}
+      >
         {status}
       </span>
 
       {error && (
-        <span className="pointer-events-auto max-w-md rounded bg-red-950/90 px-3 py-1.5 text-xs text-red-200 ring-1 ring-red-500/40">
+        <span
+          className="min-w-0 flex-1 truncate px-2 py-1.5 leading-none"
+          style={{
+            ...pixelWell("#c2455888"),
+            fontFamily: PIXEL_FONT,
+            fontSize: 9,
+            color: "#ff9aa6",
+          }}
+        >
           {error}
         </span>
       )}
@@ -219,11 +322,17 @@ function StatusBar({
       <button
         type="button"
         onClick={onLeave}
-        className="pointer-events-auto rounded bg-slate-800/90 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700"
+        className="ml-auto h-[30px] px-4 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+        style={{
+          ...pixelButton("#2b2a4d", COLORS.edgeLit),
+          fontFamily: PIXEL_FONT,
+          fontSize: 10,
+          letterSpacing: "0.14em",
+        }}
       >
-        Leave
+        LEAVE
       </button>
-    </div>
+    </header>
   );
 }
 
@@ -250,73 +359,142 @@ function Lobby({
   onDemo,
 }: LobbyProps) {
   return (
-    <div className="flex h-dvh w-screen items-center justify-center bg-slate-950 p-6">
-      <div className="w-full max-w-md rounded-2xl bg-slate-900 p-7 ring-1 ring-slate-800">
-        <h1 className="text-2xl font-semibold text-slate-100">AutoCard</h1>
-        <p className="mt-1 text-sm text-slate-400">
+    <div className="flex min-h-dvh w-full items-center justify-center p-6">
+      <div className="w-full max-w-[440px] px-8 py-8" style={pixelPanel(COLORS.edge, 8)}>
+        <h1
+          className="leading-none"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 26,
+            letterSpacing: "0.1em",
+            color: COLORS.gold,
+            textShadow: TEXT_OUTLINE,
+          }}
+        >
+          AUTOCARD
+        </h1>
+        <p
+          className="mt-3 leading-relaxed"
+          style={{
+            fontFamily: PIXEL_FONT,
+            fontSize: 9,
+            color: COLORS.textDim,
+          }}
+        >
           Join a room on the game API. All rules run on the server.
         </p>
 
-        <div className="mt-6 space-y-4">
+        <div className="mt-7 space-y-4">
           <Field label="Server URL">
-            <input
+            <TextInput
               value={serverUrl}
-              onChange={(event) => onServerUrl(event.target.value)}
+              onChange={onServerUrl}
               placeholder="http://localhost:8080"
-              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-sky-500"
             />
           </Field>
 
           <Field label="Room ID">
-            <input
+            <TextInput
               value={roomId}
-              onChange={(event) => onRoomId(event.target.value)}
+              onChange={onRoomId}
               placeholder="e.g. ABC123"
-              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-sky-500"
             />
           </Field>
 
           <Field label="Display name">
-            <input
-              value={playerName}
-              onChange={(event) => onPlayerName(event.target.value)}
-              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-sky-500"
-            />
+            <TextInput value={playerName} onChange={onPlayerName} />
           </Field>
 
           <button
             type="button"
             onClick={onConnect}
-            className="w-full rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-500"
+            className="h-[46px] w-full leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+            style={{
+              ...pixelButton("#2f6d43", "#7fe39b"),
+              fontFamily: PIXEL_FONT,
+              fontSize: 14,
+              letterSpacing: "0.1em",
+            }}
           >
-            Join room
+            JOIN ROOM
           </button>
         </div>
 
-        <div className="mt-7 border-t border-slate-800 pt-5">
-          <p className="text-xs text-slate-500">
+        <div
+          className="mt-7 pt-6"
+          style={{ borderTop: `2px solid ${COLORS.edge}55` }}
+        >
+          <p
+            className="leading-relaxed"
+            style={{
+              fontFamily: PIXEL_FONT,
+              fontSize: 8,
+              color: COLORS.textFaint,
+            }}
+          >
             No backend yet? Open a captured game state to inspect the board and
             the layout. Actions are recorded but not resolved.
           </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={() => onDemo(0)}
-              className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
-            >
-              Demo · host seat
-            </button>
-            <button
-              type="button"
-              onClick={() => onDemo(1)}
-              className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
-            >
-              Demo · guest seat
-            </button>
+          <div className="mt-4 flex gap-3">
+            <DemoButton label="DEMO · HOST" onClick={() => onDemo(0)} />
+            <DemoButton label="DEMO · GUEST" onClick={() => onDemo(1)} />
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** A pixel-framed text input. */
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      // The border comes from `pixelWell` as an inline style, which a Tailwind
+      // focus variant cannot override, so focus is shown as an outline.
+      className="w-full px-3 py-2.5 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#8f89e0]"
+      style={{
+        ...pixelWell(`${COLORS.edge}aa`),
+        fontFamily: PIXEL_FONT,
+        fontSize: 11,
+        color: COLORS.text,
+      }}
+    />
+  );
+}
+
+/** One of the two offline-demo entry points. */
+function DemoButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="h-[34px] flex-1 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+      style={{
+        ...pixelButton("#2b2a4d", COLORS.edgeLit),
+        fontFamily: PIXEL_FONT,
+        fontSize: 9,
+        letterSpacing: "0.1em",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -329,7 +507,16 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-slate-400">
+      <span
+        className="mb-2 block leading-none"
+        style={{
+          fontFamily: PIXEL_FONT,
+          fontSize: 8,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: COLORS.textDim,
+        }}
+      >
         {label}
       </span>
       {children}
