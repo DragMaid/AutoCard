@@ -1,0 +1,6 @@
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/Main.java
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/config/ClientConfig.java
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/controller/ClientController.java
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/model/Client.java
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/repository/ClientRepo.java
+/home/hoxilo/Documents/AutoCard/api/src/main/java/com/autocard/service/ClientService.java
