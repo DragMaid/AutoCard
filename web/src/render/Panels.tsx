@@ -11,7 +11,7 @@ import { cardBackUrl } from "../game/assets";
 import { LAYOUT, OPPONENT_COLOR, PLAYER_COLOR, type Rect } from "../game/layout";
 import {
   COLORS,
-  PIXEL_FONT,
+  UI_FONT,
   TEXT_OUTLINE,
   pixelButton,
   pixelPanel,
@@ -83,7 +83,7 @@ export function PlayerPanel({
             <span
               className="leading-none"
               style={{
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: 8,
                 letterSpacing: "0.18em",
                 color,
@@ -95,7 +95,7 @@ export function PlayerPanel({
               <span
                 className="min-w-0 flex-1 truncate leading-none"
                 style={{
-                  fontFamily: PIXEL_FONT,
+                  fontFamily: UI_FONT,
                   fontSize: 10,
                   color: COLORS.textDim,
                 }}
@@ -109,7 +109,7 @@ export function PlayerPanel({
             <span
               className="leading-none"
               style={{
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: 30,
                 color: COLORS.text,
                 textShadow: TEXT_OUTLINE,
@@ -120,7 +120,7 @@ export function PlayerPanel({
             <span
               className="pb-1 leading-none"
               style={{
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: 8,
                 letterSpacing: "0.14em",
                 color: COLORS.textFaint,
@@ -165,7 +165,7 @@ function Counter({ label, value }: { label: string; value: number }) {
     <span
       className="px-1.5 py-[3px] leading-none"
       style={{
-        fontFamily: PIXEL_FONT,
+        fontFamily: UI_FONT,
         fontSize: 8,
         letterSpacing: "0.1em",
         color: COLORS.textDim,
@@ -226,7 +226,7 @@ function DeckStack({
         className="absolute left-1/2 -translate-x-1/2 px-1 py-[2px] leading-none"
         style={{
           bottom: -4,
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 10,
           color: COLORS.text,
           backgroundColor: "rgba(6, 6, 18, 0.92)",
@@ -285,7 +285,7 @@ export function ActionPanel({
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
             fontSize: 9,
             letterSpacing: "0.14em",
             color: COLORS.textFaint,
@@ -296,7 +296,7 @@ export function ActionPanel({
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
             fontSize: 11,
             letterSpacing: "0.08em",
             color: labelColor,
@@ -314,7 +314,7 @@ export function ActionPanel({
         className="h-[46px] w-full leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
         style={{
           ...pixelButton("#2f6d43", "#7fe39b", isLocalTurn),
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 15,
           letterSpacing: "0.08em",
         }}
@@ -328,7 +328,7 @@ export function ActionPanel({
         className="h-[26px] w-full leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
         style={{
           ...pixelButton("#5a2130", "#c26b7a"),
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 10,
           letterSpacing: "0.14em",
         }}

@@ -20,7 +20,7 @@ import {
   getSlotRect,
   type Rect,
 } from "../game/layout";
-import { COLORS, PIXEL_FONT, pixelWell } from "../game/theme";
+import { COLORS, UI_FONT, pixelWell } from "../game/theme";
 
 /** Turns a layout rect into absolute-positioning styles. */
 export function rectStyle(rect: Rect): React.CSSProperties {
@@ -123,7 +123,7 @@ function HandTray({
       <span
         className="absolute left-2 top-1 leading-none"
         style={{
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 8,
           letterSpacing: "0.16em",
           textTransform: "uppercase",

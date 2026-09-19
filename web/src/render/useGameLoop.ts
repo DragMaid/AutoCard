@@ -82,6 +82,8 @@ export function useGameLoop(client: GameClient): GameLoopResult {
   const lastSignature = useRef("");
   const lastHud = useRef("");
   const lastTime = useRef(performance.now());
+  /** Whether the previous frame drew any arrows or effects. */
+  const hadArrows = useRef(false);
 
   useEffect(() => {
     let frameId = 0;
@@ -113,13 +115,20 @@ export function useGameLoop(client: GameClient): GameLoopResult {
         setHud(nextHud);
       }
 
-      if (
-        client.input.dragArrow ||
+      // The arrow layer reads straight off the client, so it only repaints when
+      // this counter moves. Ticking one extra frame *after* the last arrow goes
+      // away is what erases it: stopping the moment the arrow is gone leaves
+      // the previous render — and its arrow — on screen until something else
+      // happens to re-render the tree.
+      const arrows =
+        client.input.dragArrow !== null ||
         client.render.attackIndicators.length > 0 ||
-        client.render.animations.effects.length > 0
-      ) {
+        client.render.animations.effects.length > 0;
+
+      if (arrows || hadArrows.current) {
         setArrowTick((value) => (value + 1) % 1_000_000);
       }
+      hadArrows.current = arrows;
 
       setError((current) =>
         current === client.lastError ? current : client.lastError,
@@ -137,6 +146,18 @@ export function useGameLoop(client: GameClient): GameLoopResult {
     return client.subscribe(() => {
       lastSignature.current = "";
       setError(client.lastError);
+
+      // The HUD is refreshed here as well as in the frame loop, because
+      // patches keep arriving in a tab the browser has stopped animating.
+      // Leaving it to `requestAnimationFrame` meant a backgrounded tab sat on
+      // the turn it last saw — showing the opponent's turn, with End Turn
+      // greyed out, on a board where it was your move.
+      const next = client.hud();
+      const key = JSON.stringify(next);
+      if (key !== lastHud.current) {
+        lastHud.current = key;
+        setHud(next);
+      }
     });
   }, [client]);
 

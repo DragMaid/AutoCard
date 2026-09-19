@@ -11,7 +11,7 @@ import { useCallback, useRef } from "react";
 import type { GameClient } from "../game/gameClient";
 import { OPPONENT_COLOR, PLAYER_COLOR } from "../game/layout";
 import { isSpriteFaceDown, type Sprite } from "../game/sprites";
-import { PIXEL_FONT } from "../game/theme";
+import { UI_FONT } from "../game/theme";
 import { CardFace } from "./CardFace";
 
 export interface SpriteLayerProps {
@@ -28,27 +28,34 @@ export interface SpriteLayerProps {
 export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
   // Stable per-sprite ref callbacks: a fresh closure each render would make
   // React detach and re-attach every node on every frame.
-  const outerRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
-  const faceRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
+  //
+  // Keyed by the sprite object rather than its card id, because a card being
+  // played is briefly two sprites at once: the hand sprite still fading out and
+  // the field sprite that replaced it. Sharing one closure between them bound
+  // the field card's node to the dying hand sprite, so the summoned card was
+  // never positioned and never appeared on the board. A WeakMap also drops
+  // entries as sprites are collected, which the old id map never did.
+  const outerRefs = useRef(new WeakMap<Sprite, (node: HTMLDivElement | null) => void>());
+  const faceRefs = useRef(new WeakMap<Sprite, (node: HTMLDivElement | null) => void>());
 
   const bindOuter = useCallback((sprite: Sprite) => {
-    let ref = outerRefs.current.get(sprite.id);
+    let ref = outerRefs.current.get(sprite);
     if (!ref) {
       ref = (node: HTMLDivElement | null) => {
         sprite.el = node;
       };
-      outerRefs.current.set(sprite.id, ref);
+      outerRefs.current.set(sprite, ref);
     }
     return ref;
   }, []);
 
   const bindFace = useCallback((sprite: Sprite) => {
-    let ref = faceRefs.current.get(sprite.id);
+    let ref = faceRefs.current.get(sprite);
     if (!ref) {
       ref = (node: HTMLDivElement | null) => {
         sprite.faceEl = node;
       };
-      faceRefs.current.set(sprite.id, ref);
+      faceRefs.current.set(sprite, ref);
     }
     return ref;
   }, []);
@@ -74,7 +81,10 @@ export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
 
         return (
           <div
-            key={sprite.id}
+            // Zone-qualified: the same card can be mounted twice for a frame
+            // while a hand sprite dies and its field sprite takes over, and a
+            // duplicate key makes React drop one of the two nodes.
+            key={`${sprite.zone}:${sprite.id}`}
             ref={bindOuter(sprite)}
             className="absolute left-0 top-0 will-change-transform"
             style={{ width: sprite.width, height: sprite.height }}
@@ -114,7 +124,7 @@ export function SpriteLayer({ client, sprites }: SpriteLayerProps) {
                 style={{
                   bottom: -9,
                   height: 18,
-                  fontFamily: PIXEL_FONT,
+                  fontFamily: UI_FONT,
                   fontSize: 8,
                   letterSpacing: "0.1em",
                   color: "#fff",

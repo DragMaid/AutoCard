@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of `core/network/actions.py`.
  *
- * Intents travel browser -> Java relay -> Python engine and carry nothing but
+ * Intents travel browser -> C# relay -> Python engine and carry nothing but
  * IDs. Patches travel back and describe single-field mutations of the game
  * state. Keep this file in lockstep with the Python module: the two are one
  * protocol.
@@ -11,11 +11,16 @@ import type { Cell, GameEvent, SerializedEngine } from "../types/game";
 
 export const PROTOCOL_VERSION = 1;
 
-/** Socket.IO event names shared with the Python server and the Java relay. */
+/** Socket.IO event names shared with the Python engine and the C# relay. */
 export const EVENT_INTENT = "action";
 export const EVENT_PATCH = "patch";
 export const EVENT_ASSIGN = "assign";
 export const EVENT_JOIN = "join";
+export const EVENT_CREATE_ROOM = "create_room";
+export const EVENT_MATCHMAKE = "matchmake";
+export const EVENT_CANCEL_MATCHMAKE = "cancel_matchmake";
+export const EVENT_QUEUED = "queued";
+export const EVENT_ROOM_STATUS = "room_status";
 export const EVENT_ERROR = "game_error";
 
 export type IntentType =
@@ -90,12 +95,37 @@ export interface Patch {
   events: GameEvent[];
 }
 
+/** Whether a room seats two people or one person and the AI. */
+export type RoomMode = "pvp" | "ai";
+
 /** Seat assignment handed to a client when it joins a room. */
 export interface Assignment {
   room_id: string;
   player_id: string;
   player_index: number;
   opponent_id?: string;
+  mode?: RoomMode;
+}
+
+/**
+ * How full a room is, pushed whenever that changes.
+ *
+ * `waiting` is what drives the "share this code" screen: it stays true until
+ * someone takes the other seat, and goes false the moment they do.
+ */
+export interface RoomStatus {
+  room_id: string;
+  mode: RoomMode;
+  seated: number;
+  capacity: number;
+  started: boolean;
+  waiting: boolean;
+}
+
+/** A client's place in the quick-match queue. `position` 1 is next up. */
+export interface QueueStatus {
+  position: number;
+  size: number;
 }
 
 /**

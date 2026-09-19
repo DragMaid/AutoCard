@@ -107,6 +107,28 @@ def _changed_fields(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, 
     return {k: v for k, v in after.items() if before.get(k) != v}
 
 
+def _as_full_sync(snapshot_after: Dict[str, Any]) -> PatchOp:
+    """Wraps a snapshot in the shape :meth:`PatchApplier._apply_full_sync` reads.
+
+    A snapshot and a serialized engine hold the same board under different key
+    names, and it is the engine's names that appliers expect. Handing a raw
+    snapshot to a FULL_SYNC op produced a patch no client could apply.
+
+    Args:
+        snapshot_after: The snapshot taken after the action.
+
+    Returns:
+        PatchOp: A full-sync op carrying the whole board.
+    """
+    return PatchOp(op=OpType.FULL_SYNC, value={
+        "game_state": snapshot_after.get("game_state", {}),
+        "effect_tracker": snapshot_after.get("effects", []),
+        # Events ride on the patch itself, never inside a snapshot.
+        "event_logger": [],
+        "turn_manager": snapshot_after.get("turn", {}),
+    })
+
+
 def diff_state(before: Dict[str, Any], after: Dict[str, Any]) -> List[PatchOp]:
     """Computes the ops that turn snapshot ``before`` into snapshot ``after``.
 
@@ -123,7 +145,7 @@ def diff_state(before: Dict[str, Any], after: Dict[str, Any]) -> List[PatchOp]:
 
     # Ownership only changes on a full reset, which is broadcast as FULL_SYNC.
     if gs_before.get("field_matrix_ownership") != gs_after.get("field_matrix_ownership"):
-        return [PatchOp(op=OpType.FULL_SYNC, value=after)]
+        return [_as_full_sync(after)]
 
     # --- Cards -------------------------------------------------------------
     entities_before: Dict[str, Any] = gs_before.get("entity_lookup", {})

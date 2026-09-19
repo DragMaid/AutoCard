@@ -11,7 +11,7 @@
  * measuring one with the metrics of the other overflows by a wide margin.
  */
 
-import { BODY_FONT, PIXEL_FONT } from "./theme";
+import { BODY_FONT, UI_FONT } from "./theme";
 
 let context: CanvasRenderingContext2D | null = null;
 
@@ -163,7 +163,7 @@ export function fitLine(
   maxWidth: number,
   startSize: number,
   minSize = 6,
-  family: string = PIXEL_FONT,
+  family: string = UI_FONT,
 ): number {
   let fontSize = Math.max(minSize, startSize);
   while (

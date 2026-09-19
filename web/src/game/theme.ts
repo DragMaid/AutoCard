@@ -11,17 +11,33 @@
 import type { CSSProperties } from "react";
 
 /**
- * Display font for chrome, labels and numbers.
+ * The interface face: chrome, labels, buttons, stats and card text.
  *
- * `Silkscreen` is loaded from Google Fonts in `index.html`; the monospace
- * fallbacks keep every panel legible (and roughly the same width) offline.
+ * `Chakra Petch` is a squared-off technical sans with clipped corners. It keeps
+ * the hard-edged, engineered feel the pixel art asks for, but unlike a bitmap
+ * face it stays sharp at the 9-12px the side rail and card stats actually use,
+ * and it has real weights to build hierarchy with. `Silkscreen` was legible
+ * only at its native size and turned to mush everywhere else.
+ *
+ * Loaded from Google Fonts in `index.html`; the fallbacks keep the layout
+ * standing if it never arrives.
  */
-export const PIXEL_FONT =
-  '"Silkscreen", "Courier New", ui-monospace, SFMono-Regular, monospace';
+export const UI_FONT =
+  '"Chakra Petch", "DejaVu Sans Condensed", "Segoe UI", system-ui, sans-serif';
+
+/**
+ * Reserved for the wordmark and full-stage verdicts.
+ *
+ * A bitmap face still earns its place at 20px and up, where its blockiness
+ * reads as deliberate rather than as a rendering fault. Never use it for
+ * anything a player has to read quickly.
+ */
+export const DISPLAY_FONT =
+  '"Press Start 2P", "Chakra Petch", ui-monospace, monospace';
 
 /** Reading font, used only where a real sentence has to be legible. */
 export const BODY_FONT =
-  'system-ui, -apple-system, "Segoe UI", "DejaVu Sans", "Liberation Sans", sans-serif';
+  '"Chakra Petch", system-ui, -apple-system, "Segoe UI", sans-serif';
 
 /** The palette, sampled from `assets/background.png`. */
 export const COLORS = {
@@ -124,13 +140,25 @@ export function pixelButton(
 /** Uppercase micro-label used above every value in the side rail. */
 export function pixelLabel(color: string = COLORS.textDim): CSSProperties {
   return {
-    fontFamily: PIXEL_FONT,
-    fontSize: 9,
-    letterSpacing: "0.14em",
+    fontFamily: UI_FONT,
+    fontWeight: 600,
+    fontSize: 10,
+    letterSpacing: "0.16em",
     textTransform: "uppercase",
     color,
   };
 }
+
+/**
+ * Numerals that do not jitter as they change.
+ *
+ * Life points and counters are re-rendered every frame, so proportional digits
+ * would make the whole rail twitch on every hit.
+ */
+export const TABULAR: CSSProperties = {
+  fontVariantNumeric: "tabular-nums",
+  fontFeatureSettings: '"tnum" 1',
+};
 
 /**
  * A 1px hard outline around text, replacing the blurred shadows the rest of

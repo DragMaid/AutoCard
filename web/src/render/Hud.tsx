@@ -9,8 +9,9 @@
 
 import {
   COLORS,
-  PIXEL_FONT,
+  DISPLAY_FONT,
   TEXT_OUTLINE,
+  UI_FONT,
   pixelButton,
   pixelPanel,
 } from "../game/theme";
@@ -39,9 +40,10 @@ export function TrapStageOverlay({ visible }: { visible: boolean }) {
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
-            fontSize: 24,
-            letterSpacing: "0.08em",
+            fontFamily: UI_FONT,
+            fontWeight: 700,
+            fontSize: 22,
+            letterSpacing: "0.14em",
             color: COLORS.gold,
             textShadow: TEXT_OUTLINE,
           }}
@@ -78,9 +80,10 @@ export function SurrenderOverlay({
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
+            fontWeight: 700,
             fontSize: 22,
-            letterSpacing: "0.08em",
+            letterSpacing: "0.14em",
             color: COLORS.text,
           }}
         >
@@ -89,8 +92,8 @@ export function SurrenderOverlay({
         <p
           className="text-center leading-relaxed"
           style={{
-            fontFamily: PIXEL_FONT,
-            fontSize: 9,
+            fontFamily: UI_FONT,
+            fontSize: 13,
             color: COLORS.textDim,
           }}
         >
@@ -103,8 +106,9 @@ export function SurrenderOverlay({
             className="h-[40px] w-[130px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
             style={{
               ...pixelButton("#7a2434", "#e0768a"),
-              fontFamily: PIXEL_FONT,
-              fontSize: 12,
+              fontFamily: UI_FONT,
+              fontWeight: 700,
+              fontSize: 13,
               letterSpacing: "0.12em",
             }}
           >
@@ -116,8 +120,9 @@ export function SurrenderOverlay({
             className="h-[40px] w-[130px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
             style={{
               ...pixelButton("#2f6d43", "#7fe39b"),
-              fontFamily: PIXEL_FONT,
-              fontSize: 12,
+              fontFamily: UI_FONT,
+              fontWeight: 700,
+              fontSize: 13,
               letterSpacing: "0.12em",
             }}
           >
@@ -157,9 +162,9 @@ export function GameOverOverlay({
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
-            fontSize: 46,
-            letterSpacing: "0.1em",
+            fontFamily: DISPLAY_FONT,
+            fontSize: 40,
+            letterSpacing: "0.06em",
             color,
             textShadow: TEXT_OUTLINE,
           }}
@@ -172,9 +177,10 @@ export function GameOverOverlay({
           className="h-[46px] w-[220px] leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
           style={{
             ...pixelButton("#2b2a4d", COLORS.edgeLit),
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
+            fontWeight: 700,
             fontSize: 14,
-            letterSpacing: "0.12em",
+            letterSpacing: "0.14em",
           }}
         >
           CONTINUE

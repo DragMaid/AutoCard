@@ -1,13 +1,13 @@
 /**
  * Application shell.
  *
- * Owns the connection lifecycle (lobby -> connected room, or the offline demo)
- * and wires stage pointer events into the input manager. All gameplay decisions
- * belong to the Python engine; this component only sends intents and draws
- * whatever the resulting patches describe.
+ * Owns the connection lifecycle — lobby, then a room — and wires stage pointer
+ * events into the input manager. All gameplay decisions belong to the Python
+ * engine; this component only sends intents and draws whatever the resulting
+ * patches describe.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { backgroundUrl } from "./game/assets";
 import { GameClient } from "./game/gameClient";
@@ -15,92 +15,142 @@ import { LAYOUT } from "./game/layout";
 import { getCard } from "./game/state";
 import {
   COLORS,
-  PIXEL_FONT,
+  DISPLAY_FONT,
   TEXT_OUTLINE,
+  UI_FONT,
   pixelButton,
   pixelPanel,
   pixelWell,
 } from "./game/theme";
+import type { QueueStatus, RoomStatus } from "./net/actions";
 import {
-  DemoConnection,
   SocketConnection,
   type ConnectionHandlers,
+  type Entry,
   type GameConnection,
 } from "./net/client";
 import { Board } from "./render/Board";
 import { GameOverOverlay, SurrenderOverlay, TrapStageOverlay } from "./render/Hud";
+import { WaitingOverlay } from "./render/Waiting";
 import { ArrowLayer, CardPreview } from "./render/Overlays";
 import { ActionPanel, PlayerPanel } from "./render/Panels";
 import { SpriteLayer } from "./render/SpriteLayer";
 import { Stage, type StagePointer } from "./render/Stage";
 import { useGameLoop } from "./render/useGameLoop";
-import type { SerializedEngine } from "./types/game";
-import demoSnapshot from "./demo/snapshot.json";
 
 type Screen = "lobby" | "game";
+
+/** What the lobby is doing. `searching` means a socket is open and queued. */
+type LobbyPhase = "idle" | "connecting" | "searching";
 
 const DEFAULT_SERVER =
   (import.meta.env.VITE_GAME_API as string | undefined) ??
   "http://localhost:8080";
 
+/** Room codes the relay generates are five characters of this alphabet. */
+const CODE_PATTERN = /[^A-Za-z0-9_-]/g;
+
 export default function App() {
   const client = useMemo(() => new GameClient(), []);
   const [screen, setScreen] = useState<Screen>("lobby");
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER);
-  const [roomId, setRoomId] = useState("");
+  const [roomCode, setRoomCode] = useState("");
   const [playerName, setPlayerName] = useState("player");
   const [status, setStatus] = useState<string>("idle");
+  const [phase, setPhase] = useState<LobbyPhase>("idle");
+  const [lobbyError, setLobbyError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueStatus | null>(null);
+  const [room, setRoom] = useState<RoomStatus | null>(null);
   const [surrendering, setSurrendering] = useState(false);
   const [dismissedGameOver, setDismissedGameOver] = useState(false);
 
   const connectionRef = useRef<GameConnection | null>(null);
+  /** True once a seat has been assigned, so an error means entry failed. */
+  const seatedRef = useRef(false);
   const { sprites, hud, error } = useGameLoop(client);
 
-  const handlers: ConnectionHandlers = useMemo(
-    () => ({
-      onAssign: (assignment) => client.onAssign(assignment),
-      onPatch: (patch) => client.onPatch(patch),
-      onStatus: (next, detail) => setStatus(detail ? `${next}: ${detail}` : next),
-      onError: (message) => client.onError(message),
-    }),
-    [client],
-  );
-
-  /** Opens a live room on the Java relay. */
-  const connect = useCallback(() => {
-    const connection = new SocketConnection(
-      { url: serverUrl, roomId: roomId.trim() || "lobby", playerName },
-      handlers,
-    );
-    connectionRef.current = connection;
-    client.connection = connection;
-    connection.connect();
-    setScreen("game");
-  }, [client, handlers, playerName, roomId, serverUrl]);
-
-  /** Opens the captured snapshot with no backend attached. */
-  const openDemo = useCallback(
-    (seatIndex: number) => {
-      const connection = new DemoConnection(
-        demoSnapshot as unknown as SerializedEngine,
-        handlers,
-        seatIndex,
-      );
-      connectionRef.current = connection;
-      client.connection = connection;
-      connection.connect();
-      setScreen("game");
-    },
-    [client, handlers],
-  );
-
+  /** Tears the socket down and returns to the lobby. */
   const leave = useCallback(() => {
     connectionRef.current?.disconnect();
     connectionRef.current = null;
     client.connection = null;
+    client.reset();
+    seatedRef.current = false;
     setScreen("lobby");
+    setPhase("idle");
+    setQueue(null);
+    setRoom(null);
     setDismissedGameOver(false);
+    setSurrendering(false);
   }, [client]);
+
+  const handlers: ConnectionHandlers = useMemo(
+    () => ({
+      onAssign: (assignment) => {
+        client.onAssign(assignment);
+        seatedRef.current = true;
+        setQueue(null);
+        setLobbyError(null);
+        setScreen("game");
+      },
+      onPatch: (patch) => client.onPatch(patch),
+      onRoomStatus: (next) => setRoom(next),
+      onQueued: (next) => setQueue(next),
+      onStatus: (next, detail) =>
+        setStatus(detail ? `${next}: ${detail}` : next),
+      onError: (message) => {
+        client.onError(message);
+        setLobbyError(message);
+
+        // An error before a seat arrives means entry failed — a full room, a
+        // bad code, an engine that is down — so drop back rather than sit on a
+        // socket that will never be dealt into a game.
+        if (!seatedRef.current) {
+          connectionRef.current?.disconnect();
+          connectionRef.current = null;
+          client.connection = null;
+          setPhase("idle");
+          setQueue(null);
+        }
+      },
+    }),
+    [client],
+  );
+
+  /** Opens a socket and asks the relay for a seat. */
+  const enter = useCallback(
+    (entry: Entry) => {
+      connectionRef.current?.disconnect();
+      client.reset();
+      seatedRef.current = false;
+      setLobbyError(null);
+      setRoom(null);
+      setPhase(entry.kind === "match" ? "searching" : "connecting");
+
+      const connection = new SocketConnection(
+        { url: serverUrl.trim(), entry, playerName: playerName.trim() || "player" },
+        handlers,
+      );
+      connectionRef.current = connection;
+      client.connection = connection;
+      connection.connect();
+    },
+    [client, handlers, playerName, serverUrl],
+  );
+
+  /** Leaves the quick-match queue without leaving the lobby. */
+  const cancelSearch = useCallback(() => {
+    connectionRef.current?.cancelMatchmake();
+    connectionRef.current?.disconnect();
+    connectionRef.current = null;
+    client.connection = null;
+    setPhase("idle");
+    setQueue(null);
+  }, [client]);
+
+  // A socket left open by a closing tab keeps its seat until the grace period
+  // lapses, which would look to the opponent like a player who never left.
+  useEffect(() => () => connectionRef.current?.disconnect(), []);
 
   const onPointerDown = useCallback(
     (pointer: StagePointer) => {
@@ -125,13 +175,21 @@ export default function App() {
       <Starfield>
         <Lobby
           serverUrl={serverUrl}
-          roomId={roomId}
+          roomCode={roomCode}
           playerName={playerName}
+          phase={phase}
+          queue={queue}
+          error={lobbyError}
           onServerUrl={setServerUrl}
-          onRoomId={setRoomId}
+          onRoomCode={(value) =>
+            setRoomCode(value.replace(CODE_PATTERN, "").toUpperCase().slice(0, 24))
+          }
           onPlayerName={setPlayerName}
-          onConnect={connect}
-          onDemo={openDemo}
+          onQuickMatch={() => enter({ kind: "match" })}
+          onCreateRoom={() => enter({ kind: "create" })}
+          onPlayAi={() => enter({ kind: "create", mode: "ai" })}
+          onJoinRoom={() => enter({ kind: "join", roomId: roomCode.trim() })}
+          onCancelSearch={cancelSearch}
         />
       </Starfield>
     );
@@ -157,7 +215,13 @@ export default function App() {
   return (
     <Starfield>
       <div className="flex h-dvh w-screen flex-col">
-        <TopBar status={status} error={error} onLeave={leave} />
+        <TopBar
+          status={status}
+          roomId={room?.room_id ?? null}
+          mode={room?.mode ?? null}
+          error={error}
+          onLeave={leave}
+        />
 
         <main className="min-h-0 flex-1 px-5 pb-5">
           <Stage
@@ -212,6 +276,13 @@ export default function App() {
             />
 
             <TrapStageOverlay visible={hud.isTrapStage && !hud.isLocalTurn} />
+
+            <WaitingOverlay
+              visible={Boolean(room?.waiting) && !hud.gameOver}
+              roomId={room?.room_id ?? ""}
+              started={Boolean(room?.started)}
+              onLeave={leave}
+            />
 
             <SurrenderOverlay
               visible={surrendering}
@@ -270,10 +341,14 @@ function Starfield({ children }: { children: React.ReactNode }) {
 /** Connection status strip above the stage. */
 function TopBar({
   status,
+  roomId,
+  mode,
   error,
   onLeave,
 }: {
   status: string;
+  roomId: string | null;
+  mode: string | null;
   error: string | null;
   onLeave: () => void;
 }) {
@@ -282,9 +357,9 @@ function TopBar({
       <span
         className="leading-none"
         style={{
-          fontFamily: PIXEL_FONT,
+          fontFamily: DISPLAY_FONT,
           fontSize: 13,
-          letterSpacing: "0.18em",
+          letterSpacing: "0.04em",
           color: COLORS.gold,
           textShadow: TEXT_OUTLINE,
         }}
@@ -292,13 +367,30 @@ function TopBar({
         AUTOCARD
       </span>
 
+      {roomId && (
+        <span
+          className="px-2.5 py-1.5 leading-none"
+          style={{
+            ...pixelWell(`${COLORS.gold}66`),
+            fontFamily: UI_FONT,
+            fontWeight: 700,
+            fontSize: 12,
+            letterSpacing: "0.2em",
+            color: COLORS.gold,
+          }}
+        >
+          {mode === "ai" ? "VS AI" : roomId}
+        </span>
+      )}
+
       <span
-        className="px-2 py-1.5 leading-none"
+        className="px-2.5 py-1.5 leading-none"
         style={{
           ...pixelWell(`${COLORS.edge}88`),
-          fontFamily: PIXEL_FONT,
-          fontSize: 9,
-          letterSpacing: "0.1em",
+          fontFamily: UI_FONT,
+          fontWeight: 500,
+          fontSize: 11,
+          letterSpacing: "0.06em",
           color: COLORS.textDim,
         }}
       >
@@ -307,11 +399,12 @@ function TopBar({
 
       {error && (
         <span
-          className="min-w-0 flex-1 truncate px-2 py-1.5 leading-none"
+          className="min-w-0 flex-1 truncate px-2.5 py-1.5 leading-none"
           style={{
             ...pixelWell("#c2455888"),
-            fontFamily: PIXEL_FONT,
-            fontSize: 9,
+            fontFamily: UI_FONT,
+            fontWeight: 500,
+            fontSize: 11,
             color: "#ff9aa6",
           }}
         >
@@ -322,11 +415,12 @@ function TopBar({
       <button
         type="button"
         onClick={onLeave}
-        className="ml-auto h-[30px] px-4 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+        className="ml-auto h-[32px] px-4 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
         style={{
           ...pixelButton("#2b2a4d", COLORS.edgeLit),
-          fontFamily: PIXEL_FONT,
-          fontSize: 10,
+          fontFamily: UI_FONT,
+          fontWeight: 700,
+          fontSize: 12,
           letterSpacing: "0.14em",
         }}
       >
@@ -338,35 +432,56 @@ function TopBar({
 
 interface LobbyProps {
   serverUrl: string;
-  roomId: string;
+  roomCode: string;
   playerName: string;
+  phase: LobbyPhase;
+  queue: QueueStatus | null;
+  error: string | null;
   onServerUrl: (value: string) => void;
-  onRoomId: (value: string) => void;
+  onRoomCode: (value: string) => void;
   onPlayerName: (value: string) => void;
-  onConnect: () => void;
-  onDemo: (seatIndex: number) => void;
+  onQuickMatch: () => void;
+  onCreateRoom: () => void;
+  onPlayAi: () => void;
+  onJoinRoom: () => void;
+  onCancelSearch: () => void;
 }
 
-/** Room entry screen. */
+/**
+ * Entry screen.
+ *
+ * Four ways in, ordered by how little the player has to decide: be matched with
+ * a stranger, open a room and share its code, join a code someone sent, or play
+ * the trained agent. The server address is last because it only matters to
+ * whoever is running the stack themselves.
+ */
 function Lobby({
   serverUrl,
-  roomId,
+  roomCode,
   playerName,
+  phase,
+  queue,
+  error,
   onServerUrl,
-  onRoomId,
+  onRoomCode,
   onPlayerName,
-  onConnect,
-  onDemo,
+  onQuickMatch,
+  onCreateRoom,
+  onPlayAi,
+  onJoinRoom,
+  onCancelSearch,
 }: LobbyProps) {
+  const busy = phase !== "idle";
+
   return (
     <div className="flex min-h-dvh w-full items-center justify-center p-6">
-      <div className="w-full max-w-[440px] px-8 py-8" style={pixelPanel(COLORS.edge, 8)}>
+      <div className="w-full max-w-[460px] px-8 py-9" style={pixelPanel(COLORS.edge, 8)}>
         <h1
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
-            fontSize: 26,
-            letterSpacing: "0.1em",
+            fontFamily: DISPLAY_FONT,
+            fontSize: 24,
+            letterSpacing: "0.02em",
             color: COLORS.gold,
             textShadow: TEXT_OUTLINE,
           }}
@@ -374,127 +489,337 @@ function Lobby({
           AUTOCARD
         </h1>
         <p
-          className="mt-3 leading-relaxed"
-          style={{
-            fontFamily: PIXEL_FONT,
-            fontSize: 9,
-            color: COLORS.textDim,
-          }}
+          className="mt-4 leading-relaxed"
+          style={{ fontFamily: UI_FONT, fontSize: 13, color: COLORS.textDim }}
         >
-          Join a room on the game API. All rules run on the server.
+          Every rule runs on the server. Pick an opponent.
         </p>
 
-        <div className="mt-7 space-y-4">
-          <Field label="Server URL">
+        {error && (
+          <div
+            className="mt-5 px-3 py-2.5"
+            style={{
+              ...pixelWell("#c2455888"),
+              fontFamily: UI_FONT,
+              fontWeight: 500,
+              fontSize: 12,
+              color: "#ff9aa6",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div className="mt-6">
+          <Field label="Display name">
+            <TextInput value={playerName} onChange={onPlayerName} disabled={busy} />
+          </Field>
+        </div>
+
+        {phase === "searching" ? (
+          <Searching queue={queue} onCancel={onCancelSearch} />
+        ) : (
+          <div className="mt-6 space-y-3">
+            <BigButton
+              label="QUICK MATCH"
+              hint="Pair me with whoever is waiting"
+              fill="#2f6d43"
+              accent="#7fe39b"
+              disabled={busy}
+              onClick={onQuickMatch}
+            />
+
+            <div className="flex gap-3">
+              <SmallButton
+                label="CREATE ROOM"
+                fill="#2b2a4d"
+                accent={COLORS.edgeLit}
+                disabled={busy}
+                onClick={onCreateRoom}
+              />
+              <SmallButton
+                label="PLAY VS AI"
+                fill="#4a2f6d"
+                accent="#b98fe3"
+                disabled={busy}
+                onClick={onPlayAi}
+              />
+            </div>
+
+            <Divider label="or join a code" />
+
+            <div className="flex gap-3">
+              <div className="min-w-0 flex-1">
+                <TextInput
+                  value={roomCode}
+                  onChange={onRoomCode}
+                  onEnter={roomCode.trim() ? onJoinRoom : undefined}
+                  placeholder="ABC12"
+                  disabled={busy}
+                  centered
+                />
+              </div>
+              <button
+                type="button"
+                onClick={onJoinRoom}
+                disabled={busy || !roomCode.trim()}
+                className="h-[42px] w-[110px] shrink-0 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+                style={{
+                  ...pixelButton("#2b2a4d", COLORS.edgeLit, !busy && Boolean(roomCode.trim())),
+                  fontFamily: UI_FONT,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  letterSpacing: "0.14em",
+                }}
+              >
+                JOIN
+              </button>
+            </div>
+          </div>
+        )}
+
+        <details className="mt-7 pt-6" style={{ borderTop: `2px solid ${COLORS.edge}55` }}>
+          <summary
+            className="cursor-pointer select-none leading-none"
+            style={{
+              fontFamily: UI_FONT,
+              fontWeight: 600,
+              fontSize: 11,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: COLORS.textFaint,
+            }}
+          >
+            Server
+          </summary>
+          <div className="mt-4">
             <TextInput
               value={serverUrl}
               onChange={onServerUrl}
               placeholder="http://localhost:8080"
+              disabled={busy}
             />
-          </Field>
-
-          <Field label="Room ID">
-            <TextInput
-              value={roomId}
-              onChange={onRoomId}
-              placeholder="e.g. ABC123"
-            />
-          </Field>
-
-          <Field label="Display name">
-            <TextInput value={playerName} onChange={onPlayerName} />
-          </Field>
-
-          <button
-            type="button"
-            onClick={onConnect}
-            className="h-[46px] w-full leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
-            style={{
-              ...pixelButton("#2f6d43", "#7fe39b"),
-              fontFamily: PIXEL_FONT,
-              fontSize: 14,
-              letterSpacing: "0.1em",
-            }}
-          >
-            JOIN ROOM
-          </button>
-        </div>
-
-        <div
-          className="mt-7 pt-6"
-          style={{ borderTop: `2px solid ${COLORS.edge}55` }}
-        >
-          <p
-            className="leading-relaxed"
-            style={{
-              fontFamily: PIXEL_FONT,
-              fontSize: 8,
-              color: COLORS.textFaint,
-            }}
-          >
-            No backend yet? Open a captured game state to inspect the board and
-            the layout. Actions are recorded but not resolved.
-          </p>
-          <div className="mt-4 flex gap-3">
-            <DemoButton label="DEMO · HOST" onClick={() => onDemo(0)} />
-            <DemoButton label="DEMO · GUEST" onClick={() => onDemo(1)} />
           </div>
-        </div>
+        </details>
       </div>
     </div>
   );
 }
 
-/** A pixel-framed text input. */
-function TextInput({
-  value,
-  onChange,
-  placeholder,
+/** The quick-match waiting state, shown in place of the entry buttons. */
+function Searching({
+  queue,
+  onCancel,
 }: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
+  queue: QueueStatus | null;
+  onCancel: () => void;
 }) {
   return (
-    <input
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      // The border comes from `pixelWell` as an inline style, which a Tailwind
-      // focus variant cannot override, so focus is shown as an outline.
-      className="w-full px-3 py-2.5 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#8f89e0]"
-      style={{
-        ...pixelWell(`${COLORS.edge}aa`),
-        fontFamily: PIXEL_FONT,
-        fontSize: 11,
-        color: COLORS.text,
-      }}
-    />
+    <div className="mt-6 space-y-3">
+      <div
+        className="flex flex-col items-center gap-2 px-4 py-7"
+        style={pixelWell(`${COLORS.edge}aa`)}
+      >
+        <span
+          className="leading-none"
+          style={{
+            fontFamily: UI_FONT,
+            fontWeight: 700,
+            fontSize: 17,
+            letterSpacing: "0.2em",
+            color: COLORS.gold,
+          }}
+        >
+          SEARCHING
+          <Ellipsis />
+        </span>
+        <span
+          className="leading-none"
+          style={{ fontFamily: UI_FONT, fontSize: 12, color: COLORS.textDim }}
+        >
+          {queue
+            ? `Position ${queue.position} of ${queue.size} waiting`
+            : "Joining the queue"}
+        </span>
+      </div>
+
+      {/* SmallButton grows to fill a row, so it needs one even when alone. */}
+      <div className="flex">
+        <SmallButton
+          label="CANCEL"
+          fill="#3a2030"
+          accent={COLORS.danger}
+          disabled={false}
+          onClick={onCancel}
+        />
+      </div>
+    </div>
   );
 }
 
-/** One of the two offline-demo entry points. */
-function DemoButton({
+/**
+ * Three dots that cycle.
+ *
+ * Rendered as text rather than a spinner so it inherits the surrounding type
+ * and never drifts out of the pixel grid the rest of the chrome sits on.
+ */
+function Ellipsis() {
+  const [count, setCount] = useState(1);
+
+  useEffect(() => {
+    const id = setInterval(() => setCount((value) => (value % 3) + 1), 420);
+    return () => clearInterval(id);
+  }, []);
+
+  // A fixed-width span keeps the label from shifting as the dots change.
+  return <span style={{ display: "inline-block", width: "1.6em", textAlign: "left" }}>
+    {".".repeat(count)}
+  </span>;
+}
+
+/** The primary call to action. */
+function BigButton({
   label,
+  hint,
+  fill,
+  accent,
+  disabled,
   onClick,
 }: {
   label: string;
+  hint: string;
+  fill: string;
+  accent: string;
+  disabled: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="h-[34px] flex-1 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+      disabled={disabled}
+      className="w-full px-5 py-4 text-left transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+      style={pixelButton(fill, accent, !disabled)}
+    >
+      <span
+        className="block leading-none"
+        style={{
+          fontFamily: UI_FONT,
+          fontWeight: 700,
+          fontSize: 17,
+          letterSpacing: "0.14em",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mt-2 block leading-none"
+        style={{
+          fontFamily: UI_FONT,
+          fontSize: 12,
+          color: disabled ? COLORS.textFaint : "rgba(232, 229, 255, 0.72)",
+        }}
+      >
+        {hint}
+      </span>
+    </button>
+  );
+}
+
+/** A secondary action sitting in a row. */
+function SmallButton({
+  label,
+  fill,
+  accent,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  fill: string;
+  accent: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="h-[42px] flex-1 leading-none transition-transform active:translate-x-[2px] active:translate-y-[2px]"
       style={{
-        ...pixelButton("#2b2a4d", COLORS.edgeLit),
-        fontFamily: PIXEL_FONT,
-        fontSize: 9,
-        letterSpacing: "0.1em",
+        ...pixelButton(fill, accent, !disabled),
+        fontFamily: UI_FONT,
+        fontWeight: 700,
+        fontSize: 13,
+        letterSpacing: "0.14em",
       }}
     >
       {label}
     </button>
+  );
+}
+
+/** A labelled rule between two groups of controls. */
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="h-[2px] flex-1" style={{ backgroundColor: `${COLORS.edge}55` }} />
+      <span
+        className="leading-none"
+        style={{
+          fontFamily: UI_FONT,
+          fontWeight: 600,
+          fontSize: 11,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: COLORS.textFaint,
+        }}
+      >
+        {label}
+      </span>
+      <span className="h-[2px] flex-1" style={{ backgroundColor: `${COLORS.edge}55` }} />
+    </div>
+  );
+}
+
+/** A framed text input. */
+function TextInput({
+  value,
+  onChange,
+  onEnter,
+  placeholder,
+  disabled,
+  centered,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onEnter?: () => void;
+  placeholder?: string;
+  disabled?: boolean;
+  centered?: boolean;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && onEnter) onEnter();
+      }}
+      placeholder={placeholder}
+      disabled={disabled}
+      // The border comes from `pixelWell` as an inline style, which a Tailwind
+      // focus variant cannot override, so focus is shown as an outline.
+      className="h-[42px] w-full px-3 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#8f89e0] disabled:opacity-50"
+      style={{
+        ...pixelWell(`${COLORS.edge}aa`),
+        fontFamily: UI_FONT,
+        fontWeight: centered ? 700 : 500,
+        fontSize: centered ? 17 : 14,
+        letterSpacing: centered ? "0.3em" : "0.02em",
+        textAlign: centered ? "center" : "left",
+        color: COLORS.text,
+      }}
+    />
   );
 }
 
@@ -510,8 +835,9 @@ function Field({
       <span
         className="mb-2 block leading-none"
         style={{
-          fontFamily: PIXEL_FONT,
-          fontSize: 8,
+          fontFamily: UI_FONT,
+          fontWeight: 600,
+          fontSize: 11,
           letterSpacing: "0.16em",
           textTransform: "uppercase",
           color: COLORS.textDim,

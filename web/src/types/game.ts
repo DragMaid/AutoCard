@@ -3,7 +3,7 @@
  *
  * Every shape here matches what `GameState.serialize()` / `GameEngine.serialize()`
  * emit on the Python side (pydantic `model_dump(mode="json")`), so a payload can
- * travel Python -> Java relay -> browser without any field renaming.
+ * travel Python -> C# relay -> browser without any field renaming.
  */
 
 export type CardType = "MONSTER" | "SPELL" | "TRAP";

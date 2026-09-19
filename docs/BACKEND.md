@@ -5,16 +5,27 @@ processes fit together.
 
 ```
 ┌────────────────┐   Socket.IO    ┌──────────────────┐   WebSocket    ┌──────────────────────┐
-│  React client  │ ─────────────► │  Java game API   │ ─────────────► │  Python engine       │
-│  (web/)        │                │  rooms, auth,    │                │  GameEngine          │
-│                │ ◄───────────── │  matchmaking     │ ◄───────────── │  (source of truth)   │
+│  React client  │ ─────────────► │  C# relay        │ ─────────────► │  Python engine       │
+│  (web/)        │                │  rooms, seats,   │                │  GameEngine + AI     │
+│                │ ◄───────────── │  fan-out         │ ◄───────────── │  (source of truth)   │
 └────────────────┘   patches      └──────────────────┘   patches      └──────────────────────┘
-        intents                        intents
+        intents        server/           intents          engine/
 ```
 
-The rules live in exactly one place: the Python `GameEngine`. The Java API owns
+The rules live in exactly one place: the Python `GameEngine`. The C# relay owns
 rooms, identity and message routing but never inspects or decides gameplay. The
 browser draws state and sends requests; it validates nothing that matters.
+
+Single player is the same picture with one seat filled by the trained agent
+inside the engine service, not by a socket. Nothing about the protocol changes,
+which is why the browser needs no code for it.
+
+Both services are implemented:
+
+| Path | What it is | Run it with |
+|---|---|---|
+| `server/AutoCard.Server` | The C# relay (ASP.NET Core, .NET 10) | `dotnet run` |
+| `engine/` | The authoritative engine service (aiohttp) | `python -m engine` |
 
 ## Table of contents
 
@@ -22,8 +33,9 @@ browser draws state and sends requests; it validates nothing that matters.
 2. [Intents (client to engine)](#2-intents-client-to-engine)
 3. [Patches (engine to clients)](#3-patches-engine-to-clients)
 4. [Board orientation: the one rule you must not get wrong](#4-board-orientation)
-5. [The Java API](#5-the-java-api)
-6. [The Python engine service](#6-the-python-engine-service)
+5. [The C# relay](#5-the-c-relay)
+6. [The Python engine service](#6-the-python-engine-service), including
+   [single player](#64-single-player) and [hidden information](#65-hidden-information)
 7. [Message flows](#7-message-flows)
 8. [Wiring up the frontend](#8-wiring-up-the-frontend)
 9. [Failure handling and resync](#9-failure-handling-and-resync)
@@ -54,11 +66,19 @@ Socket.IO event names (constants in both `transport.py` and `actions.ts`):
 
 | Event | Direction | Payload |
 |---|---|---|
-| `join` | client → API | `{ room_id, player_name }` |
-| `assign` | API → client | `{ room_id, player_id, player_index, opponent_id? }` |
-| `action` | client → API → engine | an Intent |
-| `patch` | engine → API → clients | a Patch |
-| `game_error` | API → client | `{ message }` |
+| `join` | client → relay | `{ room_id, player_name, mode?, player_id? }` |
+| `create_room` | client → relay | `{ player_name, mode? }` |
+| `matchmake` | client → relay | `{ player_name }` |
+| `cancel_matchmake` | client → relay | `{}` |
+| `assign` | relay → client | `{ room_id, player_id, player_index, opponent_id?, mode }` |
+| `room_status` | relay → client | `{ room_id, mode, seated, capacity, started, waiting }` |
+| `queued` | relay → client | `{ position, size }` |
+| `action` | client → relay → engine | an Intent |
+| `patch` | engine → relay → clients | a Patch |
+| `game_error` | relay → client | `{ message }` |
+
+Only `action` and `patch` are gameplay. The rest is lobby traffic: how you got
+into a room, and how full it is.
 
 ---
 
@@ -131,6 +151,11 @@ and produces no patch.
 `seq` increases by one per patch, per room. Clients apply patches in order and
 ask for a resync when they see a gap.
 
+Two players in the same room receive patches with the same `seq` and `cause` but
+**different ops**: each one is diffed against the board that player is allowed to
+see. A seat with nothing to learn from an action receives no patch for it at all,
+so a seat's sequence numbers have gaps by design. See §6.5.
+
 ### Operation types
 
 | `op` | Fields | Effect |
@@ -185,7 +210,7 @@ That is already implemented — `PatchApplier` (`core/network/patch.py` and
 `web/src/net/patch.ts`) and `SocketConnection.canonicalCell`. Two rules for the
 backend:
 
-1. **Never transform coordinates in the Java API.** Pass intents and patches
+1. **Never transform coordinates in the relay.** Pass intents and patches
    through byte-for-byte. Both endpoints already agree on the canonical frame.
 2. **`player_index` in the `assign` message decides orientation.** Send `0` to
    the host and `1` to the guest. Sending the wrong index silently mirrors a
@@ -196,231 +221,279 @@ is a per-viewer concept, not shared state.
 
 ---
 
-## 5. The Java API
+## 5. The C# relay
 
-Responsibilities: authentication, room lifecycle, seat assignment, and message
-fan-out. Nothing else.
+Source: `server/AutoCard.Server`. Responsibilities: seat assignment, room
+lifecycle, rate limiting and message fan-out. Nothing else.
 
-### 5.1 Dependencies
-
-Socket.IO (not raw WebSocket) because the frontend uses `socket.io-client`:
-
-```xml
-<dependency>
-  <groupId>com.corundumstudio.socketio</groupId>
-  <artifactId>netty-socketio</artifactId>
-  <version>2.0.9</version>
-</dependency>
 ```
+Program.cs            host, CORS, /socket.io/ endpoint, /health
+SocketIO/             Socket.IO v5 over WebSocket, by hand
+Game/GameGateway.cs   join + action handlers; the whole "API"
+Rooms/                Room, Seat, RoomRegistry, RoomJanitor
+Engine/EngineSocket.cs   one WebSocket per room to the Python engine
+```
+
+### 5.1 Why there is no Socket.IO dependency
+
+The frontend connects with `transports: ["websocket"]`, so the only protocol
+surface in use is a handshake, named events in one namespace, and heartbeats.
+`SocketIO/SocketIoCodec.cs` implements exactly that — no polling transport, no
+session upgrade, no binary attachments. There is no maintained .NET Socket.IO
+*server* tracking the v4 protocol that `socket.io-client` 4.x speaks, and taking
+an unmaintained one would put a compatibility risk in the one layer that must
+never surprise you.
 
 ### 5.2 Data model
 
-```java
-/** One live match. */
-public final class Room {
-    public final String roomId;
-    /** Seat index 0 = host, 1 = guest. */
-    public final Map<Integer, String> seatToPlayerId = new ConcurrentHashMap<>();
-    public final Map<UUID, Integer> sessionToSeat  = new ConcurrentHashMap<>();
-    /** Connection to this room's Python engine. */
-    public EngineSocket engine;
-    /** Last patch seq forwarded, for gap detection. */
-    public final AtomicInteger lastSeq = new AtomicInteger(0);
+`Room` holds the seats and the engine socket; `Seat` outlives the socket sitting
+in it, which is what makes reconnects cheap.
+
+```csharp
+public sealed class Room
+{
+    public string RoomId { get; }
+    public string Mode { get; }                  // "pvp" or "ai"
+    public IReadOnlyList<Seat> Seats { get; }    // index 0 = canonical frame
+    public EngineSocket Engine { get; }
+    public int LastSeq { get; private set; }
 }
 ```
 
-Keep a `Map<String, Room>` for lookup, and a `Map<UUID, String>` from session id
-to room id so a disconnect can find its room in O(1).
+Seat ids are **not invented by the relay**. They arrive in the engine's
+`room_ready` handshake and must match the ids inside the engine's game state.
 
-### 5.3 Handling `join`
+### 5.3 Getting into a room
 
-```java
-server.addEventListener("join", JoinRequest.class, (client, data, ack) -> {
-    Room room = rooms.computeIfAbsent(data.roomId, this::createRoom);
+Three events land a client in a seat, and all three end in the same
+`GameGateway.SeatAsync`:
 
-    synchronized (room) {
-        if (room.sessionToSeat.size() >= 2) {
-            client.sendEvent("game_error", Map.of("message", "Room is full"));
-            return;
-        }
-        int seat = room.sessionToSeat.size();          // 0 then 1
-        String playerId = room.seatToPlayerId.get(seat); // from the engine
+| Event | Room | Used by |
+|---|---|---|
+| `join` | the code the client names | "join a code", and every reconnect |
+| `create_room` | a fresh server-generated code | "create room", "play vs AI" |
+| `matchmake` | a fresh room opened once two players are waiting | "quick match" |
 
-        room.sessionToSeat.put(client.getSessionId(), seat);
-        client.joinRoom(data.roomId);                  // Socket.IO room fan-out
+The relay picks the code for the latter two. `RoomRegistry.CreateFreshAsync`
+generates five characters from an alphabet with no `I`, `O`, `0` or `1` — a code
+gets read aloud and typed by hand, so the pairs that get confused cost more than
+the combinations they would add — and reserves it across creation so two
+simultaneous creates cannot land two strangers in the same room.
 
-        client.sendEvent("assign", Map.of(
-            "room_id",      room.roomId,
-            "player_id",    playerId,
-            "player_index", seat));
+Seat changes run under `Room.EnterAsync`, so two clients hitting join in the same
+millisecond cannot be handed the same seat:
 
-        // Hand the newcomer the current board.
-        room.engine.send(intent(room.roomId, playerId, "REQUEST_SYNC"));
+```csharp
+using (await room.EnterAsync(lifetime.ApplicationStopping))
+{
+    var seat = room.ClaimSeat(claimedPlayerId, _options.ReconnectGrace);
+    if (seat is null) { /* game_error: "Room is full" */ return; }
 
-        if (room.sessionToSeat.size() == 2) {
-            room.engine.send(intent(room.roomId, playerId, "START_GAME"));
-        }
+    seat.Connection = connection;
+    connection.UserState = new PlayerSession(room, seat, new TokenBucket(...));
+
+    SendAssignment(connection, room, seat);
+
+    if (!room.Started && room.IsFull)
+    {
+        room.Started = true;
+        room.Engine.SendIntent(room.SystemIntent(seat.PlayerId, "START_GAME"));
     }
-});
-```
 
-The player ids come from the engine when the room is created (see §6). The API
-does not invent them: they must match the ids inside the engine's game state.
-
-### 5.4 Handling `action`
-
-```java
-server.addEventListener("action", Map.class, (client, intent, ack) -> {
-    String roomId = sessionToRoom.get(client.getSessionId());
-    Room room = rooms.get(roomId);
-    if (room == null) return;
-
-    Integer seat = room.sessionToSeat.get(client.getSessionId());
-    if (seat == null) return;
-
-    // Never trust client-supplied identity.
-    intent.put("room_id",  roomId);
-    intent.put("actor_id", room.seatToPlayerId.get(seat));
-
-    room.engine.send(intent);   // forward verbatim; do not interpret
-});
-```
-
-Rate-limit here (a token bucket of ~20 intents/second per session is plenty).
-The engine is single-threaded per room, so a flood is a denial-of-service risk
-even though it cannot corrupt state.
-
-### 5.5 Forwarding patches
-
-```java
-void onEnginePatch(Room room, Map<String, Object> patch) {
-    room.lastSeq.set(((Number) patch.get("seq")).intValue());
-    server.getRoomOperations(room.roomId).sendEvent("patch", patch);
+    room.Engine.SendIntent(room.SystemIntent(seat.PlayerId, "REQUEST_SYNC"));
+    room.BroadcastStatus();
 }
 ```
 
-Broadcast the same patch to both seats. Do **not** filter it per player: hidden
-information is already handled, because a face-down card's identity is only
-revealed by the engine when it should be, and each client derives
-`is_face_down` from its own seat.
+`START_GAME` is sent before `REQUEST_SYNC` deliberately: the player who
+completes the table then sees its opening hand in the first patch it applies,
+rather than an empty board followed by a deal.
 
-> If you later want strict hidden-information guarantees (a modified client
-> currently could read an opponent's hand from the patch stream), the fix belongs
-> in the engine: filter `CARD_UPSERT` payloads per recipient before emitting.
-> That is a change to `GameEngine._send_patch`, not to the Java layer.
+`room_status` is what drives the browser's "waiting for opponent" screen. It
+carries the room code to share and goes `waiting: false` the moment the other
+seat fills.
+
+An optional `player_id` on the join payload is a reconnect hint. It grants
+nothing — the engine re-validates every action regardless — it only lets a
+returning player reclaim the seat it already held. The browser uses it on every
+socket.io reconnect, because repeating the original entry would otherwise open a
+*second* room for someone who was briefly offline.
+
+### 5.4 Matchmaking
+
+`Game/Matchmaker.cs` is a first-come, first-served queue and nothing more.
+There is no rating to match on — the relay holds no accounts and no history — so
+anything cleverer would be inventing signal it does not have.
+
+`TryTakePair` drops sockets that closed without a disconnect event before it
+pairs, because pairing a dead socket with a live player strands that player in a
+room nobody is coming to. Everyone still waiting is re-sent `queued` with their
+position after any change.
+
+### 5.5 Handling `action`
+
+`GameGateway.OnActionAsync`:
+
+```csharp
+if (!session.Intents.TryConsume()) { /* game_error: throttled */ return; }
+if (intent["version"]?.GetValue<int>() is { } v && v != Wire.Version) { /* fail loudly */ }
+
+// Identity comes from the seat, never from the client.
+intent["version"]  = Wire.Version;
+intent["room_id"]  = session.Room.RoomId;
+intent["actor_id"] = session.Seat.PlayerId;
+
+session.Room.Engine.SendIntent(intent);   // forward verbatim; do not interpret
+```
+
+The token bucket defaults to 20 intents/second with a burst of 40. A flood
+cannot corrupt state, because the engine re-validates everything, but each room's
+engine is single-threaded, so an unthrottled client can starve its opponent.
+
+### 5.6 Forwarding patches
+
+`Room.Deliver` sends one patch to the seat named in the engine's envelope, or to
+every seat when the envelope names none, and records `seq`. The relay does not
+read the patch and does not decide who may see what — the engine has already
+written a separate patch per seat (§6.5). Adding a filter here would be both
+redundant and the wrong layer: the relay has no idea what a card is.
+
+### 5.7 Configuration
+
+`appsettings.json`, section `AutoCard`:
+
+| Key | Default | Purpose |
+|---|---|---|
+| `EngineUri` | `ws://127.0.0.1:9000` | Where the Python engine service listens. |
+| `AllowedOrigins` | `["*"]` | Browser origins for CORS. Narrow this in production. |
+| `ReconnectGraceSeconds` | `90` | How long a vacated seat is held for its occupant. |
+| `EngineHandshakeTimeoutSeconds` | `10` | How long to wait for `room_ready`. |
+| `IntentsPerSecond` / `IntentBurst` | `20` / `40` | Per-session rate limit. |
+| `MaxRooms` | `500` | Cap on concurrent rooms. |
+| `SweepIntervalSeconds` | `15` | How often idle rooms are disposed. |
 
 ---
 
 ## 6. The Python engine service
 
-One `GameEngine` per room, wrapped in a small WebSocket service. The engine is
-already built for this — construct it in `AUTHORITATIVE` mode with a transport
-and it emits patches on its own.
+Source: `engine/`. One `GameEngine` per room, in `AUTHORITATIVE` mode, behind an
+aiohttp WebSocket server.
 
-```python
-"""Minimal engine service. One GameEngine per room."""
-import asyncio, json, logging, uuid
-import websockets
-
-from core.logger import DebugLogger
-logging.setLoggerClass(DebugLogger)          # must precede core imports
-
-from core.data.player import Player
-from core.logic.game_engine import EngineMode, GameEngine
-from core.network.actions import Intent, Patch
-
-
-class WebSocketTransport:
-    """Pushes patches onto the room's outbound queue."""
-
-    def __init__(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
-        self.queue = queue
-        self.loop = loop
-
-    def send_patch(self, patch: Patch) -> None:
-        # Called synchronously from engine code, so hop back to the loop.
-        self.loop.call_soon_threadsafe(
-            self.queue.put_nowait, patch.model_dump(mode="json"))
-
-
-class Room:
-    def __init__(self, room_id: str, loop):
-        self.room_id = room_id
-        self.outbox: asyncio.Queue = asyncio.Queue()
-
-        host = Player(player_index=0, name="host")
-        guest = Player(player_index=1, name="guest", is_opponent=True)
-        self.player_ids = [host.id, guest.id]
-
-        self.engine = GameEngine(
-            [host, guest],
-            transport=WebSocketTransport(self.outbox, loop),
-            mode=EngineMode.AUTHORITATIVE,
-            room_id=room_id,
-            local_player_id=host.id,
-        )
-
-    def dispatch(self, raw: dict) -> None:
-        try:
-            intent = Intent.model_validate(raw)
-        except Exception as exc:
-            logging.getLogger(__name__).warning("Bad intent: %s", exc)
-            return
-        if intent.room_id != self.room_id:
-            return
-        self.engine.dispatch(intent)      # emits a patch through the transport
-
-
-rooms: dict[str, Room] = {}
-
-
-async def handler(ws):
-    loop = asyncio.get_running_loop()
-    room_id = ws.request.path.strip("/") or str(uuid.uuid4())
-
-    room = rooms.get(room_id)
-    if room is None:
-        room = rooms[room_id] = Room(room_id, loop)
-        # Tell the Java API which player ids this room uses.
-        await ws.send(json.dumps({"type": "room_ready",
-                                  "room_id": room_id,
-                                  "player_ids": room.player_ids}))
-
-    async def pump():
-        while True:
-            patch = await room.outbox.get()
-            await ws.send(json.dumps({"type": "patch", "patch": patch}))
-
-    pump_task = asyncio.create_task(pump())
-    try:
-        async for message in ws:
-            room.dispatch(json.loads(message))
-    finally:
-        pump_task.cancel()
-
-
-async def main():
-    async with websockets.serve(handler, "0.0.0.0", 9000):
-        await asyncio.Future()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+```
+engine/service.py    the WebSocket server and room registry
+engine/room.py       one match: engine, mailbox, optional AI seat
+engine/ai.py         drives the AI seat through GameEnv
+engine/transport.py  pushes patches onto the room's outbound queue
+engine/config.py     environment-backed settings
 ```
 
-Three things that matter:
+Run it with `python -m engine`. The entry point installs `DebugLogger` before any
+`core` import, because engine modules call `logger.debugx` / `warningx` /
+`errorx`, which exist only on that subclass, and loggers are created at import
+time. `main.py` and `conftest.py` observe the same ordering.
 
-* **Install `DebugLogger` before importing `core`.** Engine modules call
-  `logger.debugx` / `warningx` / `errorx`, which only exist on that subclass, and
-  loggers are created at import time. `main.py` and `conftest.py` do the same.
-* **One engine per room, and one thread per engine.** `GameEngine` is not
-  thread-safe. Serialise intents for a room through a single queue or task.
-* **`local_player_id=host.id`** puts the authoritative engine in the host's
-  frame, which is the canonical frame described in §4.
+### 6.1 The relay-to-engine protocol
 
-For a working reference of the same idea in-process, read
-`core/network/server.py` and `core/network/utils.py` — the desktop host runs an
-authoritative engine and relays patches over Socket.IO in exactly this shape.
+The relay opens **one socket per room** at `/<room_id>?mode=pvp|ai`.
+
+| `type` | Direction | Payload |
+|---|---|---|
+| `room_ready` | engine → relay | `{ room_id, player_ids, ai_seats, mode }` |
+| `patch` | engine → relay | `{ player_id, patch }` — `player_id` is the seat it is addressed to, or `null` for the room |
+| `rejected` | engine → relay | `{ actor_id, intent_type, reason }` |
+| `intent` | relay → engine | `{ intent }` |
+| `dispose` | relay → engine | `{}` |
+
+`room_ready` is what tells the relay which player ids the room uses, and which
+seats are the agent's and therefore unclaimable.
+
+### 6.2 Concurrency
+
+`GameEngine` is not thread-safe and not re-entrant. Every intent for a room —
+including the agent's — is funnelled through `Room.inbox` and applied by one
+worker task. That single rule is the whole concurrency design, and it is why the
+relay can forward messages from two sockets without coordinating anything.
+
+Patches leave through `AsyncQueueTransport`, which hops to the event loop with
+`call_soon_threadsafe`. That is correct whether the engine call ran on the loop
+or on the worker thread AI inference is offloaded to, and it preserves the order
+patches were produced in.
+
+### 6.3 Room lifetime
+
+A room survives its relay socket for `AUTOCARD_ROOM_TTL` seconds (default 300),
+so a relay restart resumes the same match instead of dropping it. The relay's own
+`RoomJanitor` disposes rooms whose players have all been gone past the reconnect
+grace, which sends `dispose` and frees the engine.
+
+### 6.4 Single player
+
+A room is a versus-AI room when the join payload carries `mode: "ai"` (or
+`"solo"` / `"single"`), **or** when the room code is `AI`, `SOLO`, or starts with
+`AI-`. The room-code convention exists so single player works against the current
+frontend, which has no mode selector yet: type `ai-anything` as the room code and
+you are seated opposite the agent.
+
+The agent plays through `ml.environment.environment.GameEnv`, the same path
+training uses, so a checkpoint behaves in a live match exactly as it did in
+self-play. `engine/ai.py`:
+
+* imports torch lazily, so a server hosting only PvP rooms never pays for it;
+* runs inference in a thread executor, so it cannot stall the service's loop;
+* spaces actions out by `AUTOCARD_AI_DELAY` (default 0.8s), so each one arrives
+  as its own patch and the browser can animate it;
+* ends the turn rather than guessing when the legal-action mask is empty, and
+  caps a turn at `AUTOCARD_AI_MAX_STEPS` actions in case a policy loops.
+
+#### Supplying the model
+
+The agent loads `saves/checkpoint.pth` at the repository root, overridable with
+`AUTOCARD_CHECKPOINT`. The file is the one `ml.utils.save_model` writes — a dict
+with `dqn`, `policy` and `encoder` state dicts.
+
+**A missing checkpoint is not an error.** The service logs a warning and plays
+with untrained weights, so the whole stack is runnable and testable before a
+model exists. Drop the file in and restart the engine service; nothing else
+changes.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AUTOCARD_ENGINE_HOST` / `AUTOCARD_ENGINE_PORT` | `0.0.0.0` / `9000` | Bind address. |
+| `AUTOCARD_CHECKPOINT` | `saves/checkpoint.pth` | Trained weights. |
+| `AUTOCARD_AI_DEVICE` | `cpu` | Torch device for inference. |
+| `AUTOCARD_AI_DELAY` | `0.8` | Seconds between AI actions. |
+| `AUTOCARD_AI_MAX_STEPS` | `64` | Cap on actions in one AI turn. |
+| `AUTOCARD_ROOM_TTL` | `300` | Seconds a room outlives its relay socket. |
+
+### 6.5 Hidden information
+
+`engine/visibility.py` decides what each seat may know, and `Room._fanout` applies
+it. For every patch the engine produces, the room takes a fresh snapshot, redacts
+it once per seat, and diffs that against the board the seat was last shown. The
+engine's own ops are never forwarded — they describe the whole board.
+
+Hidden cards are replaced by a blank: the same id, owner and square, an empty
+name, and `card_type: "TRAP"` whatever the card really is. On the field that is
+no lie, because a face-down card is always a trap; in hand it is deliberate, so
+the count of traps, spells and monsters a player holds stays private. Alongside
+the cards, the opponent's armed and triggerable trap lists are dropped, as is the
+pulse event that marks a trap as about to fire.
+
+What stays visible is what both players can see at a real table: face-up cards on
+the field, graveyards, life totals, hand *counts*, and whose turn it is.
+
+Two consequences worth knowing:
+
+* A card is revealed by an ordinary patch carrying its real values for the first
+  time. Because a blank is a trap, a revealed monster changes `card_type`, and
+  appliers ignore that field on an update — so `visibility.repair_reveals` re-sends
+  the whole card as a `CARD_UPSERT` instead.
+* A patch that tells a seat nothing is not sent, so per-seat `seq` has gaps.
+  Nothing on either client requires them to be contiguous.
+
+The AI is not filtered here: it reads the engine directly, exactly as the training
+environment does, so single player has the same information asymmetry as the
+trained policy saw in self-play.
 
 ---
 
@@ -449,50 +522,82 @@ API   broadcasts to both seats
 host  applies at (1,1); guest applies mirrored at (2,3)
 ```
 
+### Quick match
+
+```
+p1 ──matchmake{player_name}──► relay          (queue: [p1])
+relay ──queued{position:1, size:1}──► p1
+p2 ──matchmake{player_name}──► relay          (queue: [p1, p2] → pair)
+relay opens a fresh room, seats p1 at 0 and p2 at 1
+relay ──assign + room_status{waiting:false}──► both
+relay ──START_GAME──► engine ──patch──► both
+```
+
 ### A rejected move
 
-The engine returns `False`, emits nothing, and the board simply does not change.
-If you want the player to see why, have the API send `game_error` when
-`dispatch` reports a rejection.
+The engine returns `False` and emits nothing, so the board simply does not
+change. It also sends the relay a `rejected` envelope, which the relay turns
+into a `game_error` — to the acting player only, since the opponent's board
+never moved and has nothing to explain.
 
 ---
 
 ## 8. Wiring up the frontend
 
+Three processes, three terminals:
+
 ```bash
+# 1. the authoritative engine
+python -m engine                                  # ws://localhost:9000
+
+# 2. the relay
+cd server/AutoCard.Server && dotnet run            # http://localhost:8080
+
+# 3. the frontend
 cd web
 npm install
-cp .env.example .env      # set VITE_GAME_API to your Java API
+cp .env.example .env      # set VITE_GAME_API to your C# relay
 npm run dev               # http://localhost:5173
 ```
 
+Or start the two backend processes together with `./server/dev.sh`.
+
+The lobby offers four ways in: **Quick Match** (be paired with a stranger),
+**Create Room** (get a code to share), **Join** (type a code you were sent), and
+**Play vs AI**. A room code of `ai`, `solo`, or anything starting with `ai-` also
+opens an AI room, which is how single player worked before the lobby had a
+button for it.
+
 | Variable | Purpose |
 |---|---|
-| `VITE_GAME_API` | Base URL of the Java Socket.IO endpoint. |
+| `VITE_GAME_API` | Base URL of the relay's Socket.IO endpoint. |
 | `VITE_ASSET_BASE` | Where `assets/` is served from (default `/assets`). |
 
 In development, `web/public/assets` is a symlink to the repository's `assets/`
 directory, so card art is shared with the desktop build. In production, serve
 that directory as a static path (or a CDN) and point `VITE_ASSET_BASE` at it.
 
-The frontend needs no other configuration: `SocketConnection` emits `join` on
-connect, and everything else follows from `assign` and `patch`.
+The frontend needs no other configuration: `SocketConnection` emits one entry
+event on connect, and everything else follows from `assign`, `room_status` and
+`patch`.
 
-Without a backend, the lobby's **Demo** buttons load a captured snapshot
-(`web/src/demo/snapshot.json`) so the board and layout can be inspected. Demo
-mode is view-only, because all rules live server-side. To refresh that fixture,
-serialize any engine: `json.dump(engine.serialize(), f)`.
+The offline demo mode is gone. It replayed a captured snapshot so the board could
+be inspected with no backend running, but it was view-only — every rule lives
+server-side, so nothing it showed could be played — and it became a screen that
+mainly taught people the game was broken. Run `python -m engine` and press
+**Play vs AI** instead; that is a real match, and it works without a checkpoint.
 
 ### CORS
 
-`netty-socketio` needs the browser origin allowed:
+Allow the browser origin in `appsettings.json`:
 
-```java
-config.setOrigin("https://yourgame.example");
+```json
+"AutoCard": { "AllowedOrigins": [ "https://yourgame.example" ] }
 ```
 
-The frontend connects with `transports: ["websocket"]`, so long-polling does not
-need to be configured.
+The WebSocket handshake itself is not subject to CORS, so this governs `/health`
+and any HTTP route added later. The frontend connects with
+`transports: ["websocket"]`, so long-polling does not need to be configured.
 
 ---
 
@@ -501,34 +606,58 @@ need to be configured.
 **Sequence gaps.** Patches carry a per-room `seq`. If a client applies `seq` 44
 and then receives 46, it has missed a delta and its board is wrong. Send
 `REQUEST_SYNC`; the engine replies with a `FULL_SYNC` op. `ClientState.seq`
-already tracks the last applied value.
+already tracks the last applied value. The relay's per-connection send channel
+drops the oldest frame rather than growing without bound behind a slow client,
+which is precisely the gap this mechanism exists to repair.
 
-**Reconnects.** Treat a reconnect as a fresh join that reuses the seat: match the
-returning session to its previous `player_id`, re-send `assign`, then
-`REQUEST_SYNC`. State lives in the engine, so nothing is lost as long as the room
-outlives the socket. Give rooms a grace period (60–120s) before disposal.
+**Reconnects.** Implemented. A vacated `Seat` outlives its socket for
+`ReconnectGraceSeconds` (default 90). A returning client that passes its previous
+`player_id` on `join` reclaims that seat; it is then re-`assign`ed and sent a
+fresh `REQUEST_SYNC`. State lives in the engine, so nothing is lost.
 
-**Engine crash.** The room's state is gone; there is no persistence. Either
-accept the loss and tell both players, or periodically store
-`engine.serialize()` and rebuild with `engine.deserialize(snapshot)`.
+**Relay restart.** The engine keeps a room for `AUTOCARD_ROOM_TTL` seconds
+(default 300) after its relay socket drops, so a redeployed relay reconnects and
+resumes the same match with the same player ids.
 
-**Idle rooms.** Dispose a room once both sockets have been gone past the grace
-period, otherwise engines accumulate.
+**Engine crash.** The room's state is gone; there is no persistence. The relay
+detects the closed engine socket, sends `game_error` to both players and discards
+the room. If you want to survive this, periodically store `engine.serialize()`
+and rebuild with `engine.deserialize(snapshot)` — an engine-side change.
+
+**Idle rooms.** `RoomJanitor` sweeps every `SweepIntervalSeconds` and disposes
+rooms whose human seats have all been vacant past the grace period, which sends
+`dispose` to the engine. Without it, every abandoned match leaks a `GameEngine`.
 
 ---
 
 ## 10. Security checklist
 
-- [ ] **Overwrite `actor_id` at the API edge** from the authenticated session.
-      This is the one check that stops a player acting as their opponent.
-- [ ] **Verify room membership** before forwarding any intent.
-- [ ] **Rate-limit intents** per session.
-- [ ] **Reject `version` mismatches** so an old client fails loudly.
-- [ ] **Never transform coordinates** in the API (see §4).
-- [ ] **Cap payload size**; intents are small, so a few KB is a generous limit.
-- [ ] Remember the engine re-validates everything — the API is defence in depth,
-      not the only line.
+Everything here is implemented in `server/AutoCard.Server`; the file in
+parentheses is where to look when changing it.
 
-Two things the current design deliberately does not do: it does not hide the
-opponent's hand from a modified client (§5.5), and it does not persist matches
-(§9). Both are engine-side changes if you need them.
+- [x] **Overwrite `actor_id` at the relay edge** from the socket's seat, never
+      from the client's own field (`Game/GameGateway.cs`). This is the one check
+      that stops a player acting as their opponent.
+- [x] **Verify room membership** before forwarding any intent — an unseated
+      socket has no `PlayerSession` and its actions are refused.
+- [x] **Rate-limit intents** per session, 20/s with a burst of 40
+      (`Util/TokenBucket.cs`).
+- [x] **Reject `version` mismatches** so an old client fails loudly.
+- [x] **Never transform coordinates** in the relay (see §4). Intents and patches
+      pass through byte for byte.
+- [x] **Cap payload size** at 64 KB per frame (`SocketIO/SocketIoServer.cs`),
+      and cap concurrent rooms at `MaxRooms`.
+- [x] **Restrict room ids** to `[A-Za-z0-9_-]{1,24}` at both ends. A room id
+      becomes a URL path segment on the engine connection, so it is restricted
+      rather than escaped.
+- [x] Remember the engine re-validates everything — the relay is defence in
+      depth, not the only line.
+- [x] **Keep hidden cards off the wire** — the engine writes a separate patch per
+      seat, so an opponent's hand and face-down traps are never sent to a client
+      that may not see them (`engine/visibility.py`, §6.5). A modified client can
+      only read what its player is entitled to.
+
+What the current design deliberately does not do is persist matches (§9), which
+is an engine-side change if you need it. There is also no account system — a room
+code is the only credential, which is the right trade for drop-in play and the
+wrong one if you ever add ranked matches.

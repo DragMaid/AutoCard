@@ -14,7 +14,7 @@ import { memo, useMemo } from "react";
 import { cardBackUrl, resolveCardImage } from "../game/assets";
 import { CARD_ASPECT } from "../game/layout";
 import { fitLine, fitParagraph } from "../game/text";
-import { BODY_FONT, COLORS, PIXEL_FONT, TEXT_OUTLINE } from "../game/theme";
+import { BODY_FONT, COLORS, UI_FONT, TEXT_OUTLINE } from "../game/theme";
 import type { Card } from "../types/game";
 
 /**
@@ -114,7 +114,7 @@ function CardFaceImpl({
               top: band.top,
               width,
               height: band.nameHeight,
-              fontFamily: PIXEL_FONT,
+              fontFamily: UI_FONT,
               fontSize: band.nameSize,
               color: "#14101f",
             }}
@@ -132,7 +132,7 @@ function CardFaceImpl({
                 height: band.statHeight,
                 backgroundColor: "rgba(8, 6, 18, 0.86)",
                 borderTop: "1px solid rgba(255, 255, 255, 0.18)",
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: Math.min(9, Math.round(band.statHeight * 0.62)),
               }}
             >
@@ -151,7 +151,7 @@ function CardFaceImpl({
           style={{
             right: 2,
             top: 2,
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
             fontSize: 8,
             color: COLORS.gold,
             backgroundColor: "rgba(8, 6, 18, 0.8)",
@@ -225,7 +225,7 @@ export function CardDetail({ card, width, height }: CardDetailProps) {
       <div
         className="mt-3 w-full text-center leading-none"
         style={{
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 9,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -276,7 +276,7 @@ function StatChip({
       style={{
         backgroundColor: "rgba(6, 6, 18, 0.7)",
         border: `2px solid ${color}55`,
-        fontFamily: PIXEL_FONT,
+        fontFamily: UI_FONT,
       }}
     >
       <span

@@ -10,7 +10,7 @@ import type { VisualEffect } from "../game/animations";
 import type { DragArrow } from "../game/inputManager";
 import { LAYOUT } from "../game/layout";
 import type { AttackArrow } from "../game/renderEngine";
-import { COLORS, PIXEL_FONT, pixelPanel } from "../game/theme";
+import { COLORS, UI_FONT, pixelPanel } from "../game/theme";
 import type { Card } from "../types/game";
 import { CardDetail } from "./CardFace";
 import { rectStyle } from "./Board";
@@ -207,7 +207,7 @@ export function CardPreview({ card }: CardPreviewProps) {
         <span
           className="leading-none"
           style={{
-            fontFamily: PIXEL_FONT,
+            fontFamily: UI_FONT,
             fontSize: 8,
             letterSpacing: "0.2em",
             color: COLORS.textFaint,
@@ -262,7 +262,7 @@ function EmptyPlate({ height }: { height: number }) {
       <span
         className="max-w-[200px] text-center leading-relaxed"
         style={{
-          fontFamily: PIXEL_FONT,
+          fontFamily: UI_FONT,
           fontSize: 9,
           color: COLORS.textFaint,
         }}

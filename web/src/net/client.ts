@@ -1,29 +1,39 @@
 /**
  * Socket.IO client for the room relay.
  *
- * The browser speaks only two messages: it emits ID-only intents and receives
- * patches. All rules live in the Python engine behind the Java API, so this
- * module deliberately contains no game logic beyond translating grid cells out
- * of the local (possibly mirrored) frame and into the server's frame.
+ * The browser speaks only two gameplay messages: it emits ID-only intents and
+ * receives patches. All rules live in the Python engine behind the C# relay, so
+ * this module deliberately contains no game logic beyond translating grid cells
+ * out of the local (possibly mirrored) frame and into the server's frame.
+ *
+ * Everything else here is lobby traffic: how you got into a room, and how full
+ * that room is.
  */
 
 import { io, type Socket } from "socket.io-client";
 
 import { COLS, ROWS } from "../game/layout";
 import type { GameActions } from "../game/inputManager";
-import type { Cell, SerializedEngine } from "../types/game";
+import type { Cell } from "../types/game";
 import {
   EVENT_ASSIGN,
+  EVENT_CANCEL_MATCHMAKE,
+  EVENT_CREATE_ROOM,
   EVENT_ERROR,
   EVENT_INTENT,
   EVENT_JOIN,
+  EVENT_MATCHMAKE,
   EVENT_PATCH,
+  EVENT_QUEUED,
+  EVENT_ROOM_STATUS,
   makeIntent,
   type Assignment,
   type Intent,
   type IntentPayload,
   type IntentType,
   type Patch,
+  type QueueStatus,
+  type RoomStatus,
 } from "./actions";
 
 export type ConnectionStatus =
@@ -33,10 +43,23 @@ export type ConnectionStatus =
   | "error"
   | "closed";
 
+/**
+ * How a client wants to get into a room.
+ *
+ * The relay decides the room in every case but `join`: `create` gets a freshly
+ * generated code to share, and `match` waits to be paired with a stranger.
+ */
+export type Entry =
+  | { kind: "join"; roomId: string }
+  | { kind: "create"; mode?: "pvp" | "ai" }
+  | { kind: "match" };
+
 /** Callbacks a connection raises as the match progresses. */
 export interface ConnectionHandlers {
   onAssign(assignment: Assignment): void;
   onPatch(patch: Patch): void;
+  onRoomStatus(status: RoomStatus): void;
+  onQueued(status: QueueStatus): void;
   onStatus(status: ConnectionStatus, detail?: string): void;
   onError(message: string): void;
 }
@@ -47,24 +70,25 @@ export interface GameConnection extends GameActions {
   surrender(): void;
   requestSync(): void;
   startGame(): void;
+  cancelMatchmake(): void;
   disconnect(): void;
   readonly status: ConnectionStatus;
 }
 
 /** Options for opening a room connection. */
 export interface ConnectOptions {
-  /** Base URL of the Java API, e.g. `https://api.example.com`. */
+  /** Base URL of the relay, e.g. `https://api.example.com`. */
   url: string;
-  /** Room to join. */
-  roomId: string;
+  /** How to get into a room. */
+  entry: Entry;
   /** Optional bearer token forwarded in the Socket.IO auth payload. */
   token?: string;
-  /** Optional display name sent with the join request. */
+  /** Optional display name sent with the entry request. */
   playerName?: string;
 }
 
 /**
- * A live connection to a room served by the Java relay.
+ * A live connection to a room served by the C# relay.
  *
  * @remarks
  * The seat assignment decides whether the board is mirrored, which in turn
@@ -76,7 +100,7 @@ export class SocketConnection implements GameConnection {
   private seq = 0;
 
   /** Seat identity, populated by the server's `assign` message. */
-  roomId: string;
+  roomId = "";
   actorId = "";
   flip = false;
 
@@ -86,10 +110,12 @@ export class SocketConnection implements GameConnection {
     private options: ConnectOptions,
     private handlers: ConnectionHandlers,
   ) {
-    this.roomId = options.roomId;
+    if (options.entry.kind === "join") {
+      this.roomId = options.entry.roomId;
+    }
   }
 
-  /** Opens the socket and joins the room. */
+  /** Opens the socket and enters a room. */
   connect(): void {
     this.setStatus("connecting");
 
@@ -102,10 +128,7 @@ export class SocketConnection implements GameConnection {
 
     this.socket.on("connect", () => {
       this.setStatus("connected");
-      this.socket?.emit(EVENT_JOIN, {
-        room_id: this.roomId,
-        player_name: this.options.playerName ?? "player",
-      });
+      this.enter();
     });
 
     this.socket.on(EVENT_ASSIGN, (data: Assignment) => {
@@ -114,6 +137,14 @@ export class SocketConnection implements GameConnection {
       // Seat 0 is the authoritative frame; any other seat renders mirrored.
       this.flip = Number(data.player_index ?? 1) !== 0;
       this.handlers.onAssign(data);
+    });
+
+    this.socket.on(EVENT_ROOM_STATUS, (data: RoomStatus) => {
+      this.handlers.onRoomStatus(data);
+    });
+
+    this.socket.on(EVENT_QUEUED, (data: QueueStatus) => {
+      this.handlers.onQueued(data);
     });
 
     this.socket.on(EVENT_PATCH, (data: Patch) => {
@@ -134,6 +165,51 @@ export class SocketConnection implements GameConnection {
     this.socket.on("disconnect", (reason: string) => {
       this.setStatus("closed", reason);
     });
+  }
+
+  /**
+   * Asks the relay for a seat.
+   *
+   * Once a seat has been assigned this always rejoins that room by id, because
+   * socket.io reconnects by re-running `connect`: repeating the original entry
+   * would open a *second* room for someone who was only briefly offline. The
+   * relay holds the seat for its grace period and hands the board back.
+   */
+  private enter(): void {
+    if (this.actorId) {
+      this.socket?.emit(EVENT_JOIN, {
+        room_id: this.roomId,
+        player_name: this.options.playerName ?? "player",
+        player_id: this.actorId,
+      });
+      return;
+    }
+
+    const { entry } = this.options;
+    const playerName = this.options.playerName ?? "player";
+
+    switch (entry.kind) {
+      case "join":
+        this.socket?.emit(EVENT_JOIN, {
+          room_id: entry.roomId,
+          player_name: playerName,
+        });
+        return;
+      case "create":
+        this.socket?.emit(EVENT_CREATE_ROOM, {
+          player_name: playerName,
+          mode: entry.mode ?? "pvp",
+        });
+        return;
+      case "match":
+        this.socket?.emit(EVENT_MATCHMAKE, { player_name: playerName });
+        return;
+    }
+  }
+
+  /** Withdraws from the quick-match queue without closing the socket. */
+  cancelMatchmake(): void {
+    this.socket?.emit(EVENT_CANCEL_MATCHMAKE, {});
   }
 
   /** Closes the socket. */
@@ -223,104 +299,5 @@ export class SocketConnection implements GameConnection {
 
   startGame(): void {
     this.send("START_GAME");
-  }
-}
-
-/**
- * An offline connection that replays a captured engine snapshot.
- *
- * Used to develop and demo the interface with no backend running. Because all
- * rules live server-side, this mode is view-only: intents are logged and
- * surfaced to the UI rather than resolved.
- */
-export class DemoConnection implements GameConnection {
-  status: ConnectionStatus = "idle";
-
-  /** Intents the UI attempted, most recent last. */
-  readonly attempted: Intent[] = [];
-
-  private seq = 0;
-
-  constructor(
-    private snapshot: SerializedEngine,
-    private handlers: ConnectionHandlers,
-    /** Which seat to view the captured board from. */
-    private seatIndex = 0,
-  ) {}
-
-  /** Emits the snapshot as a single full-sync patch. */
-  connect(): void {
-    this.status = "connected";
-    this.handlers.onStatus("connected", "demo");
-
-    const player = this.snapshot.game_state.players[this.seatIndex];
-    this.handlers.onAssign({
-      room_id: "demo",
-      player_id: player?.id ?? "",
-      player_index: this.seatIndex,
-    });
-
-    this.handlers.onPatch({
-      version: 1,
-      room_id: "demo",
-      seq: 1,
-      cause: "FULL_SYNC",
-      ops: [{ op: "FULL_SYNC", value: this.snapshot }],
-      events: [],
-    });
-  }
-
-  disconnect(): void {
-    this.status = "closed";
-    this.handlers.onStatus("closed");
-  }
-
-  private record(type: IntentType, payload: IntentPayload = {}): void {
-    this.seq += 1;
-    const player = this.snapshot.game_state.players[this.seatIndex];
-    this.attempted.push(
-      makeIntent("demo", player?.id ?? "", type, this.seq, payload),
-    );
-    this.handlers.onError(
-      `Demo mode: ${type} was not sent. Connect a backend to play.`,
-    );
-  }
-
-  summon(cardId: string, cell: Cell): void {
-    this.record("SUMMON", { card_id: cardId, cell });
-  }
-  setTrap(cardId: string, cell: Cell): void {
-    this.record("SET_TRAP", { card_id: cardId, cell });
-  }
-  castSpell(spellId: string, targetId: string | null): void {
-    this.record("CAST_SPELL", { card_id: spellId, target_id: targetId });
-  }
-  toggle(cardId: string): void {
-    this.record("TOGGLE", { card_id: cardId });
-  }
-  attack(cardId: string, targetId: string, targetIsPlayer: boolean): void {
-    this.record("ATTACK", {
-      card_id: cardId,
-      target_id: targetId,
-      target_is_player: targetIsPlayer,
-    });
-  }
-  upgrade(cardId: string, targetId: string): void {
-    this.record("UPGRADE", { card_id: cardId, target_id: targetId });
-  }
-  toggleTrapActivation(trapId: string, activated: boolean): void {
-    this.record("TOGGLE_TRAP_ACTIVATION", { card_id: trapId, activated });
-  }
-  endTurn(): void {
-    this.record("END_TURN");
-  }
-  surrender(): void {
-    this.record("SURRENDER");
-  }
-  requestSync(): void {
-    this.record("REQUEST_SYNC");
-  }
-  startGame(): void {
-    this.record("START_GAME");
   }
 }

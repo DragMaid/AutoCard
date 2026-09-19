@@ -24,7 +24,7 @@ import {
 } from "react";
 
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from "../game/layout";
-import { COLORS, PIXEL_FONT, pixelPanel } from "../game/theme";
+import { COLORS, UI_FONT, pixelPanel } from "../game/theme";
 
 /** A pointer position already converted into design-space coordinates. */
 export interface StagePointer {
@@ -46,6 +46,14 @@ const LANDSCAPE_MIN_RATIO = 1;
 
 /** Frame thickness in design pixels; scales with everything else. */
 const FRAME = 6;
+
+/**
+ * Elements whose own click handling must survive a press on the stage.
+ *
+ * The board is driven by raw pointer coordinates, but the panels drawn over it
+ * are ordinary DOM controls, and those need their clicks intact.
+ */
+const CONTROLS = "button, input, select, textarea, a, summary, label";
 
 /**
  * Scales its children from design space to the host element.
@@ -123,7 +131,7 @@ export function Stage({
           >
             <span
               style={{
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: 15,
                 letterSpacing: "0.08em",
                 color: COLORS.text,
@@ -133,7 +141,7 @@ export function Stage({
             </span>
             <p
               style={{
-                fontFamily: PIXEL_FONT,
+                fontFamily: UI_FONT,
                 fontSize: 9,
                 lineHeight: 1.8,
                 color: COLORS.textDim,
@@ -159,12 +167,39 @@ export function Stage({
             ` ${FRAME + 6}px ${FRAME + 6}px 0 rgba(0, 0, 0, 0.55)`,
         }}
         onPointerDown={(event) => {
-          (event.target as Element).setPointerCapture?.(event.pointerId);
+          // Captured on the stage, not on the card under the cursor. A sprite
+          // node can be unmounted mid-drag (its card leaves the hand), which
+          // drops the capture and loses the release, leaving an attack arrow
+          // stuck to the cursor. Capturing here also keeps a release outside
+          // the stage — the common case, since the board fills it — addressed
+          // to the element that knows how to finish the drag.
+          //
+          // Not for a press that lands on a control, though: capturing
+          // re-targets the release to the stage, and a button whose press and
+          // release land on different elements is never clicked. The rail's
+          // End Turn and Surrender, and every overlay button, live inside this
+          // element.
+          if (!(event.target as Element).closest?.(CONTROLS)) {
+            try {
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            } catch {
+              // Throws if the pointer is already gone — a very fast click, or
+              // a synthetic event. The press is still worth handling.
+            }
+          }
           onPointerDown?.(toStage(event));
         }}
         onPointerMove={(event) => onPointerMove?.(toStage(event))}
         onPointerUp={(event) => onPointerUp?.(toStage(event))}
         onPointerCancel={() => onPointerCancel?.()}
+        // Belt and braces for the case where capture was never established,
+        // e.g. a pointer that entered mid-gesture: leaving with no button held
+        // ends the drag rather than letting an arrow trail a cursor that is
+        // gone. A leave *while* a button is down is an ordinary drag past the
+        // stage edge and must not cancel it.
+        onPointerLeave={(event) => {
+          if (event.buttons === 0) onPointerCancel?.();
+        }}
       >
         {children}
       </div>

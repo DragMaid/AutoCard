@@ -150,8 +150,14 @@ export class PatchApplier {
       }
 
       case "CARD_UPDATE": {
-        const card = op.card_id ? gs.entity_lookup[op.card_id] : undefined;
-        if (!card) break;
+        const current = op.card_id ? gs.entity_lookup[op.card_id] : undefined;
+        if (!current || !op.card_id) break;
+
+        // Replaced rather than mutated. `CardFace` is memoised, so a card whose
+        // stats change in place is a card React is entitled to skip: a buffed
+        // monster kept showing the attack it had before the spell. A new object
+        // is the signal that something about the card is different.
+        const card = { ...current } as Card;
         for (const [key, value] of Object.entries(op.fields ?? {})) {
           if (key === "id" || key === "card_type") continue;
           if (key === "pos_in_matrix") {
@@ -160,6 +166,7 @@ export class PatchApplier {
           }
           (card as unknown as Record<string, unknown>)[key] = clone(value);
         }
+        gs.entity_lookup[op.card_id] = card;
         break;
       }
 

@@ -94,6 +94,25 @@ export class GameClient {
     this.emitChange();
   }
 
+  /**
+   * Clears the board when a match ends.
+   *
+   * Leaving used to strand the previous game's cards in memory; now that a
+   * player can go straight from one match back to the lobby and into another,
+   * the next room would briefly paint the last one's board before its first
+   * snapshot landed.
+   */
+  reset(): void {
+    this.state = emptyClientState();
+    this.applier = new PatchApplier(null, false);
+    this.localPlayerId = null;
+    this.flip = false;
+    this.hasAssignment = false;
+    this.lastError = null;
+    this.render.reset();
+    this.emitChange();
+  }
+
   /** Applies one patch from the authoritative engine. */
   onPatch(patch: Patch): void {
     const hadFullSync = patch.ops.some((op) => op.op === "FULL_SYNC");
