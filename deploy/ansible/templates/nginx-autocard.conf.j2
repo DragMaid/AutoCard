@@ -1,0 +1,70 @@
+# {{ ansible_managed }}
+# AutoCard on one hostname: the built client at the root, the relay's WebSocket
+# endpoint at /socket.io/. Both upstreams are loopback-only ports published by
+# docker-compose.prod.yml, so this vhost shares 80/443 with the other sites.
+#
+# One hostname rather than site + api.site is deliberate: the browser bundle is
+# built with VITE_GAME_API pointing at this same origin, which keeps the relay's
+# CORS allow-list a single entry and means no preflight on the socket handshake.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ autocard_domain }};
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ autocard_domain }};
+
+    ssl_certificate     {{ tls_cert_dir }}/fullchain.pem;
+    ssl_certificate_key {{ tls_cert_dir }}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # The relay speaks the socket.io WebSocket transport only — the client
+    # connects with transports: ["websocket"], so there is no long-polling
+    # fallback to keep alive here.
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:{{ relay_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade_autocard;
+
+        # A match is a long-lived socket that can sit idle while a player
+        # thinks. Shorter than the relay's own keep-alive (30s) would cut
+        # healthy games off mid-turn.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # Handy for `curl https://{{ autocard_domain }}/relay-health` — the relay's
+    # own status, room count included. The client never calls it.
+    location = /relay-health {
+        proxy_pass http://127.0.0.1:{{ relay_port }}/health;
+        access_log off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ web_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Named per-site: a `map` is http-global, so a generic name could clash with
+# another vhost on the same box.
+map $http_upgrade $connection_upgrade_autocard {
+    default upgrade;
+    ''      close;
+}

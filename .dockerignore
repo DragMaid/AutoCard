@@ -1,0 +1,23 @@
+# Build contexts are the repository root, so keep out everything the images
+# neither need nor should ever bake in.
+.git
+.github
+.venv
+venv
+**/__pycache__/
+*.pyc
+.pytest_cache
+.ruff_cache
+logs
+*.log
+saves
+mlruns
+runs
+web/node_modules
+web/dist
+web/.vite
+server/**/bin
+server/**/obj
+docs
+main.py
+*.aseprite
