@@ -1,0 +1,81 @@
+# Production stack: the two long-running processes of docs/BACKEND.md, run from
+# the images CI pushes to GHCR (the third image, autocard-web, is static files
+# the host's nginx serves — see deploy/README.md). The dev equivalent is `./server/dev.sh` plus `npm run dev`.
+#
+# It lives on the VPS at /opt/autocard next to a .env the deploy workflow writes
+# — see deploy/.env.example for every variable. Nothing here listens publicly:
+# the relay binds to 127.0.0.1 and the host's nginx terminates TLS in front of
+# it, so this stack shares ports 80/443 with the other sites on the machine
+# instead of claiming them.
+#
+#   docker compose -f docker-compose.prod.yml ps
+#   docker compose -f docker-compose.prod.yml logs -f engine
+
+name: autocard
+
+x-logging: &logging
+  # Capped per container, so a noisy service cannot fill the disk the other
+  # sites share. The engine is chatty: every intent and every patch.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # The source of truth. Never published — only the relay may reach it, which is
+  # what keeps an authoritative engine safe to run in public.
+  #
+  # Its entrypoint downloads the checkpoint and exits non-zero if it cannot, so
+  # the engine only ever becomes healthy with a model in place — and the relay
+  # below waits for exactly that before it accepts a single connection.
+  engine:
+    image: ${IMAGE_PREFIX:?}/autocard-engine:${IMAGE_TAG:?}
+    restart: unless-stopped
+    environment:
+      AUTOCARD_ENGINE_HOST: 0.0.0.0
+      AUTOCARD_ENGINE_PORT: "9000"
+      # Longer than a redeploy takes, so a match survives the relay reconnecting.
+      AUTOCARD_ROOM_TTL: ${AUTOCARD_ROOM_TTL:-300}
+      AUTOCARD_AI_DELAY: ${AUTOCARD_AI_DELAY:-0.8}
+      AUTOCARD_AI_DEVICE: cpu
+      AUTOCARD_CHECKPOINT: /models/autocard-bot.pth
+      AUTOCARD_WEIGHTS_URL: ${AUTOCARD_WEIGHTS_URL:-https://huggingface.co/jakekato/AutoCard/resolve/main/autocard-bot.pth}
+      # Optional: pin the exact weights. Set it and a corrupted or swapped file
+      # is refused instead of loaded.
+      AUTOCARD_WEIGHTS_SHA256: ${AUTOCARD_WEIGHTS_SHA256:-}
+      # Escape hatch for a box that should run without a trained AI at all;
+      # unset in production, where a missing checkpoint must fail the rollout.
+      AUTOCARD_SKIP_WEIGHTS: ${AUTOCARD_SKIP_WEIGHTS:-0}
+      # Only needed while the model repository is private.
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - models:/models
+      - engine-logs:/app/logs
+    logging: *logging
+
+  # Rooms, seats and fan-out. Decides nothing about the game.
+  relay:
+    image: ${IMAGE_PREFIX:?}/autocard-relay:${IMAGE_TAG:?}
+    restart: unless-stopped
+    environment:
+      AutoCard__EngineUri: ws://engine:9000
+      # Narrowed from the development default of "*": the browser bundle is
+      # served from one origin and nothing else needs to reach the relay.
+      AutoCard__AllowedOrigins__0: https://${SITE_DOMAIN:?}
+      AutoCard__ReconnectGraceSeconds: ${RECONNECT_GRACE_SECONDS:-90}
+      AutoCard__MaxRooms: ${MAX_ROOMS:-500}
+    ports:
+      - "127.0.0.1:${RELAY_PORT:-8180}:8080"
+    depends_on:
+      engine:
+        condition: service_healthy
+    logging: *logging
+
+  # The built client is not a service: `npm run build` emits static files, so
+  # the host's nginx serves them straight off disk from /opt/autocard/web,
+  # which deploy.sh fills from the autocard-web image.
+
+volumes:
+  # The checkpoint, downloaded once and kept across releases.
+  models:
+  engine-logs:

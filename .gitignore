@@ -10,3 +10,7 @@
 venv
 logs
 *.log
+
+# .NET build output
+[Bb]in/
+[Oo]bj/

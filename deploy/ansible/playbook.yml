@@ -1,0 +1,223 @@
+# Prepares a shared Ubuntu/Debian VPS to run the AutoCard stack. Idempotent —
+# safe to re-run whenever this file changes. Day-to-day releases do NOT go
+# through here; they are the deploy workflow (.github/workflows/deploy.yml)
+# SSHing in as `deploy` and running /opt/autocard/deploy.sh.
+#
+# What it touches, and deliberately what it does not, because other sites share
+# the host:
+#   - installs Docker only when no `docker` binary exists yet (never swaps an
+#     existing one)
+#   - adds ONE nginx vhost + its certificate; nginx.conf and other sites are
+#     left alone, and every reload is preceded by `nginx -t`
+#   - creates a `deploy` user that owns /opt/autocard (docker group =
+#     root-equivalent; the key is dedicated to this purpose so it can be revoked
+#     on its own)
+#   - installs unattended-upgrades for OS security patches
+#   - does NOT manage the firewall: the stack binds to 127.0.0.1 only, and
+#     Docker bypasses ufw rules for published ports anyway
+#
+# There is no database and so nothing to back up: the only state on the box is
+# the downloaded checkpoint, which the engine fetches again on demand.
+
+- name: Prepare VPS for the AutoCard stack
+  hosts: autocard
+  become: true
+
+  vars:
+    deploy_user: deploy
+    app_dir: /opt/autocard
+    # NOTE: The relay's loopback port, published by docker-compose.prod.yml. Must
+    # match RELAY_PORT in the .env on the server.
+    relay_port: 8180
+    # The user nginx's workers run as, which has to be able to read the client's
+    # files. www-data on Debian and Ubuntu.
+    nginx_user: www-data
+    # What the vhost serves. deploy.sh points this symlink at the release it
+    # unpacked; the placeholder keeps nginx valid before the first deploy.
+    web_root: "{{ app_dir }}/web"
+    # be ignored.
+    tls: "{{ tls_mode | default('letsencrypt') }}"
+    selfsigned_dir: /etc/ssl/autocard
+    tls_cert_dir: "{{ selfsigned_dir if tls == 'selfsigned' else '/etc/letsencrypt/live/' ~ autocard_domain }}"
+
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - unattended-upgrades
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable unattended security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    - name: Check for an existing Docker install
+      ansible.builtin.command: which docker
+      register: docker_binary
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker Engine with the compose plugin
+      when: docker_binary.rc != 0
+      block:
+        - name: Create the apt keyrings directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: "0755"
+
+        - name: Add Docker's apt key
+          ansible.builtin.get_url:
+            url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+            dest: /etc/apt/keyrings/docker.asc
+            mode: "0644"
+
+        - name: Add Docker's apt repository
+          ansible.builtin.deb822_repository:
+            name: docker
+            types: deb
+            uris: "https://download.docker.com/linux/{{ ansible_distribution | lower }}"
+            suites: "{{ ansible_facts['distribution_release'] }}"
+            components: stable
+            signed_by: /etc/apt/keyrings/docker.asc
+            state: present
+
+        - name: Install Docker packages
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+
+    - name: Ensure the compose plugin is present
+      ansible.builtin.command: docker compose version
+      changed_when: false
+
+    - name: Ensure Docker is running and starts on boot
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create the deploy user
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        shell: /bin/bash
+        groups: docker
+        append: true
+
+    - name: Authorize the CI deploy key
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('file', deploy_public_key_file) }}"
+        exclusive: false
+
+    # It assign the modes sequentially:
+    # - user - deploy_user = 7: full read, write, execute
+    # - group - nginx_user = 5: execute / traverse commands (but no reading)
+    # - others = 0: no permission at all
+    - name: Create the app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
+        mode: "0750"
+
+    - name: Create the placeholder web root
+      ansible.builtin.file:
+        path: "{{ app_dir }}/web-placeholder"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
+        mode: "0755"
+
+    # Checking if the web_root symlink exists and saving the results to web_root_link var
+    - name: Look for an existing web root
+      ansible.builtin.stat:
+        path: "{{ web_root }}"
+        follow: false
+      register: web_root_link
+
+    - name: Point the web root at the placeholder
+      when: not web_root_link.stat.exists
+      ansible.builtin.file:
+        path: "{{ web_root }}"
+        src: "{{ app_dir }}/web-placeholder"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
+
+    - name: Validate tls_mode
+      ansible.builtin.assert:
+        that: tls in ['letsencrypt', 'selfsigned']
+        fail_msg: "tls_mode must be 'letsencrypt' or 'selfsigned', got '{{ tls }}'"
+
+    - name: Create the self-signed certificate directory
+      when: tls == 'selfsigned'
+      ansible.builtin.file:
+        path: "{{ selfsigned_dir }}"
+        state: directory
+        mode: "0700"
+
+    # Same file names as Let's Encrypt so the vhost only differs by directory.
+    - name: Generate a self-signed TLS certificate
+      when: tls == 'selfsigned'
+      ansible.builtin.command: >-
+        openssl req -x509 -nodes -newkey rsa:2048 -days 365
+        -keyout {{ selfsigned_dir }}/privkey.pem
+        -out {{ selfsigned_dir }}/fullchain.pem
+        -subj "/CN={{ autocard_domain }}"
+        -addext "subjectAltName=DNS:{{ autocard_domain }}"
+      args:
+        creates: "{{ selfsigned_dir }}/fullchain.pem"
+      notify: Reload nginx
+
+    # certonly: certbot obtains the certificate without rewriting any config.
+    # The vhost below references it, so this has to happen first — and DNS for
+    # the name must already point at this server.
+    - name: Obtain the TLS certificate
+      when: tls == 'letsencrypt'
+      ansible.builtin.command: >-
+        certbot certonly --nginx --non-interactive --agree-tos
+        --email {{ letsencrypt_email }}
+        --cert-name {{ autocard_domain }}
+        -d {{ autocard_domain }}
+        --deploy-hook "systemctl reload nginx"
+      args:
+        creates: "/etc/letsencrypt/live/{{ autocard_domain }}/fullchain.pem"
+
+    - name: Install the autocard vhost
+      ansible.builtin.template:
+        src: templates/nginx-autocard.conf.j2
+        dest: /etc/nginx/sites-available/autocard.conf
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable the autocard vhost
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/autocard.conf
+        dest: /etc/nginx/sites-enabled/autocard.conf
+        state: link
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.shell: nginx -t && systemctl reload nginx
+      changed_when: true

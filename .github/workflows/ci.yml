@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+# Drop the old run if a new push to the PR lands while it is still going.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Engine and rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # Same trick the engine image uses: the lock pins the versions, but the
+      # CUDA build of torch is three gigabytes of kernels no runner needs. See
+      # deploy/engine.Dockerfile.
+      - name: Install (CPU torch)
+        run: |
+          uv export --locked --format requirements-txt --no-hashes --no-emit-project \
+            | grep -vE '^(nvidia-|triton)' > requirements-ci.txt
+          uv venv
+          uv pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple \
+            --index-strategy unsafe-best-match \
+            -r requirements-ci.txt
+
+      - name: Test
+        env:
+          PYTHONPATH: .
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: .venv/bin/pytest -q --junitxml=${{ runner.temp }}/pytest.xml
+
+      # Catches the import-time failures a unit test never sees: a missing
+      # module, a broken config, an aiohttp route that does not build.
+      - name: Engine starts and answers /health
+        env:
+          PYTHONPATH: .
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          AUTOCARD_CHECKPOINT: ${{ runner.temp }}/no-such-checkpoint.pth
+        run: |
+          .venv/bin/python -m engine &
+          pid=$!
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9000/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:9000/health
+          kill "$pid"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: ${{ runner.temp }}/pytest.xml
+          if-no-files-found: ignore
+
+  weights:
+    name: Checkpoint is reachable
+    runs-on: ubuntu-latest
+
+    # Cheap insurance: a model repository that has gone private, or a file that
+    # was renamed, fails a pull request here instead of at the first single
+    # player match after a rollout. Standard library only, so nothing to install.
+    steps:
+      - uses: actions/checkout@v4
+      - name: HEAD the weights URL
+        env:
+          AUTOCARD_WEIGHTS_URL: ${{ vars.AUTOCARD_WEIGHTS_URL }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python ml/fetch_weights.py --check
+
+  relay:
+    name: Relay build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('server/**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        working-directory: server/AutoCard.Server
+        run: dotnet restore
+
+      # The project sets TreatWarningsAsErrors, so this is the relay's lint too.
+      - name: Build
+        working-directory: server/AutoCard.Server
+        run: dotnet build --configuration Release --no-restore
+
+  web:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        working-directory: web
+        run: npm ci
+
+      # `npm run build` is `tsc -b && vite build`, so a type error in the
+      # protocol types fails here rather than in the browser.
+      - name: Build
+        working-directory: web
+        run: npm run build

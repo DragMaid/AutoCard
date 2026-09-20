@@ -63,14 +63,26 @@ def save_model(agent: Agent, path: str = Config.CHECKPOINT_PATH):
     logger.info(f"Models saved to {checkpoint_path}")
 
 
-def load_model(agent: Agent, device="cpu", path=Config.CHECKPOINT_PATH):
+def load_model(agent: Agent, device="cpu", path=Config.CHECKPOINT_PATH,
+               agent_id: int = 0):
     """
     Load all models from a single checkpoint file.
+
+    Two layouts are accepted. The current one, written by save_model, holds one
+    set of weights under "dqn"/"policy"/"encoder". Self-play runs before that
+    saved both seats in one file, as "agent_<n>_model" and "agent_<n>_policy",
+    with the encoder's weights nested inside each network under "feature_net.".
+    Published checkpoints are still in that older shape, so it is read rather
+    than rejected.
 
     Args:
         agent: Agent
         device: Device to load models to
-        checkpoint_path: Path to checkpoint file
+        path: Path to checkpoint file
+        agent_id: Which seat to load, for the per-seat layout only
+
+    Raises:
+        ValueError: If the file is missing, or holds neither layout.
     """
     checkpoint_path = Path(path)
     if not checkpoint_path.exists():
@@ -78,9 +90,24 @@ def load_model(agent: Agent, device="cpu", path=Config.CHECKPOINT_PATH):
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    agent.dqn.load_state_dict(checkpoint["dqn"])
-    agent.policy.load_state_dict(checkpoint["policy"])
-    agent.encoder.load_state_dict(checkpoint["encoder"])
+
+    if "dqn" in checkpoint:
+        agent.dqn.load_state_dict(checkpoint["dqn"])
+        agent.policy.load_state_dict(checkpoint["policy"])
+        # Last, and deliberately so: dqn and policy each carry a copy of the
+        # encoder's parameters, and this is the one the agent should end up with.
+        agent.encoder.load_state_dict(checkpoint["encoder"])
+    elif f"agent_{agent_id}_model" in checkpoint:
+        # The dqn goes last here for the same reason: the encoder is a shared
+        # module, and inference reads it through the dqn.
+        agent.policy.load_state_dict(checkpoint[f"agent_{agent_id}_policy"])
+        agent.dqn.load_state_dict(checkpoint[f"agent_{agent_id}_model"])
+    else:
+        raise ValueError(
+            f"Unrecognized checkpoint at {checkpoint_path}: expected 'dqn' or "
+            f"'agent_{agent_id}_model', found {sorted(checkpoint)}"
+        )
+
     logger.info(f"Models loaded from {checkpoint_path}")
 
 

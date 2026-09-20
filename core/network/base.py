@@ -57,9 +57,22 @@ class GameApp(ABC):
         self.player1: Player = Player(player_index=0, name="p1", is_opponent=False)
         self.player2: Player = Player(player_index=1, name="p2", is_opponent=True)
 
+    def _engine_kwargs(self) -> dict:
+        """Extra GameEngine arguments for this game mode.
+
+        Offline modes need none. Networked subclasses override this to supply a
+        transport plus the authoritative/remote mode, which is why any transport
+        they own must be created before ``super().__init__`` runs.
+
+        Returns:
+            dict: Keyword arguments forwarded to :class:`GameEngine`.
+        """
+        return {}
+
     def _setup_engine(self) -> None:
         """Sets up the game engine and environment."""
-        self.game_engine: GameEngine = GameEngine([self.player1, self.player2])
+        self.game_engine: GameEngine = GameEngine(
+            [self.player1, self.player2], **self._engine_kwargs())
         self.env: GameEnv = GameEnv(engine=self.game_engine, render=False)
 
     def _setup_rendering(self) -> None:
@@ -108,10 +121,11 @@ class GameApp(ABC):
         """Handles confirmation of surrender."""
         local_player: Optional[Player] = self._get_local_player()
         if local_player:
-            local_player.life_points = 0
+            # Routes through the engine so a networked match emits the
+            # concession as an action instead of a silent local mutation.
+            self.game_engine.surrender(local_player.id)
             self._check_game_over()
         self.surrender_overlay.hide()
-        self.game_engine.synchronize()
 
     def _on_return_to_menu(self) -> None:
         """Handles return to menu request."""

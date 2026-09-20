@@ -1,0 +1,171 @@
+name: Deploy
+
+# Every push to main: run the CI suite, build the three images, push them to
+# GHCR, then SSH into the VPS and roll the stack forward. Run it by hand with an
+# image tag to roll back (or forward) to any release already in the registry,
+# without rebuilding.
+#
+# Needs a GitHub environment named `production` with:
+#   secrets  VPS_SSH_KEY       private key whose public half the VPS authorized for `deploy`
+#            VPS_KNOWN_HOSTS   output of `ssh-keyscan -p <port> <host>`, checked by hand once
+#            PROD_ENV_FILE     contents of deploy/.env.example, filled in
+#            HF_TOKEN          optional, only while the model repository is private
+#   vars     VPS_HOST, VPS_PORT (default 22), VPS_USER (default deploy)
+#            PUBLIC_API_URL    e.g. https://api.autocard.example.com — baked into the bundle
+#            AUTOCARD_WEIGHTS_URL  optional override of the checkpoint URL
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag (commit SHA) to deploy. Empty = build the current commit."
+        required: false
+        default: ""
+
+# One rollout at a time, and never cancel one halfway through.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Skipped when a manual run names an existing tag: that image was tested on
+  # the way in, and rolling back is not the moment to re-run a suite.
+  test:
+    if: inputs.image_tag == ''
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    environment: production
+
+    strategy:
+      matrix:
+        include:
+          - image: autocard-engine
+            dockerfile: deploy/engine.Dockerfile
+          - image: autocard-relay
+            dockerfile: deploy/relay.Dockerfile
+          - image: autocard-web
+            dockerfile: deploy/web.Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        id: name
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          # The repository root for all three: the engine imports core/ and ml/,
+          # and the client needs the shared assets/ directory.
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.name.outputs.ref }}:${{ github.sha }}
+            ${{ steps.name.outputs.ref }}:latest
+          # The vendor label is what deploy.sh prunes by, so it never touches
+          # another site's images on a shared box.
+          labels: |
+            org.opencontainers.image.vendor=autocard
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VITE_GAME_API=${{ vars.PUBLIC_API_URL }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  deploy:
+    name: Deploy to VPS
+    needs: build
+    # Runs after a build, or on its own when a manual run names an existing tag.
+    if: >-
+      always() &&
+      (needs.build.result == 'success' ||
+       (needs.build.result == 'skipped' && inputs.image_tag != ''))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment: production
+
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+      VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+      APP_DIR: /opt/autocard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $VPS_HOST
+            Port $VPS_PORT
+            User $VPS_USER
+            IdentityFile ~/.ssh/id_deploy
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Write .env
+        env:
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          WEIGHTS_URL: ${{ vars.AUTOCARD_WEIGHTS_URL }}
+        run: |
+          umask 077
+          printf '%s\n' "$PROD_ENV_FILE" > release.env
+          echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> release.env
+          echo "IMAGE_TAG=$IMAGE_TAG" >> release.env
+          # Repository-level overrides win over the checked-in defaults, so the
+          # checkpoint can be swapped without editing the env secret.
+          [ -n "$WEIGHTS_URL" ] && echo "AUTOCARD_WEIGHTS_URL=$WEIGHTS_URL" >> release.env
+          [ -n "$HF_TOKEN" ] && echo "HF_TOKEN=$HF_TOKEN" >> release.env
+          true
+
+      - name: Upload stack files
+        run: |
+          scp -q docker-compose.prod.yml deploy/deploy.sh "vps:$APP_DIR/"
+          scp -q release.env "vps:$APP_DIR/.env"
+          ssh vps "chmod 600 $APP_DIR/.env && chmod +x $APP_DIR/deploy.sh"
+
+      - name: Roll out
+        # The registry token goes over stdin, not the command line, so it never
+        # shows up in `ps` on the server.
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | ssh vps "$APP_DIR/deploy.sh $GITHUB_ACTOR"
+
+      - name: Clean up
+        if: always()
+        run: rm -f release.env ~/.ssh/id_deploy
