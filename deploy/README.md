@@ -140,10 +140,18 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
   lock, drop the `nvidia-*` and `triton` wheels, and install from PyTorch's CPU
   index — same pinned versions, a fraction of the size. Training on a GPU box
   still installs from the lock in the usual way.
-- **The engine image carries the training stack** (mlflow, dagshub) because the
-  project has one flat dependency set. Splitting `pyproject.toml` into groups —
-  runtime vs training — would cut it further, and would change how training
-  environments are installed, so it is left alone here.
+- **The engine image is the runtime set only.** `pyproject.toml` keeps training
+  behind an extra, so mlflow, dagshub and the ~500 MB of pandas/scipy/pyarrow/
+  scikit-learn behind them stay out of the image — nothing the engine imports
+  touches them. Training and testing install them explicitly:
+  `uv sync --extra dev --extra training`. With `torch/test` and `torch/include`
+  stripped too, the image is about 1.1 GB rather than 2.1 GB.
+- **Layer digests are the other half of a fast deploy.** The build is not
+  reproducible — two identical builds give different layer digests — so a CI
+  cache miss makes the VPS re-pull torch, ~700 MB, for a release that changed
+  nothing in it. That is why the build caches to GHCR (`:buildcache`) rather
+  than GitHub's 10 GB evicting cache. `deploy.sh` prints how long the pull took:
+  seconds means the cache held, minutes means a heavy layer churned.
 - **Live matches and redeploys.** `AUTOCARD_ROOM_TTL` (300s) is how long a room
   outlives its relay socket. A rollout inside that window resumes matches; a
   longer one drops them. There is no database and nothing else to migrate.

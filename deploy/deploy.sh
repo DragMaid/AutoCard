@@ -44,11 +44,13 @@ if [[ -n "$token" ]]; then
 fi
 
 # NOTE: here we are storing the frontend files in a docker container, this allow auto versoning
+pull_started=$SECONDS
 pull_status=0
 "${compose[@]}" pull --quiet || pull_status=$?
 (( pull_status == 0 )) && { docker pull --quiet "${image_prefix}/autocard-web:${new_tag}" >/dev/null || pull_status=$?; }
 [[ -n "$token" ]] && docker logout ghcr.io >/dev/null
 (( pull_status == 0 )) || { echo "!! pull failed"; exit "$pull_status"; }
+echo "==> Pull took $((SECONDS - pull_started))s"
 
 publish_web() {
     local tag="$1" target=".web-${tag}.partial" container

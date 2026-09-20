@@ -4,19 +4,26 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
+# What the engine needs to serve a match, and nothing else. This set is what
+# deploy/engine.Dockerfile installs, so anything added here lands on the VPS and
+# is pulled on every release — keep it honest.
 dependencies = [
     "aiohttp>=3.13.5",
-    "dagshub>=0.7.0",
     "dotenv>=0.9.9",
-    "gunicorn>=25.3.0",
-    "mlflow>=3.11.1",
     "numpy>=2.4.4",
     "pydantic>=2.13.3",
     "pygame>=2.6.1",
-    "pytest>=9.0.3",
-    "python-multipart>=0.0.28",
     "python-socketio>=5.16.1",
     "torch>=2.11.0",
+]
+
+[project.optional-dependencies]
+training = [
+    "dagshub>=0.7.0",
+    "mlflow>=3.11.1",
     "tqdm>=4.67.3",
     "websocket-client>=1.9.0",
+]
+dev = [
+    "pytest>=9.0.3",
 ]

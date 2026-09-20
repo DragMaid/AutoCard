@@ -92,8 +92,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             VITE_GAME_API=${{ vars.PUBLIC_API_URL }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          cache-from: type=registry,ref=${{ steps.name.outputs.ref }}:buildcache
+          cache-to: type=registry,ref=${{ steps.name.outputs.ref }}:buildcache,mode=max
 
   deploy:
     name: Deploy to VPS
