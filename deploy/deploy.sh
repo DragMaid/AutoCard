@@ -44,14 +44,20 @@ if [[ -n "$token" ]]; then
 fi
 
 # NOTE: here we are storing the frontend files in a docker container, this allow auto versoning
+pull_started=$SECONDS
 pull_status=0
 "${compose[@]}" pull --quiet || pull_status=$?
 (( pull_status == 0 )) && { docker pull --quiet "${image_prefix}/autocard-web:${new_tag}" >/dev/null || pull_status=$?; }
 [[ -n "$token" ]] && docker logout ghcr.io >/dev/null
 (( pull_status == 0 )) || { echo "!! pull failed"; exit "$pull_status"; }
+echo "==> Pull took $((SECONDS - pull_started))s"
 
 publish_web() {
-    local tag="$1" target=".web-${tag}.partial" container
+    local tag="${1:-}" target container
+    # On a first run there is no .current-tag, so rollback can reach here with an
+    # empty tag. Say so, rather than dying on `set -u` or extracting `web-`.
+    [[ -n "$tag" ]] || { echo "!! publish_web: no tag to publish"; return 1; }
+    target=".web-${tag}.partial"
     # If the extracted directory already exists, then just update the symlink
     # the ln command with the following parameters:
     # -s: create a symlink

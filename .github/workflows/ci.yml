@@ -28,8 +28,8 @@ jobs:
       # deploy/engine.Dockerfile.
       - name: Install (CPU torch)
         run: |
-          uv export --locked --format requirements-txt --no-hashes --no-emit-project \
-            | grep -vE '^(nvidia-|triton)' > requirements-ci.txt
+          uv export --locked --extra dev --format requirements-txt --no-hashes --no-emit-project \
+            | grep -vE '^(nvidia-|triton|cuda-)' > requirements-ci.txt
           uv venv
           uv pip install \
             --index-url https://download.pytorch.org/whl/cpu \
