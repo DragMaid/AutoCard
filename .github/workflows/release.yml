@@ -1,0 +1,63 @@
+name: Release
+
+# Push a tag like `v1.2.0` and this publishes the matching GitHub release: the CI suite
+# runs first, then the source is zipped and attached alongside notes generated from the
+# commits and PRs since the previous tag.
+#
+#   git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0
+#
+# A tag with a prerelease suffix (v1.2.0-rc.1, v1.2.0-beta) is marked as a prerelease.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Never publish two releases for the same tag at once, and never cancel one halfway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Same suite the PRs and deploys run. A tag that does not build does not get a release.
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Publish release
+    needs: test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Notes are generated from the history between tags, so the shallow default
+          # is not enough.
+          fetch-depth: 0
+
+      # `git archive` rather than zipping the working tree: it takes exactly what the tag
+      # contains, honours .gitattributes export-ignore, and prefixes every entry with the
+      # release name so the zip unpacks into its own directory.
+      - name: Build source archive
+        id: archive
+        run: |
+          zip_name="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME}.zip"
+          git archive --format=zip --prefix="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME}/" \
+            -o "${RUNNER_TEMP}/${zip_name}" "${GITHUB_REF_NAME}"
+          echo "zip_path=${RUNNER_TEMP}/${zip_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          # v1.2.0-rc.1 and friends ship as prereleases; a bare v1.2.0 does not.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: ${{ steps.archive.outputs.zip_path }}
+          fail_on_unmatched_files: true
