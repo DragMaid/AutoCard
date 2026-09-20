@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { backgroundUrl } from "./game/assets";
+import { installAudio } from "./game/audio";
 import { GameClient } from "./game/gameClient";
 import { LAYOUT } from "./game/layout";
 import { getCard } from "./game/state";
@@ -151,6 +152,10 @@ export default function App() {
   // A socket left open by a closing tab keeps its seat until the grace period
   // lapses, which would look to the opponent like a player who never left.
   useEffect(() => () => connectionRef.current?.disconnect(), []);
+
+  // Sound stays muted until the browser has seen a gesture, so arm it once for
+  // the whole app rather than per screen.
+  useEffect(() => installAudio(), []);
 
   const onPointerDown = useCallback(
     (pointer: StagePointer) => {

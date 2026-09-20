@@ -7,6 +7,7 @@
  * everything, since this layer is only a convenience.
  */
 
+import { playSound } from "./audio";
 import type { RenderEngine } from "./renderEngine";
 import { spriteContains, type Sprite } from "./sprites";
 import {
@@ -156,6 +157,7 @@ export class InputManager {
       if (!containsPoint(rect, x, y)) continue;
 
       const activated = !gameState.activated_traps.includes(trapId);
+      playSound("buttonPress");
       this.actions.toggleTrapActivation(trapId, activated);
       return true;
     }

@@ -7,6 +7,7 @@
  * Python, which is what keeps a two-card attack in step.
  */
 
+import { playSound } from "./audio";
 import type { Sprite } from "./sprites";
 import type { SpriteManager } from "./sprites";
 
@@ -64,6 +65,8 @@ export abstract class Animation {
 
 /** Slides a sprite between two points (card draw). */
 export class MoveAnimation extends Animation {
+  private impactDone = false;
+
   constructor(
     private sprite: Sprite,
     private from: [number, number],
@@ -77,12 +80,18 @@ export class MoveAnimation extends Animation {
     const p = easeInOutQuad(t);
     this.sprite.x = lerp(this.from[0], this.to[0], p);
     this.sprite.y = lerp(this.from[1], this.to[1], p);
+
+    if (!this.impactDone && t >= 0.1) {
+      this.impactDone = true;
+      playSound("cardDraw");
+    }
   }
 }
 
 /** Drops a sprite onto its slot with a squash on landing. */
 export class PlaceAnimation extends Animation {
   private readonly from: [number, number];
+  private impactDone = false;
 
   constructor(
     private sprite: Sprite,
@@ -99,6 +108,11 @@ export class PlaceAnimation extends Animation {
     this.sprite.y = lerp(this.from[1], this.to[1], p);
     this.sprite.scaleY =
       t < 0.95 ? 1 : 1 - 0.2 * Math.sin(((t - 0.95) / 0.05) * Math.PI);
+
+    if (!this.impactDone && t >= 0.95) {
+      this.impactDone = true;
+      playSound("cardDisappear");
+    }
   }
 }
 
@@ -211,6 +225,7 @@ export class AttackAnimation extends Animation {
 
       if (!this.impactDone) {
         this.impactDone = true;
+        playSound("swordClash");
         this.onImpact?.(this.mid[0], this.mid[1]);
         this.card1.angle = this.finalAngle1;
         this.card2.angle = this.finalAngle2;
@@ -273,6 +288,7 @@ export class AttackPlayerAnimation extends Animation {
 
       if (!this.impactDone) {
         this.impactDone = true;
+        playSound("playerHurt");
         this.onImpact?.(this.target[0], this.target[1]);
       }
       this.card.scaleX = 1.1 - 0.1 * p;
@@ -327,6 +343,7 @@ export class MergeAnimation extends Animation {
 
     if (!this.impactDone && t >= 0.8) {
       this.impactDone = true;
+      playSound("merge");
       this.onImpact?.(this.mid[0], this.mid[1]);
     }
 
@@ -363,6 +380,7 @@ export class TrapTriggerAnimation extends Animation {
 
     if (t >= 0.3 && !this.glowDone) {
       this.glowDone = true;
+      playSound("trapReveal");
       this.onGlow?.(this.start[0], this.start[1]);
     }
 
@@ -381,6 +399,8 @@ export class TrapTriggerAnimation extends Animation {
 
 /** Pulses a trap to show the owner it may be activated. */
 export class TrapTriggerableAnimation extends Animation {
+  private soundDone = false;
+
   constructor(
     private card: Sprite,
     duration: number,
@@ -390,6 +410,12 @@ export class TrapTriggerableAnimation extends Animation {
 
   protected apply(t: number): void {
     this.card.scaleY = 1 + Math.sin(t * Math.PI) * 0.05;
+
+    if (!this.soundDone && t >= 0.2) {
+      this.soundDone = true;
+      playSound("trapTriggerable");
+    }
+
     if (t >= 1) this.card.scaleY = 1;
   }
 }
@@ -417,6 +443,7 @@ export class SpellAnimation extends Animation {
 
     if (t >= 0.3 && !this.glowDone) {
       this.glowDone = true;
+      playSound("spellActivate");
       this.onGlow?.(this.card.x, this.card.y);
     }
 
@@ -648,6 +675,7 @@ export class AnimationManager {
         toAttack ? 90 : 0,
         toAttack ? 0 : 90,
         duration,
+        () => playSound(toAttack ? "swordSlice" : "shieldGuard"),
       ),
     );
   }
