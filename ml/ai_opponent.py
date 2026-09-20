@@ -45,8 +45,18 @@ class AIOpponent:
         self.agent = Agent(num_actions=env.num_actions, device="cpu")
 
         if checkpoint_path and checkpoint_path.exists():
-            load_model(self.agent, path=checkpoint_path)
-            logger.info(f"Loaded AI checkpoint from {checkpoint_path}")
+            try:
+                load_model(self.agent, path=checkpoint_path, agent_id=agent_id)
+                logger.info(f"Loaded AI checkpoint from {checkpoint_path}")
+            except (ValueError, RuntimeError, KeyError):
+                # A checkpoint from an older architecture loads its shapes into
+                # today's networks and fails. That must not take the room down
+                # with it: an untrained opponent is a poor match, an exception
+                # here is a match that cannot be played at all.
+                logger.exception(
+                    "Checkpoint at %s does not fit the current model; using an "
+                    "untrained agent. Re-export it from a current training run.",
+                    checkpoint_path)
         else:
             logger.warning(
                 "No valid checkpoint found for AI; using untrained agent.")
