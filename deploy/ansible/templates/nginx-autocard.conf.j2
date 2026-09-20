@@ -1,7 +1,11 @@
 # {{ ansible_managed }}
 # AutoCard on one hostname: the built client at the root, the relay's WebSocket
-# endpoint at /socket.io/. Both upstreams are loopback-only ports published by
-# docker-compose.prod.yml, so this vhost shares 80/443 with the other sites.
+# endpoint at /socket.io/.
+#
+# The client is a Vite build — static files, no server — so this nginx serves it
+# straight off disk. {{ web_root }} is a symlink deploy.sh swaps to the release
+# it just unpacked from the autocard-web image. Only the relay is proxied, on a
+# loopback port, so this vhost shares 80/443 with the other sites on the box.
 #
 # One hostname rather than site + api.site is deliberate: the browser bundle is
 # built with VITE_GAME_API pointing at this same origin, which keeps the relay's
@@ -52,14 +56,31 @@ server {
         access_log off;
     }
 
+    root {{ web_root }};
+    index index.html;
+
+    # nginx resolves the release symlink per request, so a deploy is picked up
+    # without a reload.
     location / {
-        proxy_pass http://127.0.0.1:{{ web_port }};
-        proxy_http_version 1.1;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        try_files $uri $uri/ =404;
     }
+
+    # Hashed filenames, so they can be cached until the heat death of the
+    # universe. index.html below must not be, or a deploy is invisible to
+    # anyone holding a cached copy.
+    location /assets/ {
+        try_files $uri =404;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
 }
 
 # Named per-site: a `map` is http-global, so a generic name could clash with

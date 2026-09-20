@@ -26,16 +26,15 @@
   vars:
     deploy_user: deploy
     app_dir: /opt/autocard
-    # Loopback ports docker-compose.prod.yml publishes. Must match the .env on
-    # the server (RELAY_PORT / WEB_PORT).
+    # NOTE: The relay's loopback port, published by docker-compose.prod.yml. Must
+    # match RELAY_PORT in the .env on the server.
     relay_port: 8180
-    web_port: 3200
-    # letsencrypt needs DNS for the name already pointing here. selfsigned is
-    # for before that: browsers will warn, but the stack is reachable (e.g. via
-    # /etc/hosts). Switching back to letsencrypt later just works — the
-    # self-signed files stay in place until then.
-    # Play vars outrank inventory vars, so the default lives in a filter rather
-    # than as `tls_mode:` here — otherwise tls_mode set in inventory.ini would
+    # The user nginx's workers run as, which has to be able to read the client's
+    # files. www-data on Debian and Ubuntu.
+    nginx_user: www-data
+    # What the vhost serves. deploy.sh points this symlink at the release it
+    # unpacked; the placeholder keeps nginx valid before the first deploy.
+    web_root: "{{ app_dir }}/web"
     # be ignored.
     tls: "{{ tls_mode | default('letsencrypt') }}"
     selfsigned_dir: /etc/ssl/autocard
@@ -129,13 +128,41 @@
         key: "{{ lookup('file', deploy_public_key_file) }}"
         exclusive: false
 
+    # It assign the modes sequentially:
+    # - user - deploy_user = 7: full read, write, execute
+    # - group - nginx_user = 5: execute / traverse commands (but no reading)
+    # - others = 0: no permission at all
     - name: Create the app directory
       ansible.builtin.file:
         path: "{{ app_dir }}"
         state: directory
         owner: "{{ deploy_user }}"
-        group: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
         mode: "0750"
+
+    - name: Create the placeholder web root
+      ansible.builtin.file:
+        path: "{{ app_dir }}/web-placeholder"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
+        mode: "0755"
+
+    # Checking if the web_root symlink exists and saving the results to web_root_link var
+    - name: Look for an existing web root
+      ansible.builtin.stat:
+        path: "{{ web_root }}"
+        follow: false
+      register: web_root_link
+
+    - name: Point the web root at the placeholder
+      when: not web_root_link.stat.exists
+      ansible.builtin.file:
+        path: "{{ web_root }}"
+        src: "{{ app_dir }}/web-placeholder"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ nginx_user }}"
 
     - name: Validate tls_mode
       ansible.builtin.assert:

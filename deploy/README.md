@@ -5,26 +5,36 @@ push to main ─► CI (pytest · relay build · web build · weights URL)
                   │
                   └─► build engine/relay/web ─► GHCR ─► ssh deploy@vps deploy.sh
                                                           │
-                     pull ─► up -d ─► fetch checkpoint ─► health ok? ─┬─ yes: done
-                                                                      └─ no: previous tag back up, run fails
+       pull ─► up -d ─► fetch checkpoint ─► unpack client ─► health ok? ─┬─ yes: done
+                                                                       └─ no: previous tag back up, run fails
 ```
 
-Three processes, the same three as [`docs/BACKEND.md`](../docs/BACKEND.md):
+Three images; two of them run. The processes are the ones in
+[`docs/BACKEND.md`](../docs/BACKEND.md):
 
 | Image | Built from | What it is | Published on |
 |---|---|---|---|
 | `autocard-engine` | `deploy/engine.Dockerfile` | the authoritative Python engine | nothing — internal only |
 | `autocard-relay` | `deploy/relay.Dockerfile` | the C# room server | `127.0.0.1:8180` |
-| `autocard-web` | `deploy/web.Dockerfile` | the built client, on nginx | `127.0.0.1:3200` |
+| `autocard-web` | `deploy/web.Dockerfile` | the built client — static files, never run | unpacked to `/opt/autocard/web` |
 
 `deploy/ansible/` is the other half: one-time (and re-runnable) server setup —
 Docker, the `deploy` user, `/opt/autocard`, the nginx vhost and its certificate.
 Releases do not go through it.
 
 All three build from the repository root: the engine imports `core/` and `ml/`,
-and the client needs the shared `assets/` directory. Nothing binds a public
-port — the host's nginx terminates TLS and proxies to those two loopback ports,
-so this stack shares ports 80/443 with anything else on the box.
+and the client needs the shared `assets/` directory.
+
+Only two of them are containers on the VPS. `npm run build` emits a directory of
+static files, not a server, and the host already runs nginx — so the client is
+served off disk rather than through a second nginx in a container of its own.
+The image is still how it travels: `deploy.sh` unpacks it with `docker cp` into
+`/opt/autocard/web-<tag>` and swaps the `web` symlink, which is what keeps one
+`IMAGE_TAG` naming one whole release, rollback included.
+
+Nothing binds a public port — the host's nginx terminates TLS, serves the files
+and proxies `/socket.io/` to the relay's loopback port, so this stack shares
+80/443 with anything else on the box.
 
 ## The model weights
 
@@ -115,6 +125,10 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
   commit SHA. No rebuild; it redeploys what is already in GHCR.
 - **Change a setting**: edit `PROD_ENV_FILE`, re-run the latest Deploy.
 - **Logs**: `ssh deploy@vps 'cd /opt/autocard && docker compose -f docker-compose.prod.yml logs -f engine'`
+  — the client has no logs of its own; it is in the host's nginx access log.
+- **What is live**: `ssh deploy@vps 'readlink /opt/autocard/web'` — the release
+  the vhost is serving right now. The previous one is kept beside it, and
+  everything older is pruned on each deploy.
 - **Check the live model**: the engine logs `Loaded AI checkpoint from …` the
   first time an AI room asks for it — lazily, so it appears on the first single
   player match rather than at boot.
@@ -139,3 +153,10 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
   network shape still degrades the AI seat quietly — `AIOpponent.__init__`
   catches it so a bad export cannot take player-versus-player rooms down with
   it. Pin `AUTOCARD_WEIGHTS_SHA256` if you want that case caught too.
+
+- **Two nginxes would have been one too many.** The host needs one anyway, for
+  TLS and to share 80/443 with the other sites. An `nginx:alpine` container in
+  front of `dist/` would only have added a proxy hop and a second config to keep
+  in step. The trade is that `deploy.sh` owns an unpack-and-swap step instead —
+  worth it here, and not worth it in a project whose frontend ships its own
+  server (Next.js, say), where the container is already the server.
