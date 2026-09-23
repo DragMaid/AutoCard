@@ -11,7 +11,7 @@ name: Deploy
 #            PROD_ENV_FILE     contents of deploy/.env.example, filled in
 #            HF_TOKEN          optional, only while the model repository is private
 #   vars     VPS_HOST, VPS_PORT (default 22), VPS_USER (default deploy)
-#            PUBLIC_API_URL    e.g. https://api.autocard.example.com — baked into the bundle
+#            PUBLIC_API_URL    e.g. https://autocard.example.com — baked into the bundle
 #            AUTOCARD_WEIGHTS_URL  optional override of the checkpoint URL
 
 on:

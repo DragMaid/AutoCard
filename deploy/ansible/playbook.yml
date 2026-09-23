@@ -1,44 +1,35 @@
-# Prepares a shared Ubuntu/Debian VPS to run the AutoCard stack. Idempotent —
-# safe to re-run whenever this file changes. Day-to-day releases do NOT go
-# through here; they are the deploy workflow (.github/workflows/deploy.yml)
-# SSHing in as `deploy` and running /opt/autocard/deploy.sh.
+# Prepares a shared Ubuntu/Debian VPS to run the autocard stack. Idempotent — safe to
+# re-run whenever this file changes. Day-to-day releases do NOT go through here; they are
+# the deploy workflow (.github/workflows/deploy.yml) SSHing in as `deploy`.
 #
-# What it touches, and deliberately what it does not, because other sites share
-# the host:
-#   - installs Docker only when no `docker` binary exists yet (never swaps an
-#     existing one)
-#   - adds ONE nginx vhost + its certificate; nginx.conf and other sites are
-#     left alone, and every reload is preceded by `nginx -t`
-#   - creates a `deploy` user that owns /opt/autocard (docker group =
-#     root-equivalent; the key is dedicated to this purpose so it can be revoked
-#     on its own)
-#   - installs unattended-upgrades for OS security patches
-#   - does NOT manage the firewall: the stack binds to 127.0.0.1 only, and
-#     Docker bypasses ufw rules for published ports anyway
-#
-# There is no database and so nothing to back up: the only state on the box is
-# the downloaded checkpoint, which the engine fetches again on demand.
+# What it touches, and deliberately what it does not, because other sites share the host:
+#   - installs Docker only when no `docker` binary exists yet (never swaps an existing one)
+#   - runs ONE shared Traefik at /opt/traefik on ports 80/443 (Let's Encrypt included);
+#     sites join the `traefik` Docker network and route themselves with container labels.
+#     Anything else holding 80/443 (e.g. a host nginx) has to be moved behind it first
+#   - creates a `deploy` user that owns /opt/autocard (docker group = root-equivalent;
+#     the key is dedicated to this purpose so it can be revoked on its own)
+#   - installs unattended-upgrades for OS security patches and a nightly DB dump cron
+#   - does NOT manage the firewall: only Traefik publishes ports, and Docker bypasses
+#     ufw rules for published ports anyway
 
-- name: Prepare VPS for the AutoCard stack
+- name: Prepare VPS for the autocard stack
   hosts: autocard
   become: true
 
   vars:
     deploy_user: deploy
     app_dir: /opt/autocard
-    # NOTE: The relay's loopback port, published by docker-compose.prod.yml. Must
-    # match RELAY_PORT in the .env on the server.
-    relay_port: 8180
-    # The user nginx's workers run as, which has to be able to read the client's
-    # files. www-data on Debian and Ubuntu.
-    nginx_user: www-data
-    # What the vhost serves. deploy.sh points this symlink at the release it
-    # unpacked; the placeholder keeps nginx valid before the first deploy.
-    web_root: "{{ app_dir }}/web"
-    # be ignored.
+    traefik_dir: /opt/traefik
+    traefik_version: v3.6
+    # Must match the external network docker-compose.prod.yml joins.
+    traefik_network: traefik
+    # letsencrypt needs DNS for both names pointing here. selfsigned is for before that:
+    # Traefik serves its default certificate and browsers warn, but the stack is reachable
+    # (e.g. via /etc/hosts). Switching to letsencrypt later is a re-run of this playbook.
+    # Play vars outrank inventory vars, so the default lives in a filter rather than
+    # as `tls_mode:` here — otherwise tls_mode set in inventory.ini would be ignored.
     tls: "{{ tls_mode | default('letsencrypt') }}"
-    selfsigned_dir: /etc/ssl/autocard
-    tls_cert_dir: "{{ selfsigned_dir if tls == 'selfsigned' else '/etc/letsencrypt/live/' ~ autocard_domain }}"
 
   tasks:
     - name: Install base packages
@@ -48,9 +39,6 @@
           - curl
           - gnupg
           - unattended-upgrades
-          - nginx
-          - certbot
-          - python3-certbot-nginx
         state: present
         update_cache: true
         cache_valid_time: 3600
@@ -88,7 +76,7 @@
           ansible.builtin.deb822_repository:
             name: docker
             types: deb
-            uris: "https://download.docker.com/linux/{{ ansible_distribution | lower }}"
+            uris: https://download.docker.com/linux/ubuntu
             suites: "{{ ansible_facts['distribution_release'] }}"
             components: stable
             signed_by: /etc/apt/keyrings/docker.asc
@@ -128,96 +116,63 @@
         key: "{{ lookup('file', deploy_public_key_file) }}"
         exclusive: false
 
-    # It assign the modes sequentially:
-    # - user - deploy_user = 7: full read, write, execute
-    # - group - nginx_user = 5: execute / traverse commands (but no reading)
-    # - others = 0: no permission at all
     - name: Create the app directory
       ansible.builtin.file:
-        path: "{{ app_dir }}"
+        path: "{{ item }}"
         state: directory
         owner: "{{ deploy_user }}"
-        group: "{{ nginx_user }}"
+        group: "{{ deploy_user }}"
         mode: "0750"
-
-    - name: Create the placeholder web root
-      ansible.builtin.file:
-        path: "{{ app_dir }}/web-placeholder"
-        state: directory
-        owner: "{{ deploy_user }}"
-        group: "{{ nginx_user }}"
-        mode: "0755"
-
-    # Checking if the web_root symlink exists and saving the results to web_root_link var
-    - name: Look for an existing web root
-      ansible.builtin.stat:
-        path: "{{ web_root }}"
-        follow: false
-      register: web_root_link
-
-    - name: Point the web root at the placeholder
-      when: not web_root_link.stat.exists
-      ansible.builtin.file:
-        path: "{{ web_root }}"
-        src: "{{ app_dir }}/web-placeholder"
-        state: link
-        owner: "{{ deploy_user }}"
-        group: "{{ nginx_user }}"
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/backups"
 
     - name: Validate tls_mode
       ansible.builtin.assert:
         that: tls in ['letsencrypt', 'selfsigned']
         fail_msg: "tls_mode must be 'letsencrypt' or 'selfsigned', got '{{ tls }}'"
 
-    - name: Create the self-signed certificate directory
-      when: tls == 'selfsigned'
+    - name: Check for the shared proxy network
+      ansible.builtin.command: docker network inspect {{ traefik_network }}
+      register: traefik_network_check
+      changed_when: false
+      failed_when: false
+
+    - name: Create the shared proxy network
+      when: traefik_network_check.rc != 0
+      ansible.builtin.command: docker network create {{ traefik_network }}
+
+    - name: Create the Traefik directories
       ansible.builtin.file:
-        path: "{{ selfsigned_dir }}"
+        path: "{{ item }}"
         state: directory
         mode: "0700"
+      loop:
+        - "{{ traefik_dir }}"
+        # acme.json holds the certificates' private keys.
+        - "{{ traefik_dir }}/letsencrypt"
 
-    # Same file names as Let's Encrypt so the vhost only differs by directory.
-    - name: Generate a self-signed TLS certificate
-      when: tls == 'selfsigned'
-      ansible.builtin.command: >-
-        openssl req -x509 -nodes -newkey rsa:2048 -days 365
-        -keyout {{ selfsigned_dir }}/privkey.pem
-        -out {{ selfsigned_dir }}/fullchain.pem
-        -subj "/CN={{ autocard_domain }}"
-        -addext "subjectAltName=DNS:{{ autocard_domain }}"
-      args:
-        creates: "{{ selfsigned_dir }}/fullchain.pem"
-      notify: Reload nginx
-
-    # certonly: certbot obtains the certificate without rewriting any config.
-    # The vhost below references it, so this has to happen first — and DNS for
-    # the name must already point at this server.
-    - name: Obtain the TLS certificate
-      when: tls == 'letsencrypt'
-      ansible.builtin.command: >-
-        certbot certonly --nginx --non-interactive --agree-tos
-        --email {{ letsencrypt_email }}
-        --cert-name {{ autocard_domain }}
-        -d {{ autocard_domain }}
-        --deploy-hook "systemctl reload nginx"
-      args:
-        creates: "/etc/letsencrypt/live/{{ autocard_domain }}/fullchain.pem"
-
-    - name: Install the autocard vhost
+    - name: Install the Traefik config
       ansible.builtin.template:
-        src: templates/nginx-autocard.conf.j2
-        dest: /etc/nginx/sites-available/autocard.conf
+        src: "templates/{{ item.src }}"
+        dest: "{{ traefik_dir }}/{{ item.dest }}"
         mode: "0644"
-      notify: Reload nginx
+      loop:
+        - { src: traefik.yml.j2, dest: traefik.yml }
+        - { src: traefik-compose.yml.j2, dest: docker-compose.yml }
+      notify: Restart Traefik
 
-    - name: Enable the autocard vhost
-      ansible.builtin.file:
-        src: /etc/nginx/sites-available/autocard.conf
-        dest: /etc/nginx/sites-enabled/autocard.conf
-        state: link
-      notify: Reload nginx
+    - name: Start Traefik
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: "{{ traefik_dir }}"
+      register: traefik_up
+      changed_when: "'Started' in traefik_up.stderr or 'Recreated' in traefik_up.stderr"
 
   handlers:
-    - name: Reload nginx
-      ansible.builtin.shell: nginx -t && systemctl reload nginx
+    # Static config is only read at startup.
+    - name: Restart Traefik
+      ansible.builtin.command: docker compose up -d --force-recreate
+      args:
+        chdir: "{{ traefik_dir }}"
       changed_when: true
