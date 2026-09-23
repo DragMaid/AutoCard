@@ -1,12 +1,12 @@
-# Production stack: the two long-running processes of docs/BACKEND.md, run from
-# the images CI pushes to GHCR (the third image, autocard-web, is static files
-# the host's nginx serves — see deploy/README.md). The dev equivalent is `./server/dev.sh` plus `npm run dev`.
+# Production stack: the two long-running processes of docs/BACKEND.md plus the
+# built client, run from the images CI pushes to GHCR. The dev equivalent is
+# `./server/dev.sh` plus `npm run dev`.
 #
 # It lives on the VPS at /opt/autocard next to a .env the deploy workflow writes
-# — see deploy/.env.example for every variable. Nothing here listens publicly:
-# the relay binds to 127.0.0.1 and the host's nginx terminates TLS in front of
-# it, so this stack shares ports 80/443 with the other sites on the machine
-# instead of claiming them.
+# — see deploy/.env.example for every variable. Nothing here publishes a port:
+# the host's Traefik (installed by deploy/ansible) terminates TLS and finds the
+# relay and the client through the labels below, on its shared Docker network,
+# so this stack shares 80/443 with the other sites on the machine.
 #
 #   docker compose -f docker-compose.prod.yml ps
 #   docker compose -f docker-compose.prod.yml logs -f engine
@@ -22,8 +22,9 @@ x-logging: &logging
     max-file: "5"
 
 services:
-  # The source of truth. Never published — only the relay may reach it, which is
-  # what keeps an authoritative engine safe to run in public.
+  # The source of truth. Never published and not on the Traefik network — only
+  # the relay may reach it, which is what keeps an authoritative engine safe to
+  # run in public.
   #
   # Its entrypoint downloads the checkpoint and exits non-zero if it cannot, so
   # the engine only ever becomes healthy with a model in place — and the relay
@@ -51,6 +52,7 @@ services:
     volumes:
       - models:/models
       - engine-logs:/app/logs
+    networks: [default]
     logging: *logging
 
   # Rooms, seats and fan-out. Decides nothing about the game.
@@ -64,16 +66,53 @@ services:
       AutoCard__AllowedOrigins__0: https://${SITE_DOMAIN:?}
       AutoCard__ReconnectGraceSeconds: ${RECONNECT_GRACE_SECONDS:-90}
       AutoCard__MaxRooms: ${MAX_ROOMS:-500}
-    ports:
-      - "127.0.0.1:${RELAY_PORT:-8180}:8080"
     depends_on:
       engine:
         condition: service_healthy
+    # default to reach the engine, traefik to be reached.
+    networks: [default, traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.services.autocard-relay.loadbalancer.server.port: "8080"
+      # The socket.io WebSocket endpoint, on the same hostname as the client.
+      # Its rule is longer than the client's catch-all, so Traefik ranks it first.
+      traefik.http.routers.autocard-relay.rule: Host(`${SITE_DOMAIN:?}`) && PathPrefix(`/socket.io/`)
+      traefik.http.routers.autocard-relay.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.autocard-relay.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.autocard-relay.service: autocard-relay
+      # `curl https://<domain>/relay-health` — the relay's own status, room
+      # count included. deploy.sh checks it; the client never calls it.
+      traefik.http.routers.autocard-relay-health.rule: Host(`${SITE_DOMAIN:?}`) && Path(`/relay-health`)
+      traefik.http.routers.autocard-relay-health.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.autocard-relay-health.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.autocard-relay-health.middlewares: autocard-relay-health
+      traefik.http.routers.autocard-relay-health.service: autocard-relay
+      traefik.http.middlewares.autocard-relay-health.replacepath.path: /health
     logging: *logging
 
-  # The built client is not a service: `npm run build` emits static files, so
-  # the host's nginx serves them straight off disk from /opt/autocard/web,
-  # which deploy.sh fills from the autocard-web image.
+  # The built client: static files behind a small nginx, which also sets the
+  # cache headers (see deploy/web.Dockerfile).
+  web:
+    image: ${IMAGE_PREFIX:?}/autocard-web:${IMAGE_TAG:?}
+    restart: unless-stopped
+    networks: [traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.services.autocard-web.loadbalancer.server.port: "80"
+      traefik.http.routers.autocard-web.rule: Host(`${SITE_DOMAIN:?}`)
+      traefik.http.routers.autocard-web.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.autocard-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.autocard-web.service: autocard-web
+    logging: *logging
+
+networks:
+  default: {}
+  # Created by the Ansible playbook, shared with Traefik and the other sites.
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
 
 volumes:
   # The checkpoint, downloaded once and kept across releases.

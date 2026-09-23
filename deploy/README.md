@@ -5,36 +5,32 @@ push to main ─► CI (pytest · relay build · web build · weights URL)
                   │
                   └─► build engine/relay/web ─► GHCR ─► ssh deploy@vps deploy.sh
                                                           │
-       pull ─► up -d ─► fetch checkpoint ─► unpack client ─► health ok? ─┬─ yes: done
-                                                                       └─ no: previous tag back up, run fails
+              pull ─► up -d ─► fetch checkpoint ─► health ok (through Traefik)? ─┬─ yes: done
+                                                                                 └─ no: previous tag back up, run fails
 ```
 
-Three images; two of them run. The processes are the ones in
+Three images, three containers. The engine and relay are the processes in
 [`docs/BACKEND.md`](../docs/BACKEND.md):
 
-| Image | Built from | What it is | Published on |
+| Image | Built from | What it is | Reached through |
 |---|---|---|---|
-| `autocard-engine` | `deploy/engine.Dockerfile` | the authoritative Python engine | nothing — internal only |
-| `autocard-relay` | `deploy/relay.Dockerfile` | the C# room server | `127.0.0.1:8180` |
-| `autocard-web` | `deploy/web.Dockerfile` | the built client — static files, never run | unpacked to `/opt/autocard/web` |
+| `autocard-engine` | `deploy/engine.Dockerfile` | the authoritative Python engine | nothing — the relay only |
+| `autocard-relay` | `deploy/relay.Dockerfile` | the C# room server | Traefik, `https://<domain>/socket.io/` |
+| `autocard-web` | `deploy/web.Dockerfile` | the built client behind a small nginx | Traefik, `https://<domain>/` |
 
 `deploy/ansible/` is the other half: one-time (and re-runnable) server setup —
-Docker, the `deploy` user, `/opt/autocard`, the nginx vhost and its certificate.
-Releases do not go through it.
+Docker, the `deploy` user, `/opt/autocard`, and Traefik if the box does not run
+one yet. Releases do not go through it.
 
 All three build from the repository root: the engine imports `core/` and `ml/`,
 and the client needs the shared `assets/` directory.
 
-Only two of them are containers on the VPS. `npm run build` emits a directory of
-static files, not a server, and the host already runs nginx — so the client is
-served off disk rather than through a second nginx in a container of its own.
-The image is still how it travels: `deploy.sh` unpacks it with `docker cp` into
-`/opt/autocard/web-<tag>` and swaps the `web` symlink, which is what keeps one
-`IMAGE_TAG` naming one whole release, rollback included.
-
-Nothing binds a public port — the host's nginx terminates TLS, serves the files
-and proxies `/socket.io/` to the relay's loopback port, so this stack shares
-80/443 with anything else on the box.
+Nothing in the stack publishes a port. Traefik owns 80/443 for the whole box,
+gets certificates from Let's Encrypt, and finds the relay and the client
+through the labels in `docker-compose.prod.yml`, on the shared `traefik` Docker
+network. The engine is not on that network at all. Because the client is an
+image tag like the other two, one `IMAGE_TAG` names one whole release,
+rollback included.
 
 ## The model weights
 
@@ -87,22 +83,35 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
 ## First-time setup
 
 1. **DNS**: point `autocard.example.com` at the VPS. One hostname serves both
-   the client and the relay — see the vhost for why.
+   the client and the relay: the bundle is built with `VITE_GAME_API` pointing
+   at that same origin, so the relay's CORS allow-list is a single entry and the
+   socket handshake needs no preflight.
 2. **Deploy key**: `ssh-keygen -t ed25519 -f ~/.ssh/autocard-deploy -C autocard-deploy`.
    The playbook below authorizes the public half and creates `/opt/autocard`.
-3. **Provision the VPS** — Docker, the `deploy` user, `/opt/autocard`, the
-   nginx vhost (site at `/`, the relay's `/socket.io/` WebSocket endpoint, both
-   over TLS) and unattended security upgrades:
+3. **Provision the VPS**: Docker, the `deploy` user, `/opt/autocard`,
+   unattended security upgrades, and Traefik:
    ```sh
    cd deploy/ansible
-   cp inventory.example.ini inventory.ini   # host, domain, email, key path, ports
+   cp inventory.example.ini inventory.ini   # host, email, key path
    ansible-galaxy collection install -r requirements.yml
    ansible-playbook -i inventory.ini playbook.yml
    ```
-   It is idempotent and re-runnable, and it touches only its own vhost — other
-   sites on the box, and `nginx.conf` itself, are left alone. Before DNS points
-   at the server, set `tls_mode=selfsigned` in the inventory and switch to
-   `letsencrypt` later.
+   It is idempotent and re-runnable. About Traefik:
+   - **None running yet**: it installs one at `/opt/traefik` (HTTP→HTTPS
+     redirect, Let's Encrypt over the TLS challenge, Docker provider) and keeps
+     it up to date on later runs. It refuses to start while something else
+     holds 80/443, and names what does.
+   - **One already running**: it is left alone. The playbook only creates the
+     `traefik` network (or `traefik_network`). Attach your Traefik to that
+     network, set `TRAEFIK_NETWORK` / `TRAEFIK_ENTRYPOINT` /
+     `TRAEFIK_CERTRESOLVER` in `PROD_ENV_FILE` if yours uses other names, and
+     raise its HTTPS entrypoint's `respondingTimeouts.readTimeout` (see below).
+   - **Coming from the nginx setup**: it removes the old `autocard` vhost and
+     the unpacked `web-*` releases in `/opt/autocard`. Other nginx sites still
+     on 80/443 have to move behind Traefik first.
+
+   Before DNS points at the server, Traefik serves its own self-signed
+   certificate. It requests the real one once the name resolves.
 4. **GitHub** → Settings → Environments → `production`:
 
    | kind   | name                   | value                                                      |
@@ -125,10 +134,9 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
   commit SHA. No rebuild; it redeploys what is already in GHCR.
 - **Change a setting**: edit `PROD_ENV_FILE`, re-run the latest Deploy.
 - **Logs**: `ssh deploy@vps 'cd /opt/autocard && docker compose -f docker-compose.prod.yml logs -f engine'`
-  — the client has no logs of its own; it is in the host's nginx access log.
-- **What is live**: `ssh deploy@vps 'readlink /opt/autocard/web'` — the release
-  the vhost is serving right now. The previous one is kept beside it, and
-  everything older is pruned on each deploy.
+  (or `relay`, `web`). Routing and certificate problems are in Traefik's:
+  `cd /opt/traefik && docker compose logs -f`.
+- **What is live**: `ssh deploy@vps 'cat /opt/autocard/.current-tag'`.
 - **Check the live model**: the engine logs `Loaded AI checkpoint from …` the
   first time an AI room asks for it — lazily, so it appears on the first single
   player match rather than at boot.
@@ -162,9 +170,13 @@ period and `deploy.sh` polls for six minutes before calling a release bad.
   catches it so a bad export cannot take player-versus-player rooms down with
   it. Pin `AUTOCARD_WEIGHTS_SHA256` if you want that case caught too.
 
-- **Two nginxes would have been one too many.** The host needs one anyway, for
-  TLS and to share 80/443 with the other sites. An `nginx:alpine` container in
-  front of `dist/` would only have added a proxy hop and a second config to keep
-  in step. The trade is that `deploy.sh` owns an unpack-and-swap step instead —
-  worth it here, and not worth it in a project whose frontend ships its own
-  server (Next.js, say), where the container is already the server.
+- **WebSockets and Traefik's read timeout.** Since v3, Traefik closes a
+  connection after 60s by default (`respondingTimeouts.readTimeout`). A match
+  is a socket that can sit idle while a player thinks, so the Traefik the
+  playbook installs raises it to 3600s. A Traefik you bring yourself needs the
+  same, or matches drop every minute.
+- **Why a web container.** Traefik routes but cannot serve files, so the client
+  ships as `nginx:stable-alpine-slim` with `dist/` baked in. That nginx sets the
+  cache headers: `/assets/` is immutable for 30 days, and `index.html` is
+  `no-cache` so a deploy shows up straight away. It does nothing about TLS or
+  proxying.
